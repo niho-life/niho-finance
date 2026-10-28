@@ -556,7 +556,6 @@ Stripe 残高を「未収入金（決済代行会社）」として持つ方式�
 - https://support.stripe.com/questions/company-ownership-change
 - https://support.stripe.com/questions/legal-entity-sharing
 - https://docs.stripe.com/get-started/data-migrations/pan-copy-self-serve （検索結果のみ、本文未取得）
-- リポジトリ内: `specs/initiatives/connect-direct-2026-foundation.md`
 
 ### 3 Stripe Invoicing（日本）
 - https://stripe.com/jp/guides/best-practices-for-setting-up-invoicies-in-japan
