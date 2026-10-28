@@ -1562,3 +1562,30 @@ export const recordsPolicySchema = z.object({
   version: requiredText("版", 50),
 });
 export type RecordsPolicyInput = z.input<typeof recordsPolicySchema>;
+
+/** A bank wallet whose bank API connection is read or changed (19-bank-api §6.3). */
+export const bankWalletInputSchema = z.object({
+  walletId: idField("口座"),
+});
+export type BankWalletInput = z.input<typeof bankWalletInputSchema>;
+
+/** The bank's account ID: 12–29 letters and digits (GMO の `accountId`). */
+const BANK_ACCOUNT_ID_PATTERN = /^[A-Za-z0-9]{12,29}$/;
+
+/**
+ * 口座の選択 (19-bank-api §1.1): the account ID is the radio's value. Whether the bank lists it for
+ * the wallet's tokens is checked by `connectBankAccount`, not here.
+ */
+export const bankAccountChoiceSchema = z.object({
+  walletId: idField("口座"),
+  accountId: fromText("銀行の口座", (text) => {
+    if (text === "") return problem("接続する口座を選んでください");
+    if (!BANK_ACCOUNT_ID_PATTERN.test(text)) {
+      return problem(
+        "選んだ口座が正しくありません。画面を読み込み直して、口座を選び直してください",
+      );
+    }
+    return ok(text);
+  }),
+});
+export type BankAccountChoiceInput = z.input<typeof bankAccountChoiceSchema>;

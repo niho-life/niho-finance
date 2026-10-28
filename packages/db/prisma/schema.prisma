@@ -488,23 +488,42 @@ model MemoTag {
 // ---------------------------------------------------------------------------
 
 model Wallet {
-  id                 String     @id
-  name               String
-  kind               WalletKind
-  accountId          String     @map("account_id")
-  subAccountId       String?    @map("sub_account_id")
+  id                   String     @id
+  name                 String
+  kind                 WalletKind
+  accountId            String     @map("account_id")
+  subAccountId         String?    @map("sub_account_id")
   /// CSV format key (e.g. a bank's CSV), `stripe`, or a bank API key
-  importer           String?
+  importer             String?
   /// Column mapping of the generic CSV format (`GenericCsvConfig`), when `importer` is `generic`
-  importerConfig     Json?      @map("importer_config")
-  defaultSegmentId   String?    @map("default_segment_id")
+  importerConfig       Json?      @map("importer_config")
+  defaultSegmentId     String?    @map("default_segment_id")
   /// Balance on the statement at `openingBalanceDate` (a wallet that existed before the books)
-  openingBalanceDate DateTime?  @map("opening_balance_date") @db.Date
-  openingBalance     BigInt?    @map("opening_balance")
-  note               String?
-  isActive           Boolean    @default(true) @map("is_active")
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  openingBalanceDate   DateTime?  @map("opening_balance_date") @db.Date
+  openingBalance       BigInt?    @map("opening_balance")
+  note                 String?
+  isActive             Boolean    @default(true) @map("is_active")
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Bank API (19-bank-api §6.1): the environment connected in (`sunabar` / `stg` / `prod`); null = not connected
+  bankApiEnv           String?    @map("bank_api_env")
+  /// `authorized` (口座の選択待ち) / `connected` / `reauth_required`; null = not connected
+  bankApiStatus        String?    @map("bank_api_status")
+  /// The bank's account ID (branch and number in it): database only, never on a screen, in a log, the audit log or a backup
+  bankApiAccountId     String?    @map("bank_api_account_id")
+  /// The account as screens show it (「支店名 科目名 ••••末尾 4 桁」)
+  bankApiAccountLabel  String?    @map("bank_api_account_label")
+  /// The tokens sealed with AES-256-GCM (`v1.<iv>.<tag>.<body>`); null for the sunabar token
+  bankApiTokens        String?    @map("bank_api_tokens")
+  /// Last day of the period fetched so far; the next sync reads again from 3 days before it
+  bankApiSyncedThrough DateTime?  @map("bank_api_synced_through") @db.Date
+  /// Last sync that completed (one with nothing new included)
+  bankApiLastSyncedAt  DateTime?  @map("bank_api_last_synced_at") @db.Timestamptz(6)
+  /// The bank's balance and its base date (compared with the books, 19-bank-api §4)
+  bankApiBalance       BigInt?    @map("bank_api_balance")
+  bankApiBalanceDate   DateTime?  @map("bank_api_balance_date") @db.Date
+  /// Why the last sync failed; cleared by the next one that completes
+  bankApiError         String?    @map("bank_api_error")
 
   account        Account             @relation(fields: [accountId], references: [id])
   subAccount     SubAccount?         @relation(fields: [subAccountId], references: [id])

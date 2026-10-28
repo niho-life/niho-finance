@@ -22,6 +22,8 @@ const LOCK_KEYS = {
   fiscalYears: 7_301_002,
   /** Standard data (tax categories, rules, segments, the chart). */
   standardData: 7_301_003,
+  /** Bank API connections (one bank account belongs to one wallet, 19-bank-api §1.1). */
+  bankLinks: 7_301_004,
 } as const;
 
 export type SettingsLock = keyof typeof LOCK_KEYS;

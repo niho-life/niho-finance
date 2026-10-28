@@ -155,14 +155,38 @@ export async function loadReportSource(db: Db): Promise<ReportSource> {
   };
 }
 
-/** What the statements know about each active wallet (14-reports §6): pending lines, syncs, balances. */
+function bankApiStatusOf(value: string | null): WalletStatus["bankApiStatus"] {
+  return value === "authorized" || value === "connected" || value === "reauth_required"
+    ? value
+    : null;
+}
+
+function laterOf(a: Date | null, b: Date | null): Date | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
+/**
+ * What the statements know about each active wallet (14-reports §6): pending lines, syncs,
+ * balances. A bank API balance dated on or before `through` and not before the last line stands
+ * for the statement balance (19-bank-api §4): the bank's own answer, whatever the order of the
+ * day's lines.
+ */
 export async function loadWalletStatus(
   db: Db,
   options: { through: CalendarDate },
 ): Promise<WalletStatus[]> {
   const wallets = await db.wallet.findMany({
     where: { isActive: true },
-    select: { id: true, stripeAccount: { select: { lastSyncedAt: true } } },
+    select: {
+      id: true,
+      stripeAccount: { select: { lastSyncedAt: true } },
+      bankApiStatus: true,
+      bankApiLastSyncedAt: true,
+      bankApiBalance: true,
+      bankApiBalanceDate: true,
+    },
     orderBy: { createdAt: "asc" },
   });
   const pending = await db.walletTransaction.groupBy({
@@ -184,15 +208,23 @@ export async function loadWalletStatus(
       orderBy: { executedAt: "desc" },
       select: { executedAt: true },
     });
+    let statement =
+      lastStatement && lastStatement.balanceAfter !== null
+        ? { date: fromDbDate(lastStatement.txnDate), balanceAfter: lastStatement.balanceAfter }
+        : null;
+    if (wallet.bankApiBalance !== null && wallet.bankApiBalanceDate !== null) {
+      const date = fromDbDate(wallet.bankApiBalanceDate);
+      if (date <= options.through && (statement === null || date >= statement.date)) {
+        statement = { date, balanceAfter: wallet.bankApiBalance };
+      }
+    }
     rows.push({
       walletId: wallet.id,
       pendingCount: pendingByWallet.get(wallet.id) ?? 0,
-      lastSyncedAt: wallet.stripeAccount?.lastSyncedAt ?? null,
+      lastSyncedAt: laterOf(wallet.stripeAccount?.lastSyncedAt ?? null, wallet.bankApiLastSyncedAt),
       lastImportedAt: lastImport?.executedAt ?? null,
-      lastStatement:
-        lastStatement && lastStatement.balanceAfter !== null
-          ? { date: fromDbDate(lastStatement.txnDate), balanceAfter: lastStatement.balanceAfter }
-          : null,
+      lastStatement: statement,
+      bankApiStatus: bankApiStatusOf(wallet.bankApiStatus),
     });
   }
   return rows;
@@ -275,9 +307,33 @@ export const upcomingDeadlinesTodo: HomeTodoSource = async (db, today) => {
   });
 };
 
+/**
+ * 銀行 API の再接続 n 件 (19-bank-api §1.2): active bank wallets whose authorization lapsed. One
+ * wallet goes to its connection page, several to 設定 › 口座.
+ */
+export const bankReconnectTodo: HomeTodoSource = async (db) => {
+  const wallets = await db.wallet.findMany({
+    where: { isActive: true, kind: "bank", bankApiStatus: "reauth_required" },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  const [only] = wallets;
+  if (only === undefined) return [];
+  return [
+    {
+      key: "bank-reconnect",
+      badge: String(wallets.length),
+      tone: "warn",
+      label: "銀行 API の再接続",
+      href: wallets.length === 1 ? `/settings/wallets/${only.id}/bank` : "/settings/wallets",
+    },
+  ];
+};
+
 export const HOME_TODO_SOURCES: readonly HomeTodoSource[] = [
   pendingStatementsTodo,
   inboxDocumentsTodo,
+  bankReconnectTodo,
   upcomingDeadlinesTodo,
 ];
 
@@ -489,8 +545,14 @@ export async function loadBackupSource(db: Db): Promise<BackupSource> {
         enabled: rule.enabled,
       })),
       partners: partners.map((partner) => dateFields(partner)),
-      // Stripe account ids and secret names are not part of the backup (06-architecture §5).
-      wallets: wallets.map((wallet) => dateFields(wallet)),
+      // Stripe account ids and secret names are not part of the backup (06-architecture §5), nor
+      // the bank API's tokens and account ID (19-bank-api §2.3).
+      wallets: wallets.map(
+        ({ bankApiTokens: _tokens, bankApiAccountId: _accountId, ...wallet }) => ({
+          ...dateFields(wallet),
+          bankApiSyncedThrough: fromDbDateOrNull(wallet.bankApiSyncedThrough),
+        }),
+      ),
     },
     walletTransactions: transactions.map((row): BackupWalletTransaction => ({
       id: row.id,
