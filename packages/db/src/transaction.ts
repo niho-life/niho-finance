@@ -14,7 +14,7 @@ export async function runInTransaction<T>(db: Db, fn: (tx: Tx) => Promise<T>): P
   return fn(db);
 }
 
-/** Advisory lock keys (transaction-scoped) for settings writes that must not race. */
+/** Advisory lock keys (transaction-scoped) for writes that must not race. */
 const LOCK_KEYS = {
   /** The single company row and the setup progress stored on it. */
   company: 7_301_001,
@@ -22,6 +22,8 @@ const LOCK_KEYS = {
   fiscalYears: 7_301_002,
   /** Standard data (tax categories, rules, segments, the chart). */
   standardData: 7_301_003,
+  /** Payroll: confirming a pay run, posting or completing its payments (22-payroll §5.1). */
+  payroll: 7_301_004,
 } as const;
 
 export type SettingsLock = keyof typeof LOCK_KEYS;
