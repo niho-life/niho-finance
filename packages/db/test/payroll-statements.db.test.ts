@@ -502,9 +502,9 @@ describe.skipIf(!hasTestDatabase)("法定調書・退職 (§12)", () => {
 
       const statements = await loadStatements(tx, 2026);
       const byId = new Map(statements.recipients.map((row) => [row.employee.id, row]));
-      expect([...byId.keys()].sort()).toEqual(
-        [officer.id, employee.id, smallLeaver.id, leaver.id].sort(),
-      );
+      // Other payroll test files leave their own (fictional) employees in the 2026 book: compare ours.
+      const ours = new Set([officer.id, employee.id, smallLeaver.id, leaver.id]);
+      expect([...byId.keys()].filter((id) => ours.has(id)).sort()).toEqual([...ours].sort());
       const officerSlip = byId.get(officer.id)!;
       expect(officerSlip.state).toBe("adjusted");
       expect(officerSlip.slip).toMatchObject({
@@ -597,15 +597,20 @@ describe.skipIf(!hasTestDatabase)("法定調書・退職 (§12)", () => {
                 partnerId,
                 description: "",
               },
-              {
-                side: "credit",
-                accountId: refs.account("2300"),
-                amount: String(tax),
-                taxCategoryCode: "na",
-                segmentId: "",
-                partnerId,
-                description: "",
-              },
+              // A fee without withholding (a corporation) has no 預り金 line: lines must be 1 円 or more.
+              ...(tax > 0n
+                ? [
+                    {
+                      side: "credit" as const,
+                      accountId: refs.account("2300"),
+                      amount: String(tax),
+                      taxCategoryCode: "na",
+                      segmentId: "",
+                      partnerId,
+                      description: "",
+                    },
+                  ]
+                : []),
               {
                 side: "credit",
                 accountId: refs.account("2100"),
