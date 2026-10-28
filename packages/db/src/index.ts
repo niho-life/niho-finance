@@ -1,7 +1,53 @@
 export { appendAuditLog, toAuditJson, type AuditEntry, type Db } from "./audit";
+export {
+  AUDIT_PAGE_SIZE,
+  countAuditLog,
+  describeAuditTargets,
+  listAuditLog,
+  type AuditLogFilters,
+  type AuditLogPage,
+  type AuditLogRow,
+} from "./audit-query";
 export { bootstrapStandardData, hasStandardData, type BootstrapResult } from "./bootstrap";
 export { createPrismaClient, getPrismaClient, type CreatePrismaClientOptions } from "./client";
+export {
+  closeFiscalYearThrough,
+  closeRange,
+  countEntriesBetween,
+  isCloseDate,
+  listCloseOptions,
+  previewFiscalYearClose,
+  type CloseDirection,
+  type CloseFiscalYearResult,
+  type ClosePreview,
+  type CloseRange,
+} from "./closing";
 export { fromDbDate, fromDbDateOrNull, todayInJapan, toDbDate } from "./dates";
+export {
+  chainedEntryIds,
+  correctJournalEntry,
+  ENTRY_PAGE_SIZE,
+  getJournalEntryDetail,
+  listJournalEntries,
+  loadEntryFormOptions,
+  loadEntryHistory,
+  postSimpleEntry,
+  postVoucherEntry,
+  voidJournalEntryWithOpenDate,
+  type CorrectJournalEntryResult,
+  type EntryFormAccount,
+  type EntryFormFiscalYear,
+  type EntryFormOptions,
+  type EntryFormWallet,
+  type EntryHistoryRow,
+  type EntryRef,
+  type EntrySideSummary,
+  type JournalEntryDetail,
+  type JournalEntryDetailLine,
+  type JournalEntryFilters,
+  type JournalEntryListRow,
+  type JournalEntryPage,
+} from "./entries";
 export {
   assertNihoFinanceDatabase,
   describeDatabaseUrl,

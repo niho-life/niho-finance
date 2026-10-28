@@ -25,20 +25,35 @@ function zodFieldErrors(error: ZodError): Record<string, string> {
 export function toActionError(error: unknown): ActionError {
   if (error instanceof ZodError) {
     const fieldErrors = zodFieldErrors(error);
-    return { ok: false, error: Object.values(fieldErrors)[0] ?? SHAPE_ERROR, fieldErrors };
+    return {
+      ok: false,
+      error: Object.values(fieldErrors)[0] ?? SHAPE_ERROR,
+      fieldErrors,
+      formError: null,
+    };
   }
   if (error instanceof SettingsError) {
     return {
       ok: false,
       error: error.message,
       fieldErrors: error.field ? { [error.field]: error.message } : {},
+      formError: error.field ? null : error.message,
     };
   }
   if (error instanceof LedgerValidationError) {
+    // The repository names the form field of each ledger error it can (`field`, 11 §4).
+    const fieldErrors: Record<string, string> = {};
+    const formLevel: string[] = [];
+    for (const item of error.errors) {
+      if (item.field) fieldErrors[item.field] ??= item.message;
+      else formLevel.push(item.message);
+    }
+    const unique = (messages: string[]) => [...new Set(messages)].join(" / ");
     return {
       ok: false,
-      error: error.errors.map((item) => item.message).join(" / "),
-      fieldErrors: {},
+      error: unique(error.errors.map((item) => item.message)),
+      fieldErrors,
+      formError: formLevel.length > 0 ? unique(formLevel) : null,
     };
   }
   if (isUniqueViolation(error)) {

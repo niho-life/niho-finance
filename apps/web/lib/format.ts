@@ -20,3 +20,38 @@ export function formatMonth(date: CalendarDate): string {
 export function formatAmount(value: Money | null | undefined): string {
   return value === null || value === undefined ? "—" : formatYen(value);
 }
+
+const JAPAN_DATE_TIME = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** A timestamp in JST: `2026/11/03 10:12` (01-domain-model §9: timestamps are UTC, shown in JST). */
+export function formatDateTime(value: Date | string): string {
+  const parts = Object.fromEntries(
+    JAPAN_DATE_TIME.formatToParts(new Date(value)).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+/** `No. 12`: the number owners see for an entry (01 §9). */
+export function entryNo(no: number): string {
+  return `No. ${no}`;
+}
+
+/** Wallet label of the forms: 「名前（科目 / 補助科目）」 (11 §4.1). */
+export function walletLabel(wallet: {
+  name: string;
+  accountName: string;
+  subAccountName: string | null;
+}): string {
+  const account = wallet.subAccountName
+    ? `${wallet.accountName} / ${wallet.subAccountName}`
+    : wallet.accountName;
+  return `${wallet.name}（${account}）`;
+}
