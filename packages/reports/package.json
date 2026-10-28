@@ -12,6 +12,8 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@niho-finance/ledger": "*"
+    "@niho-finance/ledger": "*",
+    "fflate": "^0.8.3",
+    "iconv-lite": "^0.7.3"
   }
 }
