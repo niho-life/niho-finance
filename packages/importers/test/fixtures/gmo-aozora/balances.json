@@ -1,0 +1,17 @@
+{
+  "balances": [
+    {
+      "accountId": "301019999999",
+      "accountTypeCode": "01",
+      "accountTypeName": "普通預金（有利息）",
+      "balance": "1068855",
+      "baseDate": "2026-11-30",
+      "baseTime": "10:00:00+09:00",
+      "withdrawableAmount": "1068855",
+      "previousDayBalance": "1066855",
+      "previousMonthBalance": "1000000",
+      "currencyCode": "JPY",
+      "currencyName": "日本円"
+    }
+  ]
+}

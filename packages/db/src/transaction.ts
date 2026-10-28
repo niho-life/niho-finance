@@ -24,6 +24,8 @@ const LOCK_KEYS = {
   standardData: 7_301_003,
   /** Payroll: confirming a pay run, posting or completing its payments (22-payroll §5.1). */
   payroll: 7_301_004,
+  /** Bank API connections (one bank account belongs to one wallet, 19-bank-api §1.1). */
+  bankLinks: 7_301_005,
 } as const;
 
 export type SettingsLock = keyof typeof LOCK_KEYS;

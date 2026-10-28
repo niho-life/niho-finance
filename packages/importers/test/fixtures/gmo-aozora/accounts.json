@@ -1,0 +1,35 @@
+{
+  "baseDate": "2026-11-30",
+  "baseTime": "10:00:00+09:00",
+  "accounts": [
+    {
+      "accountId": "301019999999",
+      "branchCode": "301",
+      "branchName": "架空第一支店",
+      "accountTypeCode": "01",
+      "accountTypeName": "普通預金（有利息）",
+      "accountNumber": "9999999",
+      "primaryAccountCode": "1",
+      "primaryAccountCodeName": "代表口座",
+      "accountName": "テスト商事（カ",
+      "accountNameKana": "ﾃｽﾄｼﾖｳｼﾞ(ｶ",
+      "currencyCode": "JPY",
+      "currencyName": "日本円",
+      "transferLimitAmount": "5000000"
+    },
+    {
+      "accountId": "301119999998",
+      "branchCode": "301",
+      "branchName": "架空第一支店",
+      "accountTypeCode": "11",
+      "accountTypeName": "定期預金",
+      "accountNumber": "9999998",
+      "primaryAccountCode": "2",
+      "primaryAccountCodeName": "代表口座以外",
+      "accountName": "テスト商事（カ",
+      "accountNameKana": "ﾃｽﾄｼﾖｳｼﾞ(ｶ",
+      "currencyCode": "JPY",
+      "currencyName": "日本円"
+    }
+  ]
+}
