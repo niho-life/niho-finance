@@ -190,6 +190,10 @@ export async function describeAuditTargets(
     });
     for (const invoice of invoices) label("invoice", invoice.id, invoiceAuditName(invoice));
   }
+  if (ids.has("fixed_asset")) {
+    for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
+      label("fixed_asset", row.id, row.name);
+  }
   return names;
 }
 

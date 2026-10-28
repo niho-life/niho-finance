@@ -40,9 +40,9 @@ function Tab({
 }
 
 /** The sections reached through その他 on phones (11 §2). */
-const MORE_PATHS = ["/more", "/entries", "/imports", "/invoices", "/settings"];
+const MORE_PATHS = ["/more", "/entries", "/imports", "/invoices", "/closing", "/settings"];
 
-/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・請求・設定). */
+/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・請求・決算・設定). */
 export function BottomTabs() {
   const pathname = usePathname();
   const inMore = MORE_PATHS.some((path) => isActivePath(pathname, path));
