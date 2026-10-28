@@ -1,7 +1,7 @@
 {
   "displayName": "niho-finance: 5xx responses",
   "documentation": {
-    "content": "A NIHO finance Cloud Run service answered 5xx. Open the service's logs and docs/ops/deploy.md §8.",
+    "content": "The NIHO finance screens (web service) answered 5xx. Open the service's logs and docs/ops/deploy.md §8. Job failures (jobs service) alert through 'job failed' instead.",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
@@ -9,7 +9,7 @@
     {
       "displayName": "Cloud Run request_count 5xx > 0 (5 min)",
       "conditionThreshold": {
-        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"5xx\" AND (resource.labels.service_name=\"__WEB_SERVICE__\" OR resource.labels.service_name=\"__JOBS_SERVICE__\")",
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"5xx\" AND resource.labels.service_name=\"__WEB_SERVICE__\"",
         "aggregations": [
           {
             "alignmentPeriod": "300s",
