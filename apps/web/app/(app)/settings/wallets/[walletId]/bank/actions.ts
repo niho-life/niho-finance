@@ -15,7 +15,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { attempt } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import type { BankAuthorizedView, BankSyncView } from "./types";
 
 /*
@@ -26,7 +26,7 @@ import type { BankAuthorizedView, BankSyncView } from "./types";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 async function write<T, R>(
   run: () => Promise<T>,
@@ -61,7 +61,7 @@ export async function connectBankAction(
   return write(
     async () => {
       const input = bankWalletInputSchema.parse({ walletId });
-      await authorizeBankToken(prisma(), input, by());
+      await authorizeBankToken(prisma(), input, await by());
       const link = await getBankLink(prisma(), input.walletId);
       return link?.status === "connected" ? "connected" : "authorized";
     },
@@ -74,12 +74,12 @@ export async function chooseBankAccountAction(
   values: unknown,
 ): Promise<ActionResult<BankSyncView>> {
   return write(
-    () =>
+    async () =>
       connectBankAccount(
         prisma(),
         bankAccountChoiceSchema.parse(values),
         // 取込時の自動登録 (15 §11): the new lines an `autoPost` rule wins are settled in the import.
-        { ...by(), afterImport: settleAfterImport },
+        { ...(await by()), afterImport: settleAfterImport },
       ),
     toSyncView,
   );
@@ -88,9 +88,9 @@ export async function chooseBankAccountAction(
 /** 今すぐ同期 (`syncBankWalletAction`, 19-bank-api §3.5). */
 export async function syncBankWalletAction(walletId: unknown): Promise<ActionResult<BankSyncView>> {
   return write(
-    () =>
+    async () =>
       syncBankWallet(prisma(), bankWalletInputSchema.parse({ walletId }), {
-        ...by(),
+        ...(await by()),
         afterImport: settleAfterImport,
       }),
     toSyncView,
@@ -100,7 +100,7 @@ export async function syncBankWalletAction(walletId: unknown): Promise<ActionRes
 /** 接続を外す: the lines and the history stay; the tokens and the account go with the connection. */
 export async function disconnectBankAction(walletId: unknown): Promise<ActionResult> {
   return write(
-    () => disconnectBankLink(prisma(), bankWalletInputSchema.parse({ walletId }), by()),
+    async () => disconnectBankLink(prisma(), bankWalletInputSchema.parse({ walletId }), await by()),
     () => null,
   );
 }

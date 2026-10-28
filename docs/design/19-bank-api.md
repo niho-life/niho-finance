@@ -120,8 +120,8 @@ v2 #17 の仕様です。法人口座（[D3](../decisions/2026-10-28-bank-gmo-ao
 ### 3.5 手動の同期とジョブ
 
 - 手動: 接続ページの「今すぐ同期」→ Server Action `syncBankWalletAction(walletId)`。
-- ジョブ: `POST /api/jobs/bank-sync`。S4 の `verifyJobRequest`（OIDC。12 §5）を通った要求だけ受け、接続済み（`connected` と `reauth_required`）の有効な銀行の口座を順に同期し、`{ ok, wallets: [{ walletId, ok, importedCount, duplicateCount, failedCount, error }] }` を 200 で返す。`reauth_required` の口座は API を呼ばずに失敗として記録する（毎日の失敗が履歴とメールに残り、再接続を促す）。認証の失敗は 401 / 403 / 503。同期の失敗で 5xx を返さない。`GET` は 405。
-- Cloud Scheduler: 毎日 06:15 JST（`stripe-sync` の後）。S8 の配備（ジョブのサービス・OIDC のサービスアカウント）に 1 本足す（§9）。
+- ジョブ: `POST /api/jobs/bank-sync`。S4 の `verifyJobRequest`（OIDC。12 §5）を通った要求だけ受け、接続済み（`connected` と `reauth_required`）の有効な銀行の口座を順に同期し、`{ ok, wallets: [{ walletId, ok, importedCount, duplicateCount, failedCount, error }] }` を 200 で返す。`reauth_required` の口座は API を呼ばずに失敗として記録する（毎日の失敗が履歴とメールに残り、再接続を促す）。認証の失敗は 401 / 403 / 503。同期の失敗で 5xx を返さない。`GET` は 405。S8 の決まり（[deploy §6](../ops/deploy.md)）どおりジョブのサービス（`NIHO_FINANCE_SERVICE=jobs`）でだけ動き（画面のサービスでは 404）、結果を `job.finished` のログ 1 行に残す。失敗した口座（再接続が必要を含む）があれば `ok=false` で、S8 のアラートのメールに届く。
+- Cloud Scheduler: 毎日 06:15 JST（`stripe-sync` の後）。4 本目のジョブで、無料枠（3 件）を超えるので月 15 円ほどかかる。本番の接続の日に足す（§9）。
 
 ## 4. 残高の照合（S7 の仕組みに追記）
 
@@ -263,5 +263,5 @@ Issue #17 の条件に加えて:
 
 ## 9. 引き渡し
 
-- S8（#9）/ 配備: Cloud Scheduler `bank-sync`（06:15 JST、OIDC、ジョブのサービスの `/api/jobs/bank-sync`）、Secret Manager の `NIHO_FINANCE_GMO_AOZORA_CLIENT_SECRET`・`NIHO_FINANCE_BANK_TOKEN_KEY`、画面のサービスの環境変数（§5）。本番の接続は口座開設と API 契約の後。
+- S8（#9）/ 配備（本番の接続の日。口座開設と API 契約の後）: `scripts/gcp-bootstrap.sh` に `ensure_scheduler_job niho-finance-bank-sync "15 6 * * *" /api/jobs/bank-sync` と再開の対象、`scripts/run-job.sh` に `bank-sync`、`docs/ops/deploy.md` の表に 1 行。Secret Manager の `NIHO_FINANCE_GMO_AOZORA_CLIENT_SECRET`・`NIHO_FINANCE_BANK_TOKEN_KEY` を画面とジョブのサービスに結び、§5 の環境変数を入れる。
 - S4（#5）: API で接続した口座への CSV の取込で、API の明細と日付・金額で突合して重複に数える（§3.3 の限界）。要るなら #5 で判定を拡げる。

@@ -1,7 +1,12 @@
 import type { ImportOutcome } from "@niho-finance/db";
 import { describe, expect, it, vi } from "vitest";
 import type { JobAuthResult } from "./auth";
-import { handleBankSyncJob, methodNotAllowed, type BankSyncJobBody } from "./bank-sync";
+import {
+  bankSyncFinished,
+  handleBankSyncJob,
+  methodNotAllowed,
+  type BankSyncJobBody,
+} from "./bank-sync";
 
 const PRINCIPAL = "scheduler@example-project.iam.gserviceaccount.com";
 
@@ -166,5 +171,40 @@ describe("methodNotAllowed", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
     expect((await bodyOf(response)).ok).toBe(false);
+  });
+});
+
+describe("bankSyncFinished", () => {
+  const wallet = {
+    walletId: "w1",
+    ok: true,
+    batchId: null,
+    importedCount: 3,
+    duplicateCount: 2,
+    failedCount: 1,
+    error: null,
+  };
+
+  it("is ok when every wallet synced, with the totals", () => {
+    const finished = bankSyncFinished(200, {
+      ok: true,
+      wallets: [wallet, { ...wallet, walletId: "w2" }],
+    });
+    expect(finished.ok).toBe(true);
+    expect(finished.fields).toEqual({ wallets: 2, imported: 6, duplicates: 4, failedRows: 2 });
+  });
+
+  it("is not ok when a wallet failed (a lapsed authorization reaches the alert)", () => {
+    const lapsed = { ...wallet, walletId: "w2", ok: false, error: "銀行 API の再接続が必要です" };
+    const finished = bankSyncFinished(200, { ok: true, wallets: [wallet, lapsed] });
+    expect(finished.ok).toBe(false);
+    expect(finished.fields).toMatchObject({ failedWallets: [lapsed] });
+  });
+
+  it("is not ok for a refused request", () => {
+    expect(bankSyncFinished(401, { ok: false, error: "no token" })).toEqual({
+      ok: false,
+      fields: { status: 401, error: "no token" },
+    });
   });
 });
