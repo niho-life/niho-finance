@@ -26,6 +26,12 @@ export const LEDGER_ERROR_CODES = [
   "ALREADY_VOIDED",
   "CANNOT_REVERSE_REVERSAL",
   "VOID_REASON_REQUIRED",
+  // Entry builders (simple-entry.ts): problems of the form input before an entry exists.
+  "UNKNOWN_WALLET",
+  "SAME_WALLET",
+  "ACCOUNT_NOT_ALLOWED",
+  "TAX_RULE_MISSING",
+  "STANDARD_ACCOUNT_MISSING",
 ] as const;
 export type LedgerErrorCode = (typeof LEDGER_ERROR_CODES)[number];
 
@@ -35,6 +41,8 @@ export interface LedgerError {
   message: string;
   /** Index into `lines` when the error belongs to one line. */
   lineIndex?: number;
+  /** The form field it belongs to, when known (set by the entry builders and the repository). */
+  field?: string;
 }
 
 /** Thrown when an entry breaks the ledger rules (02-accounting-rules §1). */

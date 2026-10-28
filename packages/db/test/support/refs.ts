@@ -1,4 +1,9 @@
-import type { CalendarDate, FiscalYearStatus } from "@niho-finance/ledger";
+import type {
+  AccountingMethod,
+  CalendarDate,
+  ConsumptionTaxMethod,
+  FiscalYearStatus,
+} from "@niho-finance/ledger";
 import type { FiscalYear, PrismaClient } from "@prisma/client";
 import { toDbDate } from "../../src/dates";
 import { newId } from "../../src/ids";
@@ -44,6 +49,8 @@ export async function createFiscalYear(
     endDate: CalendarDate;
     lockedThrough?: CalendarDate;
     status?: FiscalYearStatus;
+    /** Defaults to an exempt, tax-inclusive year. */
+    tax?: { consumptionTax: ConsumptionTaxMethod; accountingMethod: AccountingMethod };
   },
 ): Promise<FiscalYear> {
   const company = await prisma.company.findFirstOrThrow();
@@ -56,8 +63,8 @@ export async function createFiscalYear(
       endDate: toDbDate(options.endDate),
       lockedThrough: options.lockedThrough ? toDbDate(options.lockedThrough) : null,
       status: options.status ?? "open",
-      consumptionTax: "exempt",
-      accountingMethod: "tax_inclusive",
+      consumptionTax: options.tax?.consumptionTax ?? "exempt",
+      accountingMethod: options.tax?.accountingMethod ?? "tax_inclusive",
     },
   });
 }

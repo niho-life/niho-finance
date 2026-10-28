@@ -54,7 +54,7 @@ Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウン�
 
 ### 3.3 ドメイン
 
-v1 は `run.app` の URL をブックマークで使う。独自ドメイン（例: finance.niho.life）は証明書の失効を監視する運用が要るため、v2 以降で必要になったら付ける。
+画面サービスに Cloud Run のドメインマッピングで会社のドメインのサブドメインを付ける（[決定](../decisions/2026-10-28-custom-domain-mapping.md)。証明書は Google 管理で自動更新、追加費用なし）。ドメインマッピングはプレビュー機能なので、止まったときは `run.app` の URL で使い続ける。ジョブ用サービスは `run.app` のまま（Scheduler は `run.app` の URL でしか内部の呼び出しにならない）。
 
 ## 4. ジョブ
 

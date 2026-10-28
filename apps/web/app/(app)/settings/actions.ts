@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  closeFiscalYearThrough,
   createAccount,
   createMemoTag,
   createNextFiscalYear,
@@ -10,6 +11,7 @@ import {
   createTaxRateRule,
   createWallet,
   getPrismaClient,
+  previewFiscalYearClose,
   setAccountActive,
   setMemoTagActive,
   setPartnerActive,
@@ -26,13 +28,17 @@ import {
   updateSubAccount,
   updateWallet,
   type AccountSettings,
+  type ClosePreview,
+  type CloseRange,
   type MemoTagSettings,
   type PartnerSettings,
   type SegmentSettings,
   type TaxRateRuleCreateInput,
   type WalletUpdateInput,
 } from "@niho-finance/db";
+import { isCalendarDate, type CalendarDate } from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { attempt, formInput, inlinePatch, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult, RowValues } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
@@ -107,6 +113,53 @@ export async function createNextFiscalYearAction(values: {
         await by(),
       ),
     nothing,
+  );
+}
+
+// 締め (11 §7) ----------------------------------------------------------------
+
+/** 締め日 from the sheet's select: a date, or "" for 締めない. */
+const closeDateSchema = z.union([
+  z.literal(""),
+  z.custom<CalendarDate>((value) => isCalendarDate(value)),
+]);
+
+/** What the chosen close would affect (read only: nothing is written, no audit row). */
+export async function previewFiscalYearCloseAction(
+  fiscalYearId: string,
+  lockedThrough: string,
+): Promise<ActionResult<ClosePreview>> {
+  return attempt(() => {
+    const date = closeDateSchema.parse(lockedThrough);
+    return previewFiscalYearClose(prisma(), parseId(fiscalYearId), date === "" ? null : date);
+  });
+}
+
+export interface ClosedFiscalYear {
+  no: number;
+  lockedThrough: string | null;
+  range: CloseRange | null;
+  affectedCount: number;
+}
+
+export async function closeFiscalYearAction(
+  fiscalYearId: string,
+  values: { lockedThrough: string; reason: string },
+): Promise<ActionResult<ClosedFiscalYear>> {
+  return write(
+    async () =>
+      closeFiscalYearThrough(
+        prisma(),
+        parseId(fiscalYearId),
+        { lockedThrough: values.lockedThrough, reason: values.reason },
+        await by(),
+      ),
+    (result) => ({
+      no: result.no,
+      lockedThrough: result.lockedThrough,
+      range: result.range,
+      affectedCount: result.affectedCount,
+    }),
   );
 }
 
