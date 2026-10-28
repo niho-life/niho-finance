@@ -72,6 +72,7 @@ export const SOURCE_KINDS = [
   "recurring",
   "import",
   "system",
+  "payroll",
   "year_end",
 ] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];

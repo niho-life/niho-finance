@@ -11,6 +11,7 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   beancount: "beancount",
   documents: "証憑一式",
   backup: "バックアップ",
+  payslip: "給与明細",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {
