@@ -1,10 +1,4 @@
-import {
-  isCalendarDate,
-  lastDayOfMonth,
-  type CalendarDate,
-  type Money,
-  type Side,
-} from "@niho-finance/ledger";
+import { lastDayOfMonth, type CalendarDate, type Money, type Side } from "@niho-finance/ledger";
 import { PayrollSnapshotError } from "./errors";
 import { parseYearMonth, shiftYearMonth, yearMonthParts, type YearMonth } from "./month";
 import type {
@@ -15,10 +9,23 @@ import type {
   PayrollTables,
   WorkerKind,
 } from "./payroll";
-import { ratio, type Rational } from "./rational";
 import { findTableById } from "./registry";
+import {
+  child,
+  fail,
+  money,
+  nonNegativeMoney,
+  readCoverage,
+  readEmploymentInsurance,
+  readSocialInsurance,
+  readTableRef,
+  readTaxColumn,
+  record,
+  text,
+  toSnapshotJson,
+  type SnapshotJson,
+} from "./snapshot";
 import { aggregateSocialInsurance, type SocialInsuranceAggregate } from "./social-insurance";
-import type { TableRef } from "./tables";
 import type { TaxColumn } from "./withholding";
 
 /**
@@ -217,6 +224,11 @@ export function paymentCategoryOfRuleKey(ruleKey: string): PayrollPaymentCategor
 
 /** What a confirmed run owes, by category (22-payroll §7.2). */
 export interface PayrollRunSummary extends PayrollRunSettings {
+  /**
+   * `bonus` for a 賞与 run (22-payroll §10.4: its premium month is its pay month, no 住民税).
+   * Left out for a monthly run.
+   */
+  kind?: "monthly" | "bonus";
   headcount: number;
   grossPay: Money;
   totalDeductions: Money;
@@ -315,25 +327,36 @@ export function runPaymentSlots(
 export function scheduleAmount(
   ruleKey: string,
   runs: readonly PayrollRunSummary[],
-): PaymentAmount & { payMonths: YearMonth[] } {
+): PaymentAmount & { payMonths: YearMonth[]; bonusMonths: YearMonth[] } {
   const category = paymentCategoryOfRuleKey(ruleKey);
-  const amount = { total: 0n, withheld: 0n, employer: 0n, payMonths: [] as YearMonth[] };
+  const amount = {
+    total: 0n,
+    withheld: 0n,
+    employer: 0n,
+    payMonths: [] as YearMonth[],
+    bonusMonths: [] as YearMonth[],
+  };
   if (!category) return amount;
   for (const run of runs) {
     if (paymentSlotFor(category, run).ruleKey !== ruleKey) continue;
     const own = runAmount(category, run);
+    // A bonus run pays only into the deadlines it has an amount for (never 住民税).
+    if (run.kind === "bonus" && !isNonZero(own)) continue;
     amount.total += own.total;
     amount.withheld += own.withheld;
     amount.employer += own.employer;
-    amount.payMonths.push(run.payMonth);
+    (run.kind === "bonus" ? amount.bonusMonths : amount.payMonths).push(run.payMonth);
   }
   amount.payMonths.sort();
+  amount.bonusMonths.sort();
   return amount;
 }
 
 export interface PayrollScheduleEntry extends PayrollPaymentSlot, PaymentAmount {
-  /** The pay months that pay into it. */
+  /** The pay months of the monthly runs that pay into it. */
   payMonths: YearMonth[];
+  /** The pay months of the bonus runs that pay into it (22-payroll §10.4). */
+  bonusMonths: YearMonth[];
 }
 
 /**
@@ -675,29 +698,7 @@ export function pinnedTables(ids: PayrollTableIds): Partial<PayrollTables> {
   };
 }
 
-/** A JSON value of a snapshot (amounts as strings). */
-export type SnapshotJson =
-  string | number | boolean | null | SnapshotJson[] | { [key: string]: SnapshotJson };
-
-function toSnapshotJson(value: unknown, path: string): SnapshotJson {
-  if (typeof value === "bigint") return value.toString();
-  if (typeof value === "string" || typeof value === "boolean" || value === null) return value;
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) throw new PayrollSnapshotError(path, "is not a whole number");
-    return value;
-  }
-  if (Array.isArray(value))
-    return value.map((item, index) => toSnapshotJson(item, `${path}[${index}]`));
-  if (typeof value === "object") {
-    const record: { [key: string]: SnapshotJson } = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (item === undefined) continue;
-      record[key] = toSnapshotJson(item, path === "" ? key : `${path}.${key}`);
-    }
-    return record;
-  }
-  throw new PayrollSnapshotError(path, `cannot be stored (${typeof value})`);
-}
+export type { SnapshotJson } from "./snapshot";
 
 /** `PayrollRun.items`: every amount (and rational) as a decimal string, no floating point. */
 export function serializePayrollRunItems(items: readonly PayrollRunItem[]): SnapshotJson {
@@ -710,113 +711,12 @@ export function serializePayrollTableIds(ids: PayrollTableIds): SnapshotJson {
 
 // Strict reader: exact keys, exact types, normalized rationals, consistent totals.
 
-type JsonRecord = Record<string, unknown>;
-
-function fail(path: string, problem: string): never {
-  throw new PayrollSnapshotError(path, problem);
-}
-
-function child(path: string, key: string | number): string {
-  if (typeof key === "number") return `${path}[${key}]`;
-  return path === "" ? key : `${path}.${key}`;
-}
-
-function record(
-  value: unknown,
-  path: string,
-  keys: readonly string[],
-  optional: readonly string[] = [],
-): JsonRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    fail(path, "is not an object");
-  }
-  const data = value as JsonRecord;
-  for (const key of Object.keys(data)) {
-    if (!keys.includes(key) && !optional.includes(key)) fail(child(path, key), "is not expected");
-  }
-  for (const key of keys) if (!(key in data)) fail(child(path, key), "is missing");
-  return data;
-}
-
-const WHOLE_YEN = /^-?(0|[1-9]\d*)$/;
-
-function money(value: unknown, path: string): Money {
-  if (typeof value !== "string" || !WHOLE_YEN.test(value) || value === "-0") {
-    fail(path, "is not a whole number string");
-  }
-  return BigInt(value);
-}
-
-function nonNegativeMoney(value: unknown, path: string): Money {
-  const amount = money(value, path);
-  if (amount < 0n) fail(path, "is negative");
-  return amount;
-}
-
-function rational(value: unknown, path: string): Rational {
-  const data = record(value, path, ["num", "den"]);
-  const num = money(data.num, child(path, "num"));
-  const den = money(data.den, child(path, "den"));
-  if (den <= 0n) fail(child(path, "den"), "is not positive");
-  const normalized = ratio(num, den);
-  if (normalized.num !== num || normalized.den !== den) fail(path, "is not normalized");
-  return normalized;
-}
-
-function bool(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") fail(path, "is not a boolean");
-  return value;
-}
-
-function text(value: unknown, path: string): string {
-  if (typeof value !== "string" || value === "") fail(path, "is not a non-empty string");
-  return value;
-}
-
-function count(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    fail(path, "is not a whole number of 0 or more");
-  }
-  return value;
-}
-
-function tableRef(value: unknown, path: string): TableRef {
-  const data = record(value, path, ["id", "title", "source"]);
-  const source = record(data.source, child(path, "source"), ["url", "fetchedAt"]);
-  const fetchedAt = text(source.fetchedAt, child(child(path, "source"), "fetchedAt"));
-  if (!isCalendarDate(fetchedAt)) fail(child(child(path, "source"), "fetchedAt"), "is not a date");
-  return {
-    id: text(data.id, child(path, "id")),
-    title: text(data.title, child(path, "title")),
-    source: { url: text(source.url, child(child(path, "source"), "url")), fetchedAt },
-  };
-}
-
 function adjustmentsOf(value: unknown, path: string): PayrollAdjustments {
   const data = record(value, path, ["incomeTax", "socialInsurance"]);
   return {
     incomeTax: money(data.incomeTax, child(path, "incomeTax")),
     socialInsurance: money(data.socialInsurance, child(path, "socialInsurance")),
   };
-}
-
-function taxColumnOf(value: unknown, path: string): TaxColumn {
-  const column =
-    typeof value === "object" && value !== null ? (value as JsonRecord).column : undefined;
-  if (column === "kou") {
-    const data = record(value, path, ["column", "dependents"]);
-    return { column: "kou", dependents: count(data.dependents, child(path, "dependents")) };
-  }
-  if (column === "otsu") {
-    const data = record(value, path, ["column"], ["secondaryDependents"]);
-    return data.secondaryDependents === undefined
-      ? { column: "otsu" }
-      : {
-          column: "otsu",
-          secondaryDependents: count(data.secondaryDependents, child(path, "secondaryDependents")),
-        };
-  }
-  return fail(child(path, "column"), "is neither kou nor otsu");
 }
 
 function itemInputOf(value: unknown, path: string): PayrollRunItemInput {
@@ -831,8 +731,6 @@ function itemInputOf(value: unknown, path: string): PayrollRunItemInput {
   ]);
   const smrPath = child(path, "standardRemuneration");
   const smr = record(data.standardRemuneration, smrPath, ["health", "pension"]);
-  const coveragePath = child(path, "coverage");
-  const coverage = record(data.coverage, coveragePath, ["health", "care", "pension", "employment"]);
   return {
     taxablePay: nonNegativeMoney(data.taxablePay, child(path, "taxablePay")),
     nonTaxablePay: nonNegativeMoney(data.nonTaxablePay, child(path, "nonTaxablePay")),
@@ -841,13 +739,8 @@ function itemInputOf(value: unknown, path: string): PayrollRunItemInput {
       health: nonNegativeMoney(smr.health, child(smrPath, "health")),
       pension: nonNegativeMoney(smr.pension, child(smrPath, "pension")),
     },
-    coverage: {
-      health: bool(coverage.health, child(coveragePath, "health")),
-      care: bool(coverage.care, child(coveragePath, "care")),
-      pension: bool(coverage.pension, child(coveragePath, "pension")),
-      employment: bool(coverage.employment, child(coveragePath, "employment")),
-    },
-    taxColumn: taxColumnOf(data.taxColumn, child(path, "taxColumn")),
+    coverage: readCoverage(data.coverage, child(path, "coverage")),
+    taxColumn: readTaxColumn(data.taxColumn, child(path, "taxColumn")),
     adjustments: adjustmentsOf(data.adjustments, child(path, "adjustments")),
   };
 }
@@ -867,55 +760,16 @@ function resultOf(value: unknown, path: string): PayrollResult {
     "netPay",
     "tables",
   ]);
-  const siPath = child(path, "socialInsurance");
-  const si = record(data.socialInsurance, siPath, [
-    "health",
-    "pension",
-    "childContribution",
-    "employeeTotal",
-  ]);
-  const healthPath = child(siPath, "health");
-  const health = record(si.health, healthPath, ["full", "employee", "employer", "breakdown"]);
-  const breakdownPath = child(healthPath, "breakdown");
-  const breakdown = record(health.breakdown, breakdownPath, ["health", "care", "childSupport"]);
-  const pensionPath = child(siPath, "pension");
-  const pension = record(si.pension, pensionPath, ["full", "employee", "employer"]);
-  const eiPath = child(path, "employmentInsurance");
-  const ei =
-    data.employmentInsurance === null
-      ? null
-      : record(data.employmentInsurance, eiPath, ["base", "employee", "employer"]);
   const tablesPath = child(path, "tables");
   const tables = record(data.tables, tablesPath, ["withholding", "kenpo", "pension", "employment"]);
 
   const result: PayrollResult = {
     grossPay: nonNegativeMoney(data.grossPay, child(path, "grossPay")),
-    socialInsurance: {
-      health: {
-        full: rational(health.full, child(healthPath, "full")),
-        employee: nonNegativeMoney(health.employee, child(healthPath, "employee")),
-        employer: rational(health.employer, child(healthPath, "employer")),
-        breakdown: {
-          health: rational(breakdown.health, child(breakdownPath, "health")),
-          care: rational(breakdown.care, child(breakdownPath, "care")),
-          childSupport: rational(breakdown.childSupport, child(breakdownPath, "childSupport")),
-        },
-      },
-      pension: {
-        full: rational(pension.full, child(pensionPath, "full")),
-        employee: nonNegativeMoney(pension.employee, child(pensionPath, "employee")),
-        employer: rational(pension.employer, child(pensionPath, "employer")),
-      },
-      childContribution: rational(si.childContribution, child(siPath, "childContribution")),
-      employeeTotal: nonNegativeMoney(si.employeeTotal, child(siPath, "employeeTotal")),
-    },
-    employmentInsurance: ei
-      ? {
-          base: nonNegativeMoney(ei.base, child(eiPath, "base")),
-          employee: nonNegativeMoney(ei.employee, child(eiPath, "employee")),
-          employer: rational(ei.employer, child(eiPath, "employer")),
-        }
-      : null,
+    socialInsurance: readSocialInsurance(data.socialInsurance, child(path, "socialInsurance")),
+    employmentInsurance: readEmploymentInsurance(
+      data.employmentInsurance,
+      child(path, "employmentInsurance"),
+    ),
     withholdingBase: money(data.withholdingBase, child(path, "withholdingBase")),
     incomeTax: nonNegativeMoney(data.incomeTax, child(path, "incomeTax")),
     residentTax: nonNegativeMoney(data.residentTax, child(path, "residentTax")),
@@ -928,13 +782,13 @@ function resultOf(value: unknown, path: string): PayrollResult {
     totalDeductions: money(data.totalDeductions, child(path, "totalDeductions")),
     netPay: money(data.netPay, child(path, "netPay")),
     tables: {
-      withholding: tableRef(tables.withholding, child(tablesPath, "withholding")),
-      kenpo: tableRef(tables.kenpo, child(tablesPath, "kenpo")),
-      pension: tableRef(tables.pension, child(tablesPath, "pension")),
+      withholding: readTableRef(tables.withholding, child(tablesPath, "withholding")),
+      kenpo: readTableRef(tables.kenpo, child(tablesPath, "kenpo")),
+      pension: readTableRef(tables.pension, child(tablesPath, "pension")),
       employment:
         tables.employment === null
           ? null
-          : tableRef(tables.employment, child(tablesPath, "employment")),
+          : readTableRef(tables.employment, child(tablesPath, "employment")),
     },
   };
   // The totals the entries are made from must add up (22-payroll §8.5).

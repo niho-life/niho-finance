@@ -126,6 +126,8 @@ describe("the registry", () => {
       "kyokai-kenpo-kanagawa-2026",
       "pension-2020",
       "pension-2027",
+      "withholding-bonus-2026",
+      "withholding-bonus-2027",
       "withholding-monthly-2026",
       "withholding-monthly-2027",
     ]);

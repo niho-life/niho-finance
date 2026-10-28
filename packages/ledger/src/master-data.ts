@@ -232,6 +232,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "employee.update": "従業員の変更",
   "payroll_run.confirm": "支給の確定",
   "payroll_payment.post": "納付の登録",
+  "payroll_bonus_run.confirm": "賞与の確定",
   "calendar_item.complete": "完了にする",
   // 期限 (24-calendar §2)
   "calendar_item.reopen": "未完了に戻す",
@@ -288,6 +289,7 @@ export const AUDIT_ENTITIES = [
   "employee",
   "payroll_run",
   "calendar_item",
+  "payroll_bonus_run",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -315,6 +317,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   employee: "従業員",
   payroll_run: "給与の支給",
   calendar_item: "期限",
+  payroll_bonus_run: "賞与",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

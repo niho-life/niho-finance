@@ -55,9 +55,14 @@ export default async function PayrollPage() {
       <PageHeader
         title="給与"
         actions={
-          <ButtonLink href="/payroll/employees" size="sm">
-            従業員
-          </ButtonLink>
+          <>
+            <ButtonLink href="/payroll/bonus" size="sm">
+              賞与
+            </ButtonLink>
+            <ButtonLink href="/payroll/employees" size="sm">
+              従業員
+            </ButtonLink>
+          </>
         }
       />
       <div className="flex flex-col gap-8">

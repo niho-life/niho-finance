@@ -63,6 +63,7 @@ export const BACKUP_TABLES = [
   { table: "journal_line", model: "JournalLine" },
   { table: "journal_line_memo_tag", model: "JournalLineMemoTag" },
   { table: "payroll_run", model: "PayrollRun" },
+  { table: "payroll_bonus_run", model: "PayrollBonusRun" },
   { table: "wallet_transaction", model: "WalletTransaction" },
   { table: "invoice", model: "Invoice" },
   { table: "document_link", model: "DocumentLink" },

@@ -8,3 +8,4 @@ export * from "./social-insurance";
 export * from "./employment-insurance";
 export * from "./payroll";
 export * from "./run";
+export * from "./bonus";

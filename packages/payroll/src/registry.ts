@@ -2,16 +2,20 @@ import { dateParts, isCalendarDate, type CalendarDate } from "@niho-finance/ledg
 import pension2020 from "../data/2020/pension.json";
 import employment2026 from "../data/2026/employment-insurance.json";
 import kenpo2026 from "../data/2026/kyokai-kenpo-kanagawa.json";
+import bonusWithholding2026 from "../data/2026/withholding-bonus.json";
 import withholding2026 from "../data/2026/withholding-monthly.json";
 import pension2027 from "../data/2027/pension.json";
+import bonusWithholding2027 from "../data/2027/withholding-bonus.json";
 import withholding2027 from "../data/2027/withholding-monthly.json";
 import { PayrollInputError, PayrollTableMissingError } from "./errors";
 import { isYearMonth, yearMonthParts, type YearMonth } from "./month";
 import {
+  parseBonusWithholdingTable,
   parseEmploymentInsuranceTable,
   parseKenpoTable,
   parsePensionTable,
   parseWithholdingTable,
+  type BonusWithholdingTable,
   type EmploymentInsuranceTable,
   type KenpoTable,
   type PayrollTable,
@@ -53,6 +57,10 @@ const WITHHOLDING_TABLES = versions([
 const KENPO_TABLES = versions([parseKenpoTable(kenpo2026)]);
 const PENSION_TABLES = versions([parsePensionTable(pension2020), parsePensionTable(pension2027)]);
 const EMPLOYMENT_INSURANCE_TABLES = versions([parseEmploymentInsuranceTable(employment2026)]);
+const BONUS_WITHHOLDING_TABLES = versions([
+  parseBonusWithholdingTable(bonusWithholding2026),
+  parseBonusWithholdingTable(bonusWithholding2027),
+]);
 
 /** Rejects an id registered twice (ids are what a payroll run stores). */
 function uniqueIds(tables: readonly PayrollTable[]): readonly PayrollTable[] {
@@ -70,6 +78,7 @@ export const REGISTERED_TABLES: readonly PayrollTable[] = uniqueIds([
   ...KENPO_TABLES,
   ...PENSION_TABLES,
   ...EMPLOYMENT_INSURANCE_TABLES,
+  ...BONUS_WITHHOLDING_TABLES,
 ]);
 
 /** The version in force at `when`: the latest one starting on or before it, unless it has ended. */
@@ -120,6 +129,19 @@ export function findWithholdingTable(paymentDate: CalendarDate): WithholdingTabl
     "withholding-monthly",
     paymentDate,
     `支払日 ${paymentDate} に使う源泉徴収税額表（月額表）の ${year} 年分が登録されていません。国税庁の ${year} 年分の税額表を取り込んでください`,
+  );
+}
+
+/** 賞与に対する源泉徴収税額の算出率の表 of the year the payment date belongs to (年分, 22-payroll §10.1). */
+export function findBonusWithholdingTable(paymentDate: CalendarDate): BonusWithholdingTable {
+  checkDate(paymentDate);
+  const table = select(BONUS_WITHHOLDING_TABLES, paymentDate);
+  if (table) return table;
+  const { year } = dateParts(paymentDate);
+  throw new PayrollTableMissingError(
+    "withholding-bonus",
+    paymentDate,
+    `支払日 ${paymentDate} に使う賞与に対する源泉徴収税額の算出率の表の ${year} 年分が登録されていません。国税庁の ${year} 年分の算出率の表を取り込んでください`,
   );
 }
 

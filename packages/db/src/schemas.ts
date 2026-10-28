@@ -2203,3 +2203,54 @@ export const recurringItemUpdateSchema = z.object({
   isActive: booleanField("状態").optional(),
 });
 export type RecurringItemUpdateInput = z.input<typeof recurringItemUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// 賞与 (22-payroll §10)
+// ---------------------------------------------------------------------------
+
+/**
+ * One person of a bonus run: what the screen lets change (master data comes from the database).
+ * A bonus of 0 (or empty) means the person gets none in this run.
+ */
+export const payrollBonusItemSchema = z.object({
+  employeeId: idField("従業員"),
+  bonus: nonNegativeYen("賞与の額", { emptyAs: 0n }),
+  /** 前月の給与（社会保険料等控除後）. Empty → 前月の給与なし. */
+  previousMonthPay: optionalSignedYen("前月の給与（社会保険料等控除後）"),
+  /** 前月の税額 (月額表). Empty → 0. */
+  previousMonthTax: nonNegativeYen("前月の税額", { emptyAs: 0n }),
+  /** 役員: 事前確定届出給与の届出の支給日 (§10.3). */
+  filingDate: optionalDate("届け出た支給日"),
+  /** 役員: 事前確定届出給与の届出の金額 (§10.3). */
+  filingAmount: optionalPositiveYen("届け出た金額"),
+});
+export type PayrollBonusItemFormInput = z.input<typeof payrollBonusItemSchema>;
+
+/** The table versions the preview used: the confirmation then computes with the same ones. */
+export const payrollBonusTableIdsSchema = z.object({
+  bonusWithholding: tableIdText,
+  withholding: tableIdText,
+  kenpo: tableIdText,
+  pension: tableIdText,
+  employment: tableIdText.nullable(),
+});
+
+/** 賞与の計算 → 確定 (22-payroll §10.5). */
+export const payrollBonusRunSchema = z.object({
+  payMonth: yearMonthField("支給月"),
+  paymentDate: requiredDate("支払日"),
+  title: requiredText("題名", 40),
+  /** 賞与の計算期間が 6 か月を超える. */
+  calcPeriodOver6Months: booleanField("計算期間"),
+  /** Empty → 未払金〔給与〕. */
+  payFromWalletId: optionalIdField("支払元"),
+  withholdingSpecialDue: booleanField("源泉所得税の納期の特例"),
+  items: z
+    .array(payrollBonusItemSchema, { error: "従業員ごとの入力の形式が正しくありません" })
+    .min(1, { error: "賞与を支給する従業員がいません。従業員を追加してください" })
+    .max(100, { error: "従業員は 100 人までです" }),
+  tableIds: payrollBonusTableIdsSchema.nullish().transform((value) => value ?? null),
+  expected: payrollExpectedSchema.nullish().transform((value) => value ?? null),
+});
+export type PayrollBonusRunInput = z.input<typeof payrollBonusRunSchema>;
+export type ParsedPayrollBonusRun = z.output<typeof payrollBonusRunSchema>;

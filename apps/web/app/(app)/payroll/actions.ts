@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  confirmBonusRun,
   confirmPayrollRun,
   createEmployee,
   getPrismaClient,
@@ -12,6 +13,7 @@ import {
   updateEmployee,
   type EmployeeCreateInput,
   type EmployeeUpdateInput,
+  type PayrollBonusRunInput,
   type PayrollPaymentInput,
   type PayrollRunInput,
 } from "@niho-finance/db";
@@ -28,6 +30,7 @@ import { z } from "zod";
 import { parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { loadBonusPreview, type BonusPreviewView } from "./_lib/bonus-views";
 import { attemptPayroll } from "./_lib/errors";
 import {
   loadPaymentPreview,
@@ -199,5 +202,33 @@ export async function markPayrollPaymentDoneAction(
   return write(
     async () => markPayrollPaymentDone(prisma(), parseId(calendarItemId), await by()),
     (row) => ({ title: row.title }),
+  );
+}
+
+// 賞与 (§10.5) -------------------------------------------------------------------
+
+/** The results, the 2 entries, the deadlines and the warnings of the form's values (no write). */
+export async function previewBonusRunAction(
+  values: unknown,
+): Promise<ActionResult<BonusPreviewView>> {
+  return attemptPayroll(() =>
+    loadBonusPreview(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput),
+  );
+}
+
+export interface ConfirmedBonusRun {
+  id: string;
+  /** 「夏季賞与（2026 年 7 月支給）」 */
+  label: string;
+}
+
+/** 確定: the values with `tableIds` and `expected` of the preview the owner confirmed. */
+export async function confirmBonusRunAction(
+  values: unknown,
+): Promise<ActionResult<ConfirmedBonusRun>> {
+  return write(
+    async () =>
+      confirmBonusRun(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput, await by()),
+    (run) => ({ id: run.id, label: `${run.title}（${yearMonthLabel(run.payMonth)}支給）` }),
   );
 }
