@@ -15,8 +15,10 @@ import {
 import type { Prisma } from "@prisma/client";
 import type { Db } from "./audit";
 import { fromDbDate } from "./dates";
+import { ruleDisplayName } from "./rule-json";
 import { invoiceAuditName } from "./invoices";
 import type { AuditLogFilter } from "./schemas";
+import { formatStatementAmount } from "./statements";
 
 export const AUDIT_PAGE_SIZE = 50;
 
@@ -163,6 +165,23 @@ export async function describeAuditTargets(
   if (ids.has("memo_tag")) {
     for (const row of await db.memoTag.findMany({ where: { id: of("memo_tag") }, select }))
       label("memo_tag", row.id, row.name);
+  }
+  if (ids.has("wallet_transaction")) {
+    const lines = await db.walletTransaction.findMany({
+      where: { id: of("wallet_transaction") },
+      select: { id: true, txnDate: true, amount: true },
+    });
+    for (const line of lines) {
+      const date = displayDate(fromDbDate(line.txnDate));
+      label("wallet_transaction", line.id, `${date} ${formatStatementAmount(line.amount)}`);
+    }
+  }
+  if (ids.has("rule")) {
+    const rules = await db.rule.findMany({
+      where: { id: of("rule") },
+      select: { id: true, name: true, match: true },
+    });
+    for (const rule of rules) label("rule", rule.id, ruleDisplayName(rule));
   }
   if (ids.has("invoice")) {
     const invoices = await db.invoice.findMany({
