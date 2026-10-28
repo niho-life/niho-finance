@@ -30,6 +30,7 @@ import { z } from "zod";
 import { parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { loadBonusPreview, type BonusPreviewView } from "./_lib/bonus-views";
 import { attemptPayroll } from "./_lib/errors";
 import {
@@ -75,6 +76,8 @@ export async function saveEmployeeAction(
   id: string | null,
   values: unknown,
 ): Promise<ActionResult<SavedEmployee>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const input = valuesSchema.parse(values);
@@ -97,6 +100,8 @@ export async function setEmployeeActiveAction(
   id: string,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setEmployeeActive(
@@ -138,6 +143,8 @@ function standardRemunerationOf(remuneration: unknown): StandardRemunerationView
 export async function standardRemunerationAction(
   remuneration: string,
 ): Promise<ActionResult<StandardRemunerationView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return attemptPayroll(() => Promise.resolve(standardRemunerationOf(remuneration)));
 }
 
@@ -147,6 +154,8 @@ export async function standardRemunerationAction(
 export async function previewPayrollRunAction(
   values: unknown,
 ): Promise<ActionResult<RunPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return attemptPayroll(() =>
     loadRunPreview(prisma(), valuesSchema.parse(values) as PayrollRunInput),
   );
@@ -162,6 +171,8 @@ export interface ConfirmedRun {
 export async function confirmPayrollRunAction(
   values: unknown,
 ): Promise<ActionResult<ConfirmedRun>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       confirmPayrollRun(prisma(), valuesSchema.parse(values) as PayrollRunInput, await by()),
@@ -174,6 +185,8 @@ export async function confirmPayrollRunAction(
 export async function previewPayrollPaymentAction(
   values: unknown,
 ): Promise<ActionResult<PaymentPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return attemptPayroll(() =>
     loadPaymentPreview(prisma(), valuesSchema.parse(values) as PayrollPaymentInput),
   );
@@ -188,6 +201,8 @@ export interface PostedPayment {
 export async function postPayrollPaymentAction(
   values: unknown,
 ): Promise<ActionResult<PostedPayment>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postPayrollPayment(prisma(), valuesSchema.parse(values) as PayrollPaymentInput, await by()),
@@ -199,6 +214,8 @@ export async function postPayrollPaymentAction(
 export async function markPayrollPaymentDoneAction(
   calendarItemId: string,
 ): Promise<ActionResult<{ title: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => markPayrollPaymentDone(prisma(), parseId(calendarItemId), await by()),
     (row) => ({ title: row.title }),
@@ -211,6 +228,8 @@ export async function markPayrollPaymentDoneAction(
 export async function previewBonusRunAction(
   values: unknown,
 ): Promise<ActionResult<BonusPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return attemptPayroll(() =>
     loadBonusPreview(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput),
   );
@@ -226,6 +245,8 @@ export interface ConfirmedBonusRun {
 export async function confirmBonusRunAction(
   values: unknown,
 ): Promise<ActionResult<ConfirmedBonusRun>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       confirmBonusRun(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput, await by()),

@@ -23,8 +23,11 @@ const environmentSchema = z.object({
   NIHO_FINANCE_SERVICE: z.preprocess(unsetIfBlank, z.enum(["web", "jobs"]).default("web")),
   /** Audience of the IAP signed header (`/projects/<number>/locations/<region>/services/<name>`). */
   NIHO_FINANCE_IAP_AUDIENCE: optionalText,
-  /** Who writes when there is no IAP header (local only; audit log `actor`). */
-  NIHO_FINANCE_ACTOR: z.preprocess(unsetIfBlank, z.string().max(200).default("owner")),
+  /**
+   * Who writes when there is no IAP header (local only; audit log `actor`). The default is the
+   * seed's 管理者, so that a seeded book opens (23-users-and-expenses §2).
+   */
+  NIHO_FINANCE_ACTOR: z.preprocess(unsetIfBlank, z.string().max(200).default("owner@example.com")),
   /** `log` writes the mail to the log instead of sending it (local); `smtp` sends it. */
   NIHO_FINANCE_MAIL: z.preprocess(unsetIfBlank, z.enum(["log", "smtp"]).default("log")),
   NIHO_FINANCE_MAIL_FROM: optionalText,

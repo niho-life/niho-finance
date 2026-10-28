@@ -25,6 +25,7 @@ export const REPORT_SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
   import: "取込",
   payroll: "給与",
   year_end: "決算",
+  expense: "立替精算",
 };
 
 export const REPORT_ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {

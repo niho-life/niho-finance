@@ -171,6 +171,7 @@ export const SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
   import: "取込",
   payroll: "給与",
   year_end: "決算",
+  expense: "立替精算",
 };
 
 export const ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {
@@ -238,6 +239,14 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "calendar_item.reopen": "未完了に戻す",
   "calendar_item.notify": "期限の通知",
   "calendar_item.delete": "期限の削除",
+  // 利用者 (23 §4): 追加 / 変更 come from the shared verbs.
+  "user.deactivate": "無効にする",
+  "user.reactivate": "有効にする",
+  // 立替精算 (23 §5.2)
+  "expense_claim.submit": "提出",
+  "expense_claim.pay": "支払",
+  "expense_claim.unpay": "支払の取消",
+  "expense_claim.void": "取消",
   // 読み取りと照合 (20-reader §1)
   "document.read": "証憑の読み取り",
   "partner.registry_check": "登録番号の照合",
@@ -289,6 +298,8 @@ export const AUDIT_ENTITIES = [
   "employee",
   "payroll_run",
   "calendar_item",
+  "user",
+  "expense_claim",
   "payroll_bonus_run",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
@@ -317,6 +328,8 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   employee: "従業員",
   payroll_run: "給与の支給",
   calendar_item: "期限",
+  user: "利用者",
+  expense_claim: "立替精算",
   payroll_bonus_run: "賞与",
 };
 
