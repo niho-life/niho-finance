@@ -255,7 +255,8 @@ function BatchStatus({ batch }: { batch: ImportBatchSummary }) {
   return (
     <span className="block min-w-0 truncate" title={reason}>
       <span className="font-bold text-danger">失敗</span>
-      <span className="ml-1.5 text-[12px] text-muted">{reason}</span>
+      {/* Phones keep the status column narrow (`auto`): the reason is on the batch's result. */}
+      <span className="ml-1.5 hidden text-[12px] text-muted md:inline">{reason}</span>
     </span>
   );
 }
