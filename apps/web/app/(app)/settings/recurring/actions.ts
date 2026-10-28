@@ -12,16 +12,16 @@ import { formatYenInput } from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
 import { attempt, formInput, inlinePatch, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult, RowValues } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /*
  * Server Actions of 設定 › 定期取引 (21-cashflow §7), the same as the other settings lists: the
  * repository validates (inline edits may only touch the row's editable fields), writes with the
- * audit log as `NIHO_FINANCE_ACTOR`, the pages are refreshed (the home's line included).
+ * audit log as the signed-in user (`lib/actor.ts`), the pages are refreshed (the home's line included).
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 async function write<T, R>(
   run: () => Promise<T>,
@@ -74,12 +74,12 @@ function recurringValues(item: RecurringItemSettings): RowValues {
 /** 「追加」: the start date is today unless the form says otherwise (21 §7). */
 export async function createRecurringItemAction(formData: FormData): Promise<ActionResult> {
   return write(
-    () => {
+    async () => {
       const input = formInput<RecurringItemCreateInput>(formData);
       return createRecurringItem(
         prisma(),
         { ...input, startDate: input.startDate || todayInJapan() },
-        by(),
+        await by(),
       );
     },
     () => null,
@@ -90,9 +90,9 @@ export async function updateRecurringItemAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
-  return write(() => {
+  return write(async () => {
     const { id: itemId, ...fields } = inlinePatch(id, patch, RECURRING_FIELDS);
-    return updateRecurringItem(prisma(), itemId, fields, by());
+    return updateRecurringItem(prisma(), itemId, fields, await by());
   }, recurringValues);
 }
 
@@ -102,7 +102,8 @@ export async function setRecurringItemActiveAction(
   isActive: boolean,
 ): Promise<ActionResult> {
   return write(
-    () => updateRecurringItem(prisma(), parseId(id), { isActive: parseBoolean(isActive) }, by()),
+    async () =>
+      updateRecurringItem(prisma(), parseId(id), { isActive: parseBoolean(isActive) }, await by()),
     () => null,
   );
 }
