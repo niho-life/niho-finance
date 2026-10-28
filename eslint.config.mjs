@@ -42,6 +42,11 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
+    // The Service Worker (10 §1.1) runs in the browser's worker scope, not in Node.
+    files: ["apps/web/public/sw.js"],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
     files: ["packages/ledger/src/**/*.ts", "packages/payroll/src/**/*.ts"],
     rules: {
       "no-restricted-globals": ["error", { name: "parseFloat", message: integerMoney }],

@@ -32,7 +32,8 @@
   - Cache Storage に置くのは `/offline.html` の 1 件だけ。activate のときに他のキャッシュを消す。
   - 扱うのは GET のページ遷移（`mode: "navigate"`）だけ。navigation preload を使ってネットワークから取り、通信に失敗したときだけ `/offline.html` を返す。
   - HTTP のエラーと IAP の 302 は、そのままブラウザに渡す。
-  - fetch・Server Actions・RSC・API・静的ファイル・証憑のファイルには触れない。
+  - ページ遷移でない要求（fetch・Server Actions・RSC・API の呼び出し・画像などの静的ファイル）には触れない。
+  - 新しいタブで開く証憑のファイルや書き出しもページ遷移なので、同じくネットワークの応答をそのまま返す。navigation preload の応答を使うので、要求は 1 回で済む。
   - 登録はルートの layout の client 部品（`components/pwa/`）が行う。
 - **接続がない画面** `public/offline.html`（`GET /offline.html`）
   - 自己完結の HTML。CSS と文言を中に持ち、外の CSS・JS を読まない。
