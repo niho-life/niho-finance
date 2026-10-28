@@ -205,6 +205,11 @@ export async function describeAuditTargets(
     for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
       label("fixed_asset", row.id, row.name);
   }
+  if (ids.has("recurring_item")) {
+    const where = { id: of("recurring_item") };
+    for (const row of await db.recurringItem.findMany({ where, select }))
+      label("recurring_item", row.id, row.name);
+  }
   return names;
 }
 

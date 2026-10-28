@@ -12,6 +12,7 @@ export * from "./trial-balance";
 export * from "./monthly";
 export * from "./segments";
 export * from "./cash";
+export * from "./cashflow-forecast";
 export * from "./journal";
 export * from "./general-ledger";
 export * from "./csv";
