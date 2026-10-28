@@ -741,6 +741,35 @@ describe.skipIf(!hasTestDatabase)("reading repository", () => {
       expect(await actionsOf(document.id)).toEqual(["document.create", "document.read"]);
     });
 
+    it("leaves doubtful items unchecked: a future date and a total the rates do not add up to", async () => {
+      const document = await register();
+      const total = uniqueTotal();
+      const result = await read(
+        document.id,
+        answering(
+          answer({
+            issuerName: `架空要確認${suffix}`,
+            totalAmount: total,
+            transactionDate: "2062-10-05",
+            rates: [{ ratePercent: 10, amount: total + 100, taxIncluded: true, taxAmount: null }],
+          }),
+        ),
+      );
+      expect(result.issues.map((issue) => issue.code)).toEqual(["date_future", "rates_sum"]);
+      const proposal = await buildReadingProposal(prisma, document.id);
+      for (const field of ["txnDate", "amount"] as const) {
+        expect(rowOf(proposal, field)).toMatchObject({ selectable: true, defaultChecked: false });
+      }
+      expect(rowOf(proposal, "partner")).toMatchObject({ selectable: true, defaultChecked: true });
+      // Still savable on purpose.
+      await applyDocumentReading(
+        prisma,
+        { documentId: document.id, fields: ["amount"] },
+        { actor },
+      );
+      expect(await itemsOf(document.id)).toMatchObject({ amount: BigInt(total) });
+    });
+
     it("shows a voided document's proposal read-only and refuses to save it", async () => {
       const document = await register();
       const extraction = {

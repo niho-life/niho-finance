@@ -41,6 +41,7 @@ import {
   type ReaderProvider,
   type Reading,
   type ReadingIssue,
+  type ReadingIssueCode,
   type ReadingIssueField,
   type ReadingRatePercent,
   type ReadingRegistry,
@@ -249,6 +250,19 @@ const PROPOSAL_FIELD_OF_ISSUE: Readonly<Record<ReadingIssueField, ReadingProposa
   rates: null,
   registrationNumber: "invoiceRegistrationNumber",
   issuerName: "partner",
+};
+
+/**
+ * Warnings that make an item's proposal doubtful (a misread year, a total the rate lines do not
+ * add up to, a number the registry does not know): the item stays selectable but is not checked
+ * by default, so that 提案を保存 never saves it without the owner looking.
+ */
+const DOUBTFUL_FIELD_OF_ISSUE: Readonly<Partial<Record<ReadingIssueCode, ReadingProposalField>>> = {
+  date_future: "txnDate",
+  date_old: "txnDate",
+  total_range: "amount",
+  rates_sum: "amount",
+  registration_not_found: "invoiceRegistrationNumber",
 };
 
 const calendarDateSchema = z.custom<CalendarDate>((value) => isCalendarDate(value));
@@ -530,7 +544,10 @@ function proposalRows(
   match: ReadingPartnerMatch | null,
 ): ProposalRow[] {
   const blocked = new Set<ReadingProposalField>();
+  const doubtful = new Set<ReadingProposalField>();
   for (const issue of extraction.issues) {
+    const unsure = DOUBTFUL_FIELD_OF_ISSUE[issue.code];
+    if (unsure) doubtful.add(unsure);
     if (issue.severity !== "error" || issue.field === null) continue;
     const field = PROPOSAL_FIELD_OF_ISSUE[issue.field];
     if (field) blocked.add(field);
@@ -551,7 +568,7 @@ function proposalRows(
       currentLabel: now.label,
       same,
       selectable,
-      defaultChecked: selectable && now.value === null,
+      defaultChecked: selectable && now.value === null && !doubtful.has(field),
       partnerMatch: field === "partner" && offer.value !== null ? (match?.by ?? null) : null,
     };
   });

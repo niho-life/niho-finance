@@ -120,7 +120,7 @@ interface ProviderResult {
    - 証憑を読み込む（無効は拒否、形式が読めないものは拒否）→ 保存層 `read(storageKey)` → `provider.read` → `parseReading` → 照合（§8。アプリケーション ID があり、登録番号が正しい形式なら。取引年月日の登録状況）→ 重複の候補 → `validateReading` → `recordDocumentReading`。
    - 失敗（API・拒否・形式）も `recordDocumentReading` に `status: "failed"` で残す（費用が発生しうるため件数に数え、一括読み取りで同じ証憑を何度も読まない）。
 2. `recordDocumentReading(db, { documentId, extraction, usage }, { actor })`（1 トランザクション）: `document.extraction` を書き、`external_api_usage` に 1 行、監査ログ `document.read`（after: provider・model・状態・提案の要約・検証の code の一覧）。証憑の他の列は変えない。
-3. 詳細は提案の欄を出す（§10.1）。項目ごとにチェックがあり、既定は「今の値が空で、提案があり、error がない項目」。今の値と違う提案はチェックなしで並べて見せる。
+3. 詳細は提案の欄を出す（§10.1）。項目ごとにチェックがあり、既定は「今の値が空で、提案があり、error がない項目」。ただし警告で疑わしい項目（`date_future`・`date_old` の日付、`total_range`・`rates_sum` の金額、`registration_not_found` の登録番号）は選べるが既定ではチェックしない（見ずに保存しないため）。今の値と違う提案はチェックなしで並べて見せる。
 4. 「提案を保存」→ `applyDocumentReadingAction(id, fields)` → `applyDocumentReading(db, { documentId, fields }, { actor })`: DB の `extraction` から（クライアントの値は使わない）選んだ項目の値を作り、同じトランザクションで `updateDocument` を呼ぶ（`document.update`）。取引先は §5.1 で決める。提案がない・`error` の項目・無効の証憑は拒否。
 5. すべての提案が今の値と同じなら欄に「提案はすべて保存済みです」。読み取り直すと `extraction` は上書きされ（前の提案は `document.read` の監査ログに残る）、また 3 から。
 
