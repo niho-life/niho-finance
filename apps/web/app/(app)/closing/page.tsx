@@ -362,7 +362,7 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
     <>
       <PageHeader
         title="決算"
-        meta={`第 ${year.no} 期 ${formatPeriod(year.startDate, year.endDate)} · ${FISCAL_YEAR_STATUS_LABELS[year.status]}`}
+        meta={`第 ${year.no} 期 · ${FISCAL_YEAR_STATUS_LABELS[year.status]}`}
         actions={
           <>
             {found.years.length > 1 ? <YearSelect years={found.years} current={year.no} /> : null}
@@ -372,6 +372,10 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
           </>
         }
       />
+      {/* The period on a line of its own: next to the actions it wraps word by word at 320px. */}
+      <p className="num -mt-3 mb-4 text-[13px] text-muted">
+        {formatPeriod(year.startDate, year.endDate)}
+      </p>
       <StateBand checklist={checklist} />
       <ol aria-label={`第 ${year.no} 期の決算の項目`} className="mt-4">
         {checklist.steps.map((step) => {

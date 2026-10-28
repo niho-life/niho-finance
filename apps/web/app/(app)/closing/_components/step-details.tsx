@@ -182,10 +182,10 @@ export function ConsumptionTaxDetails({
         ]}
       />
       {tax.posted ? (
-        <p className="flex flex-wrap items-center gap-2 text-[13px]">
+        <div className="flex flex-wrap items-center gap-2 text-[13px]">
           精算を計上済み <EntryLink entry={tax.posted} />
           {readOnly ? null : <VoidYearEndEntryButton entryId={tax.posted.id} no={tax.posted.no} />}
-        </p>
+        </div>
       ) : null}
       <Note>税区分ごとの集計（申告書の数字）は決算書・書き出しで扱います。</Note>
     </>
@@ -250,12 +250,12 @@ export function CorporateTaxDetails({
         ]}
       />
       {summary.posted ? (
-        <p className="flex flex-wrap items-center gap-2 text-[13px]">
+        <div className="flex flex-wrap items-center gap-2 text-[13px]">
           計上済み <EntryLink entry={summary.posted} />
           {readOnly ? null : (
             <VoidYearEndEntryButton entryId={summary.posted.id} no={summary.posted.no} />
           )}
-        </p>
+        </div>
       ) : null}
       <Note>
         所得の概算は 収益 −

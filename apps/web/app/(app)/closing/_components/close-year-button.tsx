@@ -46,6 +46,9 @@ export function CloseYearButton({
           ? `第 ${result.data.no} 期を締めました（決算振替 ${entryNo(result.data.closingEntryNo)}）`
           : `第 ${result.data.no} 期を締めました`,
       );
+      // Stay on the closed year (the default year would move to the next one) to show its
+      // closing entry and the next year's opening balances.
+      router.replace(`/closing?year=${result.data.no}`);
       router.refresh();
     });
   }
