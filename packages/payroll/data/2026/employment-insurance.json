@@ -1,0 +1,16 @@
+{
+  "kind": "employment-insurance",
+  "id": "employment-insurance-2026",
+  "title": "令和8年度 雇用保険料率のご案内（一般の事業）",
+  "effectiveFrom": "2026-04",
+  "effectiveTo": "2027-03",
+  "legalBasis": "労働保険の保険料の徴収等に関する法律第12条（雇用保険率）・第31条（被保険者の負担）・第32条（賃金からの控除）",
+  "source": {
+    "url": "https://www.mhlw.go.jp/content/001692566.pdf",
+    "fetchedAt": "2026-10-28",
+    "sha256": "69ca914736d051ffa067464756500c2a8cf597186e9cf091b54512a68d3b1be9",
+    "note": "一般の事業: 労働者負担 5/1,000、事業主負担 8.5/1,000（失業等給付・育児休業給付 5/1,000 ＋ 雇用保険二事業 3.5/1,000）、合計 13.5/1,000。令和8年4月1日〜令和9年3月31日。入口のページ: https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000108634.html"
+  },
+  "businessType": "general",
+  "ratesPerMille": { "employee": "5", "employer": "8.5", "total": "13.5" }
+}

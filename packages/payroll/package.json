@@ -1,0 +1,18 @@
+{
+  "name": "@niho-finance/payroll",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Payroll calculation core: withholding tax, social and employment insurance premiums and the versioned yearly tables. Pure TypeScript, no I/O.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build:data": "node --experimental-strip-types scripts/build-withholding-table.ts 2026 && node --experimental-strip-types scripts/build-withholding-table.ts 2027 && prettier --write data",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@niho-finance/ledger": "*"
+  }
+}
