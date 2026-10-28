@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { assertSequence, LedgerValidationError, type CalendarDate } from "@niho-finance/ledger";
 import type { FiscalYear, PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -10,7 +11,10 @@ import {
   getWalletTransaction,
   ignoreWalletTransaction,
   importCsv,
+  linkDocument,
   listWalletTransactions,
+  loadStatementDocuments,
+  registerDocument,
   registerWalletTransaction,
   reopenWalletTransaction,
   setWalletActive,
@@ -1056,6 +1060,66 @@ describe.skipIf(!hasTestDatabase)("statements (明細)", () => {
       ]);
       // The pending line keeps the suggestion computed on import.
       expect(lines[1]?.suggestion).toMatchObject({ source: "none", error: null });
+    });
+  });
+
+  describe("証憑", () => {
+    it("lists the line's documents and the inbox, the same amount and the nearest date first", async () => {
+      const wallet = await createWallet(
+        prisma,
+        { name: "明細テスト証憑", kind: "card" },
+        { actor },
+      );
+      const id = await addLine(wallet, "2063-09-10", -3_980n, "テスト 証憑の店");
+      const document = async (
+        originalName: string,
+        txnDate: string | null,
+        amount: string | null,
+      ) =>
+        (
+          await registerDocument(
+            prisma,
+            {
+              storageKey: `documents/2063/09/${originalName}`,
+              sha256: createHash("sha256").update(originalName).digest("hex"),
+              mime: "application/pdf",
+              byteSize: 1_000,
+              originalName,
+              source: "upload",
+              txnDate,
+              amount,
+            },
+            { actor },
+          )
+        ).document;
+      const far = await document("test-s5-far-same.pdf", "2063-09-30", "3,980");
+      const near = await document("test-s5-near-same.pdf", "2063-09-11", "3,980");
+      const other = await document("test-s5-other.pdf", "2063-09-10", "1,000");
+      const undated = await document("test-s5-undated.pdf", null, null);
+      const linked = await document("test-s5-linked.pdf", "2063-09-10", "3,980");
+      await linkDocument(
+        prisma,
+        { kind: "wallet_transaction", id, documentId: linked.id },
+        { actor },
+      );
+
+      const result = await loadStatementDocuments(prisma, id);
+      expect(result.linked.map((item) => item.id)).toEqual([linked.id]);
+      const mine = new Set([far.id, near.id, other.id, undated.id, linked.id]);
+      const inbox = result.inbox.filter((item) => mine.has(item.id));
+      expect(inbox.map((item) => [item.id, item.sameAmount, item.days])).toEqual([
+        [near.id, true, 1],
+        [far.id, true, 20],
+        [other.id, false, 0],
+        [undated.id, false, null],
+      ]);
+      // The line shows 「証憑なし」 no longer.
+      expect((await getWalletTransaction(prisma, id))?.hasDocument).toBe(true);
+      expect(
+        statementCode(
+          await rejectionOf(loadStatementDocuments(prisma, "01NOTHERE0000000000000000")),
+        ),
+      ).toEqual({ code: "STATEMENT_NOT_FOUND", field: undefined });
     });
   });
 });

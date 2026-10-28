@@ -45,12 +45,19 @@ import {
 import type { FiscalYear, Prisma, WalletTransaction } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import {
+  listDocumentLinks,
+  searchDocuments,
+  type DocumentListRow,
+  type LinkedDocument,
+} from "./documents";
 import { voidJournalEntryWithOpenDate } from "./entries";
 import { SettingsError } from "./errors";
 import type { AfterImportHook } from "./imports";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
 import { loadActiveRules, parseRuleMatch } from "./rule-json";
 import {
+  documentSearchSchema,
   ignoreStatementSchema,
   registerStatementSchema,
   reopenStatementSchema,
@@ -1692,6 +1699,64 @@ export async function settleImportedWalletTransactions(
     orderBy: [{ txnDate: "asc" }, { id: "asc" }],
   });
   return settlePendingLines(db, rows, { actor: options.actor, storeSuggestion: true });
+}
+
+// ---------------------------------------------------------------------------
+// 証憑 of a line (15 §5; the documents themselves are S6's, 13-documents §9)
+// ---------------------------------------------------------------------------
+
+/** How many inbox documents the sheet offers. */
+const DOCUMENT_CHOICES = 50;
+
+export interface StatementInboxDocument extends DocumentListRow {
+  /** The document's amount is the line's |amount|: offered first. */
+  sameAmount: boolean;
+  /** Days between the document's date and the line's (`null` when the document has no date). */
+  days: number | null;
+}
+
+export interface StatementDocuments {
+  /** The documents linked to the line (voided ones included, as the record of the link). */
+  linked: LinkedDocument[];
+  /**
+   * The inbox (unlinked or unsorted documents, 13 §1) without the linked ones: the same amount
+   * first, then the nearest date (undated last), then the inbox's own order.
+   */
+  inbox: StatementInboxDocument[];
+}
+
+/** 証憑 of a statement line (15 §5): what is linked, and the inbox to link from. Reads only. */
+export async function loadStatementDocuments(db: Db, id: string): Promise<StatementDocuments> {
+  const line = await db.walletTransaction.findUnique({
+    where: { id },
+    select: { id: true, txnDate: true, amount: true },
+  });
+  if (!line) throw new StatementError("STATEMENT_NOT_FOUND", NOT_FOUND);
+  const linked = await listDocumentLinks(db, { kind: "wallet_transaction", id });
+  const linkedIds = new Set(linked.map((document) => document.id));
+  const { rows } = await searchDocuments(db, documentSearchSchema.parse({ tab: "inbox" }), {
+    pageSize: DOCUMENT_CHOICES,
+  });
+  const size = abs(line.amount);
+  const date = fromDbDate(line.txnDate);
+  const inbox = rows
+    .filter((row) => !linkedIds.has(row.id))
+    .map((row, index) => ({
+      index,
+      row: {
+        ...row,
+        sameAmount: row.amount !== null && row.amount === size,
+        days: row.txnDate ? Math.abs(daysBetween(date, row.txnDate)) : null,
+      },
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.row.sameAmount) - Number(a.row.sameAmount) ||
+        (a.row.days ?? Number.MAX_SAFE_INTEGER) - (b.row.days ?? Number.MAX_SAFE_INTEGER) ||
+        a.index - b.index,
+    )
+    .map(({ row }) => row);
+  return { linked, inbox };
 }
 
 /**
