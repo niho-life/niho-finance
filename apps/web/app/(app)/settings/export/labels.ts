@@ -4,6 +4,7 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   monthly: "月次推移",
   segments: "セグメント損益",
   cash: "現預金",
+  cashflow: "資金繰り",
   journal: "仕訳帳",
   ledger: "総勘定元帳",
   freee: "freee 形式",

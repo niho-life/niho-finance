@@ -1,4 +1,9 @@
-import { countAuditLog, getSettingsSummary, todayInJapan } from "@niho-finance/db";
+import {
+  countActiveRecurringItems,
+  countAuditLog,
+  getSettingsSummary,
+  todayInJapan,
+} from "@niho-finance/db";
 import { CONSUMPTION_TAX_METHOD_LABELS } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -20,6 +25,7 @@ export default async function SettingsPage() {
   const prisma = await db();
   const summary = await getSettingsSummary(prisma, { today: todayInJapan() });
   const auditRows = await countAuditLog(prisma);
+  const recurringCount = await countActiveRecurringItems(prisma);
   const { counts, fiscalYear } = summary;
   const sections: Section[] = [
     { label: "事業所", href: "/settings/company", summary: summary.companyName ?? "未登録" },
@@ -37,7 +43,11 @@ export default async function SettingsPage() {
     { label: "セグメント", href: "/settings/segments", summary: String(counts.segments) },
     { label: "タグ", href: "/settings/memo-tags", summary: String(counts.memoTags) },
     { label: "ルール", href: null, summary: "準備中" },
-    { label: "定期取引", href: null, summary: "準備中" },
+    {
+      label: "定期取引",
+      href: "/settings/recurring",
+      summary: recurringCount > 0 ? `有効 ${recurringCount.toLocaleString("ja-JP")} 件` : "0",
+    },
     { label: "証憑の規程", href: null, summary: "準備中" },
     {
       label: "監査ログ",

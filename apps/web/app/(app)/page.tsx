@@ -1,8 +1,16 @@
-import { loadHomeTodos, loadReportSource, loadWalletStatus, todayInJapan } from "@niho-finance/db";
 import {
+  loadCashflowInputs,
+  loadHomeTodos,
+  loadReportSource,
+  loadWalletStatus,
+  todayInJapan,
+} from "@niho-finance/db";
+import {
+  buildCashflowForecast,
   buildCashReport,
   buildSegmentReport,
   buildTrialBalance,
+  CASHFLOW_DAYS,
   fiscalYearOn,
   periodSearchParams,
   resolveReportPeriod,
@@ -14,6 +22,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { db, loadSetupProgress, loadShell, requireSetupReady } from "@/lib/data";
 import { formatAmount, formatDate, formatMonth, formatPeriod } from "@/lib/format";
 import { HomeCard } from "./_home/card";
+import { CashflowCard } from "./_home/cashflow-card";
 import { profitFigures, segmentBars } from "./_home/figures";
 import { ProfitCard } from "./_home/profit-card";
 import { TodoCard, type TodoRow } from "./_home/todo-card";
@@ -48,6 +57,12 @@ export default async function HomePage() {
   const month = resolve({ period: "month" });
   const year = resolve({ period: "year" });
   const todos = await loadHomeTodos(prisma, today);
+  // 資金繰り（90 日）from the same day as 現預金 (21-cashflow §5).
+  const forecast = buildCashflowForecast(
+    source,
+    await loadCashflowInputs(prisma, { start: asOf, days: CASHFLOW_DAYS }),
+    { start: asOf, days: CASHFLOW_DAYS },
+  );
 
   const rows: TodoRow[] = todos.map((todo) => ({
     key: todo.key,
@@ -133,6 +148,8 @@ export default async function HomePage() {
         </div>
         <TodoCard rows={rows} className="lg:self-start" />
       </div>
+
+      <CashflowCard forecast={forecast} className="mt-3.5" />
 
       <p className="mt-6 text-[13px] text-muted">
         <Link href="/entries" className="font-bold text-text underline underline-offset-4">

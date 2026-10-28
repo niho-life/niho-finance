@@ -4,7 +4,7 @@ import { reportHref } from "../_lib/query";
 import { REPORT_TAB_LABELS, REPORT_TABS, type ReportTab } from "../_lib/tabs";
 
 /**
- * 試算表 / 月次推移 / セグメント損益 / 現預金 / 仕訳帳 / 総勘定元帳. The links keep the period and the
+ * 試算表 / 月次推移 / セグメント損益 / 現預金 / 資金繰り / 仕訳帳 / 総勘定元帳. The links keep the period and the
  * segment (14-reports §2). Phones: chips that scroll sideways; PC: underlined tabs.
  */
 export function ReportTabs({ current, period }: { current: ReportTab; period: ReportPeriod }) {

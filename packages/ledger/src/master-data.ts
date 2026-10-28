@@ -219,6 +219,7 @@ export const AUDIT_ENTITIES = [
   "partner",
   "segment",
   "memo_tag",
+  "recurring_item",
   "standard_data",
   "setup",
 ] as const;
@@ -235,6 +236,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   partner: "取引先",
   segment: "セグメント",
   memo_tag: "タグ",
+  recurring_item: "定期取引",
   standard_data: "標準データ",
   setup: "初期設定",
 };

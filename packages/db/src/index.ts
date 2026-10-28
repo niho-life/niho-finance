@@ -96,6 +96,15 @@ export {
   type CurrentFiscalYear,
   type WalletBalance,
 } from "./queries";
+export {
+  CASHFLOW_PAYMENT_RULE_KEYS,
+  countActiveRecurringItems,
+  createRecurringItem,
+  listRecurringItems,
+  loadCashflowInputs,
+  updateRecurringItem,
+  type RecurringItemSettings,
+} from "./recurring";
 export * from "./schemas";
 export * from "./settings";
 export {
