@@ -12,6 +12,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@niho-finance/ledger": "*"
+    "@niho-finance/ledger": "*",
+    "stripe": "^23.0.1"
   }
 }
