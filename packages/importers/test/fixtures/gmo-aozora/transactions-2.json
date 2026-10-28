@@ -1,0 +1,49 @@
+{
+  "accountId": "301019999999",
+  "currencyCode": "JPY",
+  "currencyName": "日本円",
+  "dateFrom": "2026-11-01",
+  "dateTo": "2026-11-30",
+  "baseDate": "2026-11-30",
+  "baseTime": "10:00:00+09:00",
+  "hasNext": false,
+  "count": "9",
+  "transactions": [
+    {
+      "transactionDate": "2026-11-15",
+      "valueDate": "2026-11-15",
+      "transactionType": "2",
+      "amount": "88000",
+      "remarks": "ｶｰﾄﾞ ﾃｽﾄｶｰﾄﾞ",
+      "balance": "1167955",
+      "itemKey": "202611150900000000006"
+    },
+    {
+      "transactionDate": "2026-11-20",
+      "valueDate": "2026-11-12",
+      "transactionType": "1",
+      "amount": "-1100",
+      "remarks": "ﾃｲｾｲ",
+      "balance": "1166855",
+      "itemKey": "202611200900000000007"
+    },
+    {
+      "transactionDate": "2026-11-25",
+      "valueDate": "2026-11-25",
+      "transactionType": "2",
+      "amount": "100000",
+      "remarks": "ﾔﾁﾝ ｶ)ｶｸｳﾌﾄﾞｳｻﾝ",
+      "balance": "1066855",
+      "itemKey": "202611251000000000008"
+    },
+    {
+      "transactionDate": "2026-11-30",
+      "valueDate": "2026-11-30",
+      "transactionType": "1",
+      "amount": "2000",
+      "remarks": "ﾘｿｸ",
+      "balance": "1068855",
+      "itemKey": "202611300100000000009"
+    }
+  ]
+}

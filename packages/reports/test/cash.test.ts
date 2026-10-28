@@ -60,6 +60,7 @@ describe("buildCashReport", () => {
         lastSyncedAt: null,
         lastImportedAt: new Date("2027-03-16T01:00:00Z"),
         lastStatement: { date: "2027-03-15", balanceAfter: 210_000n },
+        bankApiStatus: "reauth_required",
       },
       {
         walletId: "w:stripe2",
@@ -67,11 +68,13 @@ describe("buildCashReport", () => {
         lastSyncedAt: new Date("2027-03-31T21:00:00Z"),
         lastImportedAt: null,
         lastStatement: { date: "2027-02-20", balanceAfter: 22_000n },
+        bankApiStatus: null,
       },
     ];
     const withStatus = buildCashReport(BOOK, FY1_YEAR, status);
     const bank = withStatus.wallets.find((w) => w.walletId === "w:bank")!;
     expect(bank.pendingCount).toBe(3);
+    expect(bank.bankApiStatus).toBe("reauth_required");
     expect(bank.lastActivityAt?.toISOString()).toBe("2027-03-16T01:00:00.000Z");
     expect(bank.statement).toEqual({
       date: "2027-03-15",

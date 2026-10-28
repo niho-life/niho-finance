@@ -1062,8 +1062,16 @@ function toWalletSettings(row: WalletRow): WalletSettings {
   };
 }
 
+/** The wallet as audited: never the bank API's tokens or account ID (19-bank-api §2.3). */
 function walletSnapshot(row: WalletRow) {
-  const { account: _account, subAccount: _subAccount, defaultSegment: _segment, ...wallet } = row;
+  const {
+    account: _account,
+    subAccount: _subAccount,
+    defaultSegment: _segment,
+    bankApiTokens: _tokens,
+    bankApiAccountId: _bankAccountId,
+    ...wallet
+  } = row;
   return wallet;
 }
 

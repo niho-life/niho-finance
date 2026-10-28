@@ -368,6 +368,7 @@ export {
 export { runInTransaction, TRANSACTION_OPTIONS, type Tx } from "./transaction";
 export type { PrismaClient } from "@prisma/client";
 export {
+  bankReconnectTodo,
   DEADLINE_WINDOW_DAYS,
   EXPORT_AUDIT_ACTION,
   HOME_TODO_SOURCES,
@@ -517,3 +518,24 @@ export {
   type RegistryCheckOptions,
   type RegistryCheckResult,
 } from "./registry-check";
+export {
+  authorizeBankToken,
+  BANK_API_STATUSES,
+  BANK_TOKEN_KEY_VARIABLE,
+  connectBankAccount,
+  disconnectBankLink,
+  getBankLink,
+  listBankLinkStatuses,
+  listLinkableBankAccounts,
+  resolveBankApiConfig,
+  resolveBankTokenKey,
+  saveBankAuthorization,
+  syncAllBankWallets,
+  syncBankWallet,
+  type BankApiOptions,
+  type BankApiStatus,
+  type BankLinkSettings,
+  type BankSyncAllOptions,
+  type BankSyncOptions,
+  type LinkableBankAccount,
+} from "./bank-links";

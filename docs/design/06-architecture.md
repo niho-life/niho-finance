@@ -61,7 +61,7 @@ Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウン�
 | ジョブ | 周期 | 内容 |
 | --- | --- | --- |
 | `stripe-sync` | 毎日 06:00 JST | 2 アカウントの balance transactions をカーソルから取得して明細化。失敗はメール |
-| `bank-sync`（v2） | 毎日 | 銀行 API の入出金明細を取得 |
+| `bank-sync`（v2） | 毎日 06:15 JST | 銀行 API の入出金明細を前回から 3 日重ねて取得（[19](19-bank-api.md)）。失敗は記録し、失効なら再接続を案内 |
 | `backup-export` | 毎日 03:00 JST | 全テーブルの JSON スナップショット・会計期間ごとの試算表・manifest（SHA-256）を GCS に書き、S7 の CSV / beancount を同じフォルダに足す。Cloud SQL の自動バックアップとは別 |
 | `calendar-notify` | 毎日 09:00 JST | 会計期間から `CalendarItem` を生成（冪等）し、7 日前・当日・超過の期限を 1 通のメールで知らせる |
 | `invoice-registry-verify`（v2） | 毎月 | 取引先の登録番号を国税庁 API で照合 |
