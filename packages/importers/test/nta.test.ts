@@ -226,6 +226,25 @@ describe("createNtaClient (20-reader §8.1)", () => {
     expect(sleeps).toEqual([800, 800, 800]);
   });
 
+  it("spaces the requests of lookups that run at the same time", async () => {
+    let clock = 10_000;
+    const starts: number[] = [];
+    const sleep = vi.fn(async (ms: number) => {
+      await Promise.resolve();
+      clock += ms;
+    });
+    const { fetch } = fakeFetch(() => {
+      starts.push(clock);
+      return jsonResponse(notFoundJson);
+    });
+    const lookup = client(fetch, { now: () => clock, sleep });
+
+    await lookup.lookup([fictionalNumber(1)]);
+    // A bulk check and a document reading at once: one at a time, 1 second apart.
+    await Promise.all([lookup.lookup([fictionalNumber(2)]), lookup.lookup([fictionalNumber(3)])]);
+    expect(starts).toEqual([10_000, 11_000, 12_000]);
+  });
+
   it("caches every answer per number until the TTL passes", async () => {
     let clock = 0;
     const { fetch, urls } = fakeFetch(() => jsonResponse(registeredJson));
@@ -348,6 +367,19 @@ describe("ntaConfig (20-reader §8.2)", () => {
     expect(ntaConfig({})).toEqual({ status: "off" });
     expect(ntaConfig({ NIHO_FINANCE_NTA_APPLICATION_ID: "  " })).toEqual({ status: "off" });
     expect(createNtaLookupFromEnv({})).toBeNull();
+  });
+
+  it("is off with an application ID that is not 13 digits", () => {
+    for (const id of ["999999999999", "99999999999999", "9999999999999x", "T999999999999"]) {
+      const env = { NIHO_FINANCE_NTA_APPLICATION_ID: id };
+      expect(ntaConfig(env)).toEqual({ status: "off" });
+      expect(createNtaLookupFromEnv(env)).toBeNull();
+    }
+    // Surrounding blanks of a pasted secret are not an error.
+    expect(ntaConfig({ NIHO_FINANCE_NTA_APPLICATION_ID: ` ${APPLICATION_ID}\n` })).toEqual({
+      status: "on",
+      mode: "api",
+    });
   });
 
   it("uses the API with an application ID and never returns the ID", () => {

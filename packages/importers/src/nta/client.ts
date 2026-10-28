@@ -56,13 +56,27 @@ export function createNtaClient(options: {
     options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const cache = new Map<string, { value: NtaRegistration | null; expiresAt: number }>();
   let lastRequestAt: number | null = null;
+  /** The previous request's turn: each request waits for it, so turns never overlap. */
+  let previousTurn: Promise<void> = Promise.resolve();
+
+  /**
+   * Waits until this request may start: one at a time and `minIntervalMs` apart, also when several
+   * lookups run at once in the process (a bulk check while a document is read, 20-reader §8.1).
+   */
+  function takeTurn(): Promise<void> {
+    const turn = previousTurn.then(async () => {
+      if (lastRequestAt !== null) {
+        const wait = lastRequestAt + minIntervalMs - now();
+        if (wait > 0) await sleep(wait);
+      }
+      lastRequestAt = now();
+    });
+    previousTurn = turn.catch(() => undefined);
+    return turn;
+  }
 
   async function request(numbers: readonly string[]): Promise<Map<string, NtaRegistration>> {
-    if (lastRequestAt !== null) {
-      const wait = lastRequestAt + minIntervalMs - now();
-      if (wait > 0) await sleep(wait);
-    }
-    lastRequestAt = now();
+    await takeTurn();
     const url = new URL(NTA_NUMBER_PATH, NTA_API_BASE);
     url.search = new URLSearchParams({
       id: options.applicationId,
