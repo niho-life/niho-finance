@@ -1,6 +1,6 @@
 # apps/web
 
-NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は [`docs/design/10-settings-and-setup.md`](../../docs/design/10-settings-and-setup.md)（S2）と [`docs/design/05-ui-ux.md`](../../docs/design/05-ui-ux.md)、見た目は [`docs/design/mock/v1.html`](../../docs/design/mock/v1.html) が正です。
+NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は [`docs/design/10-settings-and-setup.md`](../../docs/design/10-settings-and-setup.md)（S2）、[`docs/design/11-transactions.md`](../../docs/design/11-transactions.md)（S3）と [`docs/design/05-ui-ux.md`](../../docs/design/05-ui-ux.md)、見た目は [`docs/design/mock/v1.html`](../../docs/design/mock/v1.html) が正です。
 
 ## ルート
 
@@ -8,9 +8,15 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | --- | --- |
 | `/` | ホーム（S7 まで仮置き）。会社名・第 n 期・現預金の合計・やること |
 | `/setup` | 初期化ウィザード。`?step=company / fiscal-year / accounts / wallets / opening / done`。進捗は DB から導出し、`/setup` は続きのステップを開く |
+| `/entries` | 取引（仕訳帳）。絞り込みは URL の `from` `to` `account` `partner` `segment` `tag` `status` `q` `page`（日付がなければ今期） |
+| `/entries/new` | 取引の登録。`?type=income / expense / transfer / voucher`（既定は支出） |
+| `/entries/[id]` | 取引の詳細（状態の帯・行・訂正・取消・履歴）。`?list=` に一覧の条件を持ち、戻るで絞り込みを保つ |
+| `/entries/[id]/correct` | 訂正（伝票のフォームを元の仕訳で埋める）。取消済み・反対仕訳・決算済みの期は詳細へ戻す |
+| `/more` | スマホの「その他」（取引・設定） |
 | `/settings` | 設定の索引 |
 | `/settings/company` | 事業所 |
-| `/settings/fiscal-years` | 会計期間（次の期を作る） |
+| `/settings/fiscal-years` | 会計期間（次の期を作る・締め） |
+| `/settings/audit-log` | 監査ログ（対象・期間で絞り込み、読むだけ） |
 | `/settings/accounts` | 勘定科目（一覧の中で直接編集・補助科目はシート） |
 | `/settings/tax-categories` | 税区分と税率規則（追加と有効 / 無効だけ） |
 | `/settings/wallets` | 口座（追加・編集はシート） |
@@ -19,7 +25,9 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/settings/memo-tags` | タグ |
 | `/api/health` | 死活と DB の疎通 |
 
-会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/settings` 配下は `/setup` へ redirect します。
+会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/entries`・`/settings` 配下は `/setup` へ redirect します。
+
+取引の画面（S3）は `app/(app)/entries/` にまとめています。フォーム（収入・支出 `simple-entry-form.tsx`、振替 `transfer-form.tsx`、伝票と訂正 `voucher-form.tsx`）は値を client で持ち、Server Action（`entries/actions.ts`）が `@niho-finance/db` の `postSimpleEntry` / `postVoucherEntry` / `correctJournalEntry` / `voidJournalEntryWithOpenDate` を呼びます。台帳のエラーは repository が項目名（`field`）を付けて返し、項目の下に出ます（項目に結べないものはフォームの上）。登録は Enter で送れ、「続けて登録」は種類と日付を残して金額・摘要・取引先を空にします。締めは会計期間の行の Sheet（`fiscal-years-table.tsx`）で、影響する件数を `previewFiscalYearCloseAction` で数えてから ConfirmDialog で確かめます。
 
 ## 部品
 

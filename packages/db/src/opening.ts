@@ -6,9 +6,9 @@
  */
 import {
   CORPORATE_SEGMENT_CODE,
-  getTaxCategory,
-  inclusiveTaxAmount,
-  resolveTaxRule,
+  INPUT_TAX_ACCOUNT_CODE,
+  LedgerValidationError,
+  splitTaxInclusive,
   type AccountingMethod,
   type CalendarDate,
   type JournalEntryInput,
@@ -16,6 +16,7 @@ import {
   type Money,
   type Side,
   type TaxRateRule,
+  type TaxSplit,
 } from "@niho-finance/ledger";
 import type { Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull } from "./dates";
@@ -57,6 +58,8 @@ export interface OpeningContext {
     accountingMethod: AccountingMethod;
   };
   accounts: Readonly<Record<OpeningAccountRole, OpeningAccountRef>>;
+  /** 仮払消費税: the tax of taxable costs in a tax-exclusive year (`null` when the chart lacks it). */
+  inputTaxAccount: OpeningAccountRef | null;
   wallets: ReadonlyMap<string, OpeningWalletRef>;
   corporateSegmentId: string;
   taxRules: readonly TaxRateRule[];
@@ -106,27 +109,34 @@ function requireWallet(walletId: string, field: string, context: OpeningContext)
 }
 
 /**
- * Consumption tax contained in a cost (kept on the line for the reports, 01 §3). Tax-exclusive
- * years would need 仮払消費税 lines, which belong to the transaction screen: such costs are refused.
+ * A cost (tax-inclusive) split like the transaction forms split it (11 §1, `splitTaxInclusive`):
+ * tax-inclusive years keep the amount and the contained tax; tax-exclusive years book the cost
+ * without the tax and the tax as a 仮払消費税 line. A taxable category without a rule is refused.
  */
-function containedTax(
+function costTax(
   cost: ParsedOpeningInput["formationCosts"][number],
   field: string,
   context: OpeningContext,
-): { code: string; amount: Money } {
-  const category = getTaxCategory(cost.taxCategoryCode);
-  if (!category || category.kind !== "taxable") return { code: cost.taxCategoryCode, amount: 0n };
-  if (context.fiscalYear.accountingMethod === "tax_exclusive") {
-    throw new SettingsError(
-      "第 1 期が税抜経理のため、課税仕入の行は開始仕訳にできません。不課税・非課税の行だけを登録し、課税仕入は取引から登録してください",
-      { field },
-    );
+): TaxSplit {
+  try {
+    return splitTaxInclusive(cost.amount, cost.taxCategoryCode, cost.date, {
+      accountingMethod: context.fiscalYear.accountingMethod,
+      taxRules: context.taxRules,
+    });
+  } catch (error) {
+    if (error instanceof LedgerValidationError) {
+      throw new SettingsError(error.errors.map((item) => item.message).join(" / "), { field });
+    }
+    throw error;
   }
-  const rule = resolveTaxRule(cost.taxCategoryCode, cost.date, context.taxRules);
-  return {
-    code: cost.taxCategoryCode,
-    amount: rule ? inclusiveTaxAmount(cost.amount, rule.ratePercent) : 0n,
-  };
+}
+
+function requireInputTaxAccount(field: string, context: OpeningContext): OpeningAccountRef {
+  if (context.inputTaxAccount) return context.inputTaxAccount;
+  throw new SettingsError(
+    `勘定科目 ${INPUT_TAX_ACCOUNT_CODE}（仮払消費税）がありません。設定 › 勘定科目 で足してください`,
+    { field },
+  );
 }
 
 /**
@@ -166,14 +176,29 @@ export function buildOpeningEntries(
       const payer = cost.paidFromWalletId
         ? requireWallet(cost.paidFromWalletId, `${at}.paidFromWalletId`, context)
         : { accountId: context.accounts.ownerLoan.id, subAccountId: null };
-      const tax = containedTax(cost, `${at}.taxCategoryCode`, context);
+      const field = `${at}.taxCategoryCode`;
+      const split = costTax(cost, field, context);
+      const tax = { code: cost.taxCategoryCode, amount: split.taxAmount };
+      const taxLines =
+        split.taxLineAmount > 0n
+          ? [
+              line(
+                "debit",
+                requireInputTaxAccount(field, context).id,
+                null,
+                split.taxLineAmount,
+                segment,
+              ),
+            ]
+          : [];
       entries.push({
         entryDate: cost.date,
         description: cost.description,
         kind: "opening",
         sourceKind: "system",
         lines: [
-          line("debit", account.id, null, cost.amount, segment, tax, cost.description),
+          line("debit", account.id, null, split.amount, segment, tax, cost.description),
+          ...taxLines,
           line("credit", payer.accountId, payer.subAccountId, cost.amount, segment),
         ],
       });
@@ -188,7 +213,7 @@ export async function loadOpeningContext(db: Db): Promise<OpeningContext> {
   if (!fiscalYear)
     throw new SettingsError("第 1 期がまだありません。初期設定の 2 会計期間から作ってください");
 
-  const codes = Object.values(OPENING_ACCOUNT_CODES);
+  const codes = [...Object.values(OPENING_ACCOUNT_CODES), INPUT_TAX_ACCOUNT_CODE];
   const accountRows = await db.account.findMany({ where: { code: { in: codes } } });
   const byCode = new Map(accountRows.map((account) => [account.code, account]));
   const accountFor = (role: OpeningAccountRole): OpeningAccountRef => {
@@ -207,6 +232,10 @@ export async function loadOpeningContext(db: Db): Promise<OpeningContext> {
     startupCosts: accountFor("startupCosts"),
     ownerLoan: accountFor("ownerLoan"),
   };
+  const inputTax = byCode.get(INPUT_TAX_ACCOUNT_CODE);
+  const inputTaxAccount = inputTax
+    ? { id: inputTax.id, code: inputTax.code, name: inputTax.name }
+    : null;
 
   const segment = await db.segment.findUnique({ where: { code: CORPORATE_SEGMENT_CODE } });
   if (!segment) {
@@ -224,6 +253,7 @@ export async function loadOpeningContext(db: Db): Promise<OpeningContext> {
   });
   const accountLabels = new Map<string, { code: string; name: string }>();
   for (const account of Object.values(accounts)) accountLabels.set(account.id, account);
+  if (inputTaxAccount) accountLabels.set(inputTaxAccount.id, inputTaxAccount);
   const subAccountLabels = new Map<string, string>();
   for (const wallet of walletRows) {
     accountLabels.set(wallet.account.id, { code: wallet.account.code, name: wallet.account.name });
@@ -239,6 +269,7 @@ export async function loadOpeningContext(db: Db): Promise<OpeningContext> {
       accountingMethod: fiscalYear.accountingMethod,
     },
     accounts,
+    inputTaxAccount,
     wallets: new Map(
       walletRows.map((wallet) => [
         wallet.id,

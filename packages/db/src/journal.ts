@@ -1,6 +1,7 @@
 import {
   assertValidEntry,
   buildReversal,
+  displayDate,
   LedgerValidationError,
   type CalendarDate,
   type JournalEntryInput,
@@ -247,8 +248,8 @@ async function lockFiscalYear(
         {
           code: "OUT_OF_FISCAL_YEAR",
           message: only
-            ? `${target.date} を含む会計期間が複数あります`
-            : `${target.date} を含む会計期間がありません`,
+            ? `${displayDate(target.date)} を含む会計期間が複数あります`
+            : `${displayDate(target.date)} を含む会計期間がありません。会計期間の中の日付にするか、設定 › 会計期間 で期を作ってください`,
         },
       ]);
     }
