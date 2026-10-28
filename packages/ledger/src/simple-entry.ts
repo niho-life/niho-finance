@@ -110,13 +110,19 @@ export function splitTaxInclusive(
   date: CalendarDate,
   options: SplitTaxOptions,
 ): TaxSplit {
-  const rate = lineTaxRate(taxCategoryCode, date, options.taxRules);
-  if (rate === null) {
+  const category = getTaxCategory(taxCategoryCode);
+  const rule =
+    category?.kind === "taxable" ? resolveTaxRule(taxCategoryCode, date, options.taxRules) : null;
+  if (rule === undefined) {
     throw new LedgerValidationError([missingRule(taxCategoryCode, date, options.field)]);
   }
-  const taxAmount = inclusiveTaxAmount(amountInclusive, rate);
+  const taxAmount = rule ? inclusiveTaxAmount(amountInclusive, rule.ratePercent) : 0n;
   if (options.accountingMethod === "tax_exclusive") {
-    return { amount: amountInclusive - taxAmount, taxAmount, taxLineAmount: taxAmount };
+    // 経過措置 (02 §3): without a qualified invoice only the creditable share of the tax goes to
+    // 仮払消費税; the rest stays in the cost. `deductiblePercent` is null for sales and 100% purchases.
+    const percent = rule?.deductiblePercent ?? 100;
+    const taxLineAmount = percent === 100 ? taxAmount : (taxAmount * BigInt(percent)) / 100n;
+    return { amount: amountInclusive - taxLineAmount, taxAmount, taxLineAmount };
   }
   return { amount: amountInclusive, taxAmount, taxLineAmount: 0n };
 }

@@ -23,6 +23,7 @@ import {
   type SimpleEntryInput,
   type ValidationContext,
   type VoucherEntryInput,
+  resolveTaxRule,
 } from "../src";
 import { amountArb, dateArb, FISCAL_YEAR } from "./fixtures";
 
@@ -300,8 +301,17 @@ describe("buildSimpleEntry: debits equal credits for any input", () => {
         );
         if (method === "tax_inclusive") expect(taxLines).toEqual([]);
         else {
-          const contained = entry.lines.reduce((total, line) => total + line.taxAmount, 0n);
-          expect(taxLines.reduce((total, line) => total + line.amount, 0n)).toBe(contained);
+          // The tax lines carry the creditable share of the contained tax (経過措置 for `_ni`).
+          const creditable = entry.lines.reduce((total, line) => {
+            const rule = resolveTaxRule(
+              line.taxCategoryCode,
+              entry.entryDate,
+              STANDARD_TAX_RATE_RULES,
+            );
+            const percent = rule?.deductiblePercent ?? 100;
+            return total + (line.taxAmount * BigInt(percent)) / 100n;
+          }, 0n);
+          expect(taxLines.reduce((total, line) => total + line.amount, 0n)).toBe(creditable);
         }
       }),
       { numRuns: 400 },
@@ -627,5 +637,30 @@ describe("tax helpers of the forms", () => {
         accountingMethod: "tax_exclusive",
       }),
     ).toEqual({ amount: 3_000n, taxAmount: 300n, taxLineAmount: 300n });
+  });
+
+  it("books only the creditable share of the tax without a qualified invoice (経過措置)", () => {
+    const options = { taxRules: STANDARD_TAX_RATE_RULES };
+    // 2026-10-01 〜 2028-09-30: 70% of the contained tax (300 × 70% = 210); the rest stays in the cost.
+    expect(
+      splitTaxInclusive(3_300n, "purchase_10_ni", date, {
+        ...options,
+        accountingMethod: "tax_exclusive",
+      }),
+    ).toEqual({ amount: 3_090n, taxAmount: 300n, taxLineAmount: 210n });
+    // Tax-inclusive years keep the amount; the ratio is applied by the consumption tax report.
+    expect(
+      splitTaxInclusive(3_300n, "purchase_10_ni", date, {
+        ...options,
+        accountingMethod: "tax_inclusive",
+      }),
+    ).toEqual({ amount: 3_300n, taxAmount: 300n, taxLineAmount: 0n });
+    // 2026-09-30 and before: 80%.
+    expect(
+      splitTaxInclusive(3_300n, "purchase_10_ni", "2026-09-30", {
+        ...options,
+        accountingMethod: "tax_exclusive",
+      }),
+    ).toEqual({ amount: 3_060n, taxAmount: 300n, taxLineAmount: 240n });
   });
 });
