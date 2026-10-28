@@ -6,6 +6,7 @@ import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { readDocumentForActor } from "@/lib/reader/read-document";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of 読み取り (20-reader §5・§10): 読み取る (the detail, and one by one from the
@@ -23,6 +24,8 @@ export interface ReadDocumentOutcome {
 }
 
 export async function readDocumentAction(id: string): Promise<ActionResult<ReadDocumentOutcome>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(async () => readDocumentForActor(parseId(id), await actor()));
   if (!result.ok) return result;
   // The detail, the list's states and the inbox's unread count all read the proposal.
@@ -41,6 +44,8 @@ export async function applyDocumentReadingAction(
   id: string,
   fields: readonly ReadingProposalField[],
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(async () =>
     applyDocumentReading(
       getPrismaClient(),

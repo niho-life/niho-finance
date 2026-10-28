@@ -26,6 +26,10 @@ const LOCK_KEYS = {
   payroll: 7_301_004,
   /** Bank API connections (one bank account belongs to one wallet, 19-bank-api §1.1). */
   bankLinks: 7_301_005,
+  /** Users: who can sign in and their roles; keeps one active 管理者 at least (23 §4). */
+  users: 7_301_006,
+  /** 立替精算: making (or turning back on) 未払金〔立替精算〕 on the first submission (23 §5.1). */
+  expenses: 7_301_007,
 } as const;
 
 export type SettingsLock = keyof typeof LOCK_KEYS;
