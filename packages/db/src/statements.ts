@@ -47,6 +47,7 @@ import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { voidJournalEntryWithOpenDate } from "./entries";
 import { SettingsError } from "./errors";
+import type { AfterImportHook } from "./imports";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
 import { loadActiveRules, parseRuleMatch } from "./rule-json";
 import {
@@ -1692,6 +1693,15 @@ export async function settleImportedWalletTransactions(
   });
   return settlePendingLines(db, rows, { actor: options.actor, storeSuggestion: true });
 }
+
+/**
+ * The `afterImport` hook of the imports (12-imports §6.3, 15 §11): settles the new lines an
+ * `autoPost` rule wins, inside the import's transaction. A line a rule cannot settle (the close, a
+ * segment, a tax rule …) stays pending with the reason; it never fails the import.
+ */
+export const settleAfterImport: AfterImportHook = async (tx, batch, options) => {
+  await settleImportedWalletTransactions(tx, batch.transactionIds, { actor: options.actor });
+};
 
 /** 「1,650」 with the sign of the line: 「−88,000」 for money out (U+2212), as the list shows it. */
 export function formatStatementAmount(amount: Money): string {

@@ -9,10 +9,12 @@ import {
   findTransferCandidates,
   getWalletTransaction,
   ignoreWalletTransaction,
+  importCsv,
   listWalletTransactions,
   registerWalletTransaction,
   reopenWalletTransaction,
   setWalletActive,
+  settleAfterImport,
   settleImportedWalletTransactions,
   StatementError,
   toDbDate,
@@ -996,6 +998,64 @@ describe.skipIf(!hasTestDatabase)("statements (明細)", () => {
       // `by=rule` does not narrow the pending tab.
       const pendingTab = await listWalletTransactions(prisma, { wallet: wallet.id, by: "rule" });
       expect(pendingTab.rows.map((row) => row.id)).toEqual([missing, later]);
+    });
+    it("runs in the imports' afterImport: a CSV import settles the lines an autoPost rule wins", async () => {
+      const wallet = await createWallet(
+        prisma,
+        { name: "明細テスト取込", kind: "bank" },
+        { actor },
+      );
+      await createRule(
+        prisma,
+        {
+          name: "テスト取込の手数料",
+          walletId: wallet.id,
+          match: { descriptionContains: "振込手数料", sign: "out" },
+          action: {
+            mode: "register",
+            accountId: refs.account("5400"),
+            taxCategoryCode: "purchase_10",
+            segmentId: refs.segment("corporate"),
+          },
+          autoPost: true,
+        },
+        { actor },
+      );
+      // A fictional ドコモ SMTB statement (the format S4 detects from the header), newest first.
+      const csv = [
+        '"日付","内容","出金金額(円)","入金金額(円)","残高(円)","メモ"',
+        '"2063/07/02","デビット テスト取込ストア","1,100","","98,680",""',
+        '"2063/07/01","振込手数料","220","","99,780",""',
+      ].join("\r\n");
+      const outcome = await importCsv(
+        prisma,
+        {
+          walletId: wallet.id,
+          fileName: "test-afterimport.csv",
+          bytes: new TextEncoder().encode(`${csv}\r\n`),
+          rememberFormat: false,
+        },
+        { actor, afterImport: settleAfterImport },
+      );
+      expect(outcome).toMatchObject({ importedCount: 2, error: null });
+      const lines = await prisma.walletTransaction.findMany({
+        where: { walletId: wallet.id },
+        orderBy: { txnDate: "asc" },
+        include: { journalEntry: { select: { sourceKind: true, entryDate: true } } },
+      });
+      expect(
+        lines.map((line) => [
+          line.descriptionRaw,
+          line.status,
+          line.autoPosted,
+          line.journalEntry?.sourceKind ?? null,
+        ]),
+      ).toEqual([
+        ["振込手数料", "registered", true, "wallet_txn"],
+        ["デビット テスト取込ストア", "pending", false, null],
+      ]);
+      // The pending line keeps the suggestion computed on import.
+      expect(lines[1]?.suggestion).toMatchObject({ source: "none", error: null });
     });
   });
 });

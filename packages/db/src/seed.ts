@@ -493,7 +493,7 @@ const SEED_RULES: readonly SeedRule[] = [
   {
     name: "Stripe の売上",
     wallet: "stripe",
-    match: { descriptionContains: "charge", sign: "in" },
+    match: { descriptionContains: "決済", sign: "in" },
     action: { mode: "register", account: "4010", tax: "sales_10", segment: "kamakura" },
     autoPost: false,
   },
@@ -507,7 +507,7 @@ const SEED_RULES: readonly SeedRule[] = [
   {
     name: "Stripe の入金",
     wallet: "stripe",
-    match: { descriptionContains: "payout", sign: "out" },
+    match: { descriptionContains: "入金（銀行へ）", sign: "out" },
     action: { mode: "transfer", transferTo: "bank" },
     autoPost: false,
   },
@@ -526,11 +526,16 @@ interface SeedStatementLine {
   amount: bigint;
   description: string;
   counterparty?: string;
+  /** Stripe's `reporting_category`, as the imports store it (12-imports §4.3). */
+  category?: string;
   /** Settled lines: the state and the seeded entry they point at. Left out → pending. */
   settled?: { status: "registered" | "transfer"; entry: string; rule?: number; auto?: boolean };
 }
 
-/** Banks write half-width kana (「ｶ)ｶｸｳﾌﾄﾞｳｻﾝ」); the suggestions normalize it. */
+/**
+ * Banks write half-width kana (「ｶ)ｶｸｳﾌﾄﾞｳｻﾝ」); the suggestions normalize it. Stripe lines are worded
+ * as the Stripe sync writes them (「決済 …」「手数料 · 決済 …」「入金（銀行へ）」, 12-imports §4.3).
+ */
 const STATEMENT_LINES: readonly SeedStatementLine[] = [
   // Settled: linked to the sample entries.
   {
@@ -551,21 +556,24 @@ const STATEMENT_LINES: readonly SeedStatementLine[] = [
     wallet: "stripe",
     date: "2026-11-20",
     amount: 11_000n,
-    description: "charge 月会費 11月",
+    description: "決済 月会費 11月",
+    category: "charge",
     settled: { status: "registered", entry: "membership", rule: 2 },
   },
   {
     wallet: "stripe",
     date: "2026-11-20",
     amount: -396n,
-    description: "fee 月会費 11月",
+    description: "手数料 · 決済 月会費 11月",
+    category: "fee",
     settled: { status: "registered", entry: "stripeFee" },
   },
   {
     wallet: "stripe",
     date: "2026-11-30",
     amount: -10_604n,
-    description: "payout",
+    description: "入金（銀行へ）",
+    category: "payout",
     settled: { status: "transfer", entry: "payout" },
   },
   {
@@ -615,9 +623,27 @@ const STATEMENT_LINES: readonly SeedStatementLine[] = [
     description: "振込 ｶｸｳﾃﾞｻﾞｲﾝ(ﾄﾞ",
     counterparty: "ｶｸｳﾃﾞｻﾞｲﾝ(ﾄﾞ",
   },
-  { wallet: "stripe", date: "2027-01-12", amount: 15_000n, description: "charge 月会費 1月" },
-  { wallet: "stripe", date: "2027-01-12", amount: -540n, description: "fee 月会費 1月" },
-  { wallet: "stripe", date: "2027-01-15", amount: -14_460n, description: "payout" },
+  {
+    wallet: "stripe",
+    date: "2027-01-12",
+    amount: 15_000n,
+    description: "決済 月会費 1月",
+    category: "charge",
+  },
+  {
+    wallet: "stripe",
+    date: "2027-01-12",
+    amount: -540n,
+    description: "手数料 · 決済 月会費 1月",
+    category: "fee",
+  },
+  {
+    wallet: "stripe",
+    date: "2027-01-15",
+    amount: -14_460n,
+    description: "入金（銀行へ）",
+    category: "payout",
+  },
   { wallet: "bank", date: "2027-01-16", amount: 14_460n, description: "振込 ｽﾄﾗｲﾌﾟｼﾞﾔﾊﾟﾝ(ｶ" },
   { wallet: "bank", date: "2027-01-20", amount: -30_000n, description: "ATM 引出" },
   { wallet: "bank", date: "2027-01-27", amount: -9_870n, description: "カード引落 カクウカード" },
@@ -688,6 +714,7 @@ async function seedStatements(
         amount: line.amount,
         descriptionRaw: line.description,
         counterpartyRaw: line.counterparty ?? null,
+        category: line.category ?? null,
         externalId: `seed-${line.wallet}-${n}`,
         status: settled?.status ?? "pending",
         journalEntryId: settled ? lookup(refs.entryIds, settled.entry, "entry") : null,

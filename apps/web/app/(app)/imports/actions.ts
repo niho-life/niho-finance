@@ -3,6 +3,7 @@
 import {
   getPrismaClient,
   importCsv,
+  settleAfterImport,
   MAX_CSV_FILE_BYTES,
   previewCsvImport,
   removeStripeAccountLink,
@@ -145,7 +146,8 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
       const outcome = await importCsv(
         prisma(),
         { ...input, rememberFormat: remember === "true" || remember === "on" },
-        by(),
+        // 取込時の自動登録 (15 §11): the new lines an `autoPost` rule wins are settled in the import.
+        { ...by(), afterImport: settleAfterImport },
       );
       // A CSV import always records its batch; without one there is nothing to open.
       if (outcome.batchId === null) throw new Error("importCsv returned no batch");
@@ -188,7 +190,12 @@ export async function removeStripeAccountLinkAction(walletId: string): Promise<A
  */
 export async function syncStripeAction(walletId: string): Promise<ActionResult<StripeSyncView>> {
   return write(
-    () => syncStripeWallet(prisma(), { walletId: parseId(walletId) }, by()),
+    () =>
+      syncStripeWallet(
+        prisma(),
+        { walletId: parseId(walletId) },
+        { ...by(), afterImport: settleAfterImport },
+      ),
     ({ batchId, importedCount, duplicateCount, failedCount, error }) => ({
       batchId,
       importedCount,

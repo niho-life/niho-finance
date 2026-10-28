@@ -55,7 +55,16 @@ export default async function StatementsPage({ searchParams }: PageProps<"/state
 
   return (
     <>
-      <PageHeader title="明細" meta={`未処理 ${page.pendingTotal.toLocaleString("ja-JP")} 件`} />
+      <PageHeader
+        title="明細"
+        meta={`未処理 ${page.pendingTotal.toLocaleString("ja-JP")} 件`}
+        actions={
+          // 取込 is S4's screen (CSV per wallet and the Stripe sync, 12-imports).
+          <ButtonLink href="/imports" size="sm">
+            明細を取り込む
+          </ButtonLink>
+        }
+      />
       <FilterBar filters={filters} page={page} narrowed={narrowed} />
       <StatementsList
         key={listQuery}
@@ -84,7 +93,12 @@ export default async function StatementsPage({ searchParams }: PageProps<"/state
           ) : filters.status === "pending" ? (
             <EmptyState
               title="未処理の明細はありません"
-              description="取り込んだ明細はここに並びます。取込は明細の取込（準備中）から"
+              description="取り込んだ明細はここに並びます。銀行・カードの CSV と Stripe の同期は明細の取込から"
+              action={
+                <ButtonLink href="/imports" size="sm">
+                  明細を取り込む
+                </ButtonLink>
+              }
             />
           ) : (
             <EmptyState title="この状態の明細はありません" />

@@ -134,8 +134,10 @@ describe.skipIf(!hasTestDatabase)("seeded database", () => {
     for (const walletId of wallets.values()) {
       rows.push(...(await listWalletTransactions(prisma, { wallet: walletId })).rows);
     }
+    // Only the seeded lines: other test files import into the seeded wallets too.
+    const seededPending = new Set(pending.map((line) => line.id));
     const summary = rows
-      .filter((row) => row.txnDate <= "2027-03-31")
+      .filter((row) => seededPending.has(row.id))
       .sort((a, b) =>
         a.txnDate === b.txnDate ? (a.id < b.id ? -1 : 1) : a.txnDate < b.txnDate ? -1 : 1,
       )
