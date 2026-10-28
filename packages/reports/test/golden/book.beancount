@@ -1,0 +1,308 @@
+option "title" "架空商会株式会社"
+option "operating_currency" "JPY"
+
+2026-11-02 open Assets:1000-現金 JPY
+2026-11-02 open Assets:1000-現金:本社 JPY
+2026-11-02 open Assets:1100-普通預金 JPY
+2026-11-02 open Assets:1100-普通預金:架空銀行-普通 JPY
+2026-11-02 open Assets:1150-Stripe-残高 JPY
+2026-11-02 open Assets:1150-Stripe-残高:Kamakura JPY
+2026-11-02 open Assets:1150-Stripe-残高:Platform JPY
+2026-11-02 open Assets:1200-売掛金 JPY
+2026-11-02 open Assets:1200-売掛金:架空デザイン合同会社 JPY
+2026-11-02 open Assets:1700-創立費 JPY
+2026-11-02 open Equity:3000-資本金 JPY
+2026-11-02 open Equity:Internal:9000-内部取引 JPY
+2026-11-02 open Expenses:5300-地代家賃 JPY
+2026-11-02 open Expenses:5310-水道光熱費 JPY
+2026-11-02 open Expenses:5320-通信費 JPY
+2026-11-02 open Expenses:5330-消耗品費 JPY
+2026-11-02 open Expenses:5400-支払手数料 JPY
+2026-11-02 open Expenses:5420-新聞図書費 JPY
+2026-11-02 open Income:4010-売上高-会費 JPY
+2026-11-02 open Income:4030-売上高-プラットフォーム JPY
+2026-11-02 open Income:4040-売上高-受託開発 JPY
+2026-11-02 open Liabilities:2100-未払金 JPY
+2026-11-02 open Liabilities:2100-未払金:架空カード JPY
+2026-11-02 open Liabilities:2110-未払費用 JPY
+2026-11-02 open Liabilities:2400-役員借入金 JPY
+2026-11-02 open Liabilities:2400-役員借入金:役員立替 JPY
+
+2026-11-02 * "資本金の払込" ^e1
+  no: 1
+  kind: "opening"
+  source: "system"
+  Assets:1100-普通預金:架空銀行-普通                    50000 JPY
+    tax: "na"
+  Equity:3000-資本金                                   -50000 JPY
+    tax: "na"
+
+2026-11-02 * "設立費用（役員立替）" ^e2
+  no: 2
+  kind: "opening"
+  source: "system"
+  Assets:1700-創立費                                   150000 JPY
+    tax: "purchase_out"
+    line: "登録免許税"
+  Assets:1700-創立費                                    15000 JPY
+    tax: "purchase_exempt"
+    line: "定款認証"
+  Liabilities:2400-役員借入金:役員立替                -165000 JPY
+    tax: "na"
+
+2026-11-05 * "架空クラウド株式会社" "クラウドサービス利用料" ^e3
+  no: 3
+  kind: "normal"
+  source: "manual"
+  Expenses:5320-通信費                                   1650 JPY
+    segment: "platform"
+    tax: "purchase_10"
+    tax_amount: 150
+  Liabilities:2100-未払金:架空カード                    -1650 JPY
+    tax: "na"
+
+2026-11-10 * "事務用品（役員立替）" ^e4
+  no: 4
+  kind: "normal"
+  source: "manual"
+  Expenses:5330-消耗品費                                 3300 JPY
+    segment: "corporate"
+    tax: "purchase_10"
+    tax_amount: 300
+  Liabilities:2400-役員借入金:役員立替                  -3300 JPY
+    tax: "na"
+
+2026-11-15 * "架空不動産株式会社" "地代家賃 11月（役員立替）" ^e5
+  no: 5
+  kind: "normal"
+  source: "manual"
+  Expenses:5300-地代家賃                                88000 JPY
+    segment: "kamakura"
+    tax: "purchase_10"
+    tax_amount: 8000
+  Liabilities:2400-役員借入金:役員立替                 -88000 JPY
+    tax: "na"
+
+2026-11-20 * "月会費" ^e6
+  no: 6
+  kind: "normal"
+  source: "stripe"
+  Assets:1150-Stripe-残高:Kamakura                      11000 JPY
+    tax: "na"
+  Income:4010-売上高-会費                              -11000 JPY
+    segment: "kamakura"
+    tax: "sales_10"
+    tax_amount: 1000
+
+2026-11-20 * "Stripe 決済手数料" ^e7
+  no: 7
+  kind: "normal"
+  source: "stripe"
+  Expenses:5400-支払手数料                                396 JPY
+    segment: "kamakura"
+    tax: "purchase_10"
+    tax_amount: 36
+  Assets:1150-Stripe-残高:Kamakura                       -396 JPY
+    tax: "na"
+
+2026-11-25 * "プラットフォーム手数料" ^e8
+  no: 8
+  kind: "normal"
+  source: "stripe"
+  Assets:1150-Stripe-残高:Platform                       5500 JPY
+    tax: "na"
+  Income:4030-売上高-プラットフォーム                   -5500 JPY
+    segment: "platform"
+    tax: "sales_10"
+    tax_amount: 500
+
+2026-11-30 * "Stripe からの入金" ^e9
+  no: 9
+  kind: "transfer"
+  source: "wallet_txn"
+  Assets:1100-普通預金:架空銀行-普通                    10604 JPY
+    tax: "na"
+  Assets:1150-Stripe-残高:Kamakura                     -10604 JPY
+    tax: "na"
+
+2026-12-01 * "ドロップイン（現金）" ^e10
+  no: 10
+  kind: "normal"
+  source: "manual"
+  Assets:1000-現金:本社                                  2200 JPY
+    segment: "kamakura"
+    tax: "na"
+  Income:4010-売上高-会費                               -2200 JPY
+    segment: "kamakura"
+    tax: "sales_10"
+    tax_amount: 200
+
+2026-12-10 * "振込手数料" ^e11
+  no: 11
+  kind: "normal"
+  source: "wallet_txn"
+  Expenses:5400-支払手数料                                145 JPY
+    segment: "corporate"
+    tax: "purchase_10"
+    tax_amount: 13
+  Assets:1100-普通預金:架空銀行-普通                     -145 JPY
+    tax: "na"
+
+2026-12-15 * "書籍代" ^e12
+  no: 12
+  kind: "normal"
+  source: "manual"
+  status: "voided"
+  void_reason: "金額の誤り"
+  Expenses:5420-新聞図書費                               2000 JPY
+    segment: "contract"
+    tax: "purchase_10"
+    tax_amount: 181
+  Assets:1100-普通預金:架空銀行-普通                    -2000 JPY
+    tax: "na"
+
+2026-12-15 * "取消 No.12: 書籍代" ^e13 ^e12
+  no: 13
+  kind: "reversal"
+  source: "manual"
+  reversal_of: 12
+  Assets:1100-普通預金:架空銀行-普通                     2000 JPY
+    tax: "na"
+  Expenses:5420-新聞図書費                              -2000 JPY
+    segment: "contract"
+    tax: "purchase_10"
+    tax_amount: 181
+
+2026-12-15 * "書籍代" ^e14
+  no: 14
+  kind: "normal"
+  source: "manual"
+  Expenses:5420-新聞図書費                               1980 JPY
+    segment: "contract"
+    tax: "purchase_10"
+    tax_amount: 180
+  Assets:1100-普通預金:架空銀行-普通                    -1980 JPY
+    tax: "na"
+
+2026-12-20 * "架空デザイン合同会社" "受託開発 請求" ^e15
+  no: 15
+  kind: "normal"
+  source: "invoice"
+  Assets:1200-売掛金:架空デザイン合同会社              330000 JPY
+    tax: "na"
+  Income:4040-売上高-受託開発                         -330000 JPY
+    segment: "contract"
+    tax: "sales_10"
+    tax_amount: 30000
+
+2026-12-27 * "カード引落" ^e16
+  no: 16
+  kind: "transfer"
+  source: "wallet_txn"
+  Liabilities:2100-未払金:架空カード                     1650 JPY
+    tax: "na"
+  Assets:1100-普通預金:架空銀行-普通                    -1650 JPY
+    tax: "na"
+
+2027-01-10 * "架空デザイン合同会社" "受託開発 入金（振込手数料 先方負担分を差引）" ^e17
+  no: 17
+  kind: "normal"
+  source: "wallet_txn"
+  Assets:1100-普通預金:架空銀行-普通                   329560 JPY
+    tax: "na"
+  Expenses:5400-支払手数料                                440 JPY
+    segment: "contract"
+    tax: "purchase_10"
+    tax_amount: 40
+  Assets:1200-売掛金:架空デザイン合同会社             -330000 JPY
+    tax: "na"
+
+2027-01-15 * "架空不動産株式会社" "地代家賃 1月" ^e18
+  no: 18
+  kind: "normal"
+  source: "wallet_txn"
+  Expenses:5300-地代家賃                                88000 JPY
+    segment: "kamakura"
+    tax: "purchase_10"
+    tax_amount: 8000
+  Assets:1100-普通預金:架空銀行-普通                   -88000 JPY
+    tax: "na"
+
+2027-01-31 * "拠点のプラットフォーム利用料（内部取引）" ^e19
+  no: 19
+  kind: "normal"
+  source: "manual"
+  Equity:Internal:9000-内部取引                          3000 JPY
+    segment: "kamakura"
+    tax: "na"
+  Equity:Internal:9000-内部取引                         -3000 JPY
+    segment: "platform"
+    tax: "na"
+
+2027-02-05 * "架空クラウド株式会社" "クラウドサービス利用料" ^e20
+  no: 20
+  kind: "normal"
+  source: "manual"
+  Expenses:5320-通信費                                   1650 JPY
+    segment: "platform"
+    tax: "purchase_10"
+    tax_amount: 150
+  Liabilities:2100-未払金:架空カード                    -1650 JPY
+    tax: "na"
+
+2027-02-20 * "月会費" ^e21
+  no: 21
+  kind: "normal"
+  source: "stripe"
+  Assets:1150-Stripe-残高:Kamakura                      22000 JPY
+    tax: "na"
+  Income:4010-売上高-会費                              -22000 JPY
+    segment: "kamakura"
+    tax: "sales_10"
+    tax_amount: 2000
+
+2027-03-15 * "架空不動産株式会社" "地代家賃 3月" ^e22
+  no: 22
+  kind: "normal"
+  source: "wallet_txn"
+  Expenses:5300-地代家賃                                88000 JPY
+    segment: "kamakura"
+    tax: "purchase_10"
+    tax_amount: 8000
+  Assets:1100-普通預金:架空銀行-普通                   -88000 JPY
+    tax: "na"
+
+2027-03-31 * "水道光熱費 3月分（未払）" ^e23
+  no: 23
+  kind: "adjusting"
+  source: "manual"
+  Expenses:5310-水道光熱費                               9870 JPY
+    segment: "kamakura"
+    tax: "purchase_10"
+    tax_amount: 897
+  Liabilities:2110-未払費用                             -9870 JPY
+    tax: "na"
+
+2027-04-10 * "ドロップイン（現金）" ^e1
+  no: 1
+  kind: "normal"
+  source: "manual"
+  Assets:1000-現金:本社                                  3300 JPY
+    segment: "kamakura"
+    tax: "na"
+  Income:4010-売上高-会費                               -3300 JPY
+    segment: "kamakura"
+    tax: "sales_10"
+    tax_amount: 300
+
+; 貸借対照表 2028-03-31 時点の残高（bean-check が取引から再計算する）
+2028-04-01 balance Assets:1000-現金                                       5500 JPY
+2028-04-01 balance Assets:1100-普通預金                                 210389 JPY
+2028-04-01 balance Assets:1150-Stripe-残高                               27500 JPY
+2028-04-01 balance Assets:1200-売掛金                                        0 JPY
+2028-04-01 balance Assets:1700-創立費                                   165000 JPY
+2028-04-01 balance Liabilities:2100-未払金                               -1650 JPY
+2028-04-01 balance Liabilities:2110-未払費用                             -9870 JPY
+2028-04-01 balance Liabilities:2400-役員借入金                         -256300 JPY
+2028-04-01 balance Equity:3000-資本金                                   -50000 JPY
+2028-04-01 balance Equity:Internal:9000-内部取引                             0 JPY
