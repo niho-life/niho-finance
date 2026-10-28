@@ -22,7 +22,9 @@ const storageEnvironmentSchema = z.object({
  * The storage for `env`. Throws when GCS has no bucket, and in production
  * (`NIHO_FINANCE_ENV=prod`) for a local folder: evidence never lives on a container disk.
  */
-export function documentStorageConfig(env: NodeJS.ProcessEnv): DocumentStorageConfig {
+export function documentStorageConfig(
+  env: Readonly<Record<string, string | undefined>>,
+): DocumentStorageConfig {
   const parsed = storageEnvironmentSchema.parse(env);
   const bucket = parsed.NIHO_FINANCE_DOCUMENTS_BUCKET;
   const kind = parsed.NIHO_FINANCE_STORAGE ?? (bucket ? "gcs" : "local");
