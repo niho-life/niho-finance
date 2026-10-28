@@ -12,7 +12,7 @@
 
 ## 2. 共通の決まり
 
-- 読みは Server Components、書きは Server Actions。入力は Zod で検証し、書き込みは `packages/db` の repository を通して監査ログを残す。actor は環境変数 `NIHO_FINANCE_ACTOR`（既定 `owner`。S8 で IAP のメールに置き換える）。
+- 読みは Server Components、書きは Server Actions。入力は Zod で検証し、書き込みは `packages/db` の repository を通して監査ログを残す。actor は IAP の署名ヘッダーを検証したメール（`apps/web/lib/actor.ts`。ローカルは環境変数 `NIHO_FINANCE_ACTOR`、既定 `owner`）。
 - 一覧の中で直接編集（Google フォーム型）: 行の項目をクリックするとその場で入力になり、blur か Enter で保存。行の右端に「保存済み / 保存中 / エラー（理由）」を小さく出す。行の追加は表の末尾の「追加」行。削除はなく「無効にする」。無効の行は畳み、「無効 n 件を表示」で開く。
 - 文言: 見出し・タブ・ボタンは漢語の名詞句と結果の動詞（保存 / 追加 / 無効にする / 有効にする / 次へ / 戻る / 完了 / 登録）。enum 値や ID を見せない。エラーは状態と戻り方（「決算月は会計期間を作った後は変えられません」）。
 - 320px で主要操作が欠けない。表はスマホで「名前＋主要 2 項目」の 2 段にする。

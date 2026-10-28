@@ -8,3 +8,4 @@ docs/
 *.md
 packages/db/prisma/migrations/
 apps/web/next-env.d.ts
+packages/reports/data/etax/**/*.json

@@ -60,8 +60,20 @@ export interface PayrollInput {
   taxColumn: TaxColumn;
   /** 住民税 (特別徴収) of the month, as notified by the municipality. */
   residentTax: Money;
+  /**
+   * Corrections of earlier months (22-payroll §4 調整), signed yen. `socialInsurance` is added to the
+   * employee social insurance deduction (and so lowers the withholding base); `incomeTax` is added
+   * to the table tax. Left out = no adjustment.
+   */
+  adjustments?: PayrollAdjustments;
   /** Pins table versions (e.g. the ones a past run used); the rest come from the registry. */
   tables?: Partial<PayrollTables>;
+}
+
+/** 調整: signed whole yen added to the deductions (22-payroll §4). */
+export interface PayrollAdjustments {
+  incomeTax: Money;
+  socialInsurance: Money;
 }
 
 export interface PayrollResult {
@@ -70,11 +82,20 @@ export interface PayrollResult {
   socialInsurance: SocialInsurancePremiums;
   /** `null` when not insured. */
   employmentInsurance: EmploymentInsurancePremium | null;
-  /** 社会保険料等控除後の給与等の金額 = 課税支給額 − 社会保険料・雇用保険料の本人負担. */
+  /**
+   * 社会保険料等控除後の給与等の金額 = 課税支給額 − 社会保険料（調整後）・雇用保険料の本人負担.
+   */
   withholdingBase: Money;
+  /** 源泉所得税 of the table (before the adjustment). */
   incomeTax: Money;
   residentTax: Money;
-  /** 社会保険料 + 雇用保険料 (本人負担) + 源泉所得税 + 住民税. */
+  /** The adjustments applied (0 when the input had none). */
+  adjustments: PayrollAdjustments;
+  /** incomeTax + adjustments.incomeTax: the income tax withheld. */
+  incomeTaxTotal: Money;
+  /** socialInsurance.employeeTotal + adjustments.socialInsurance: the 健保・厚年 deduction. */
+  socialInsuranceEmployeeTotal: Money;
+  /** 社会保険料（調整後）+ 雇用保険料 (本人負担) + 源泉所得税（調整後）+ 住民税. May be negative. */
   totalDeductions: Money;
   /** 差引支給額 = grossPay − totalDeductions. */
   netPay: Money;
@@ -102,6 +123,11 @@ const COVERAGES = [
   { key: "care", label: "介護保険" },
   { key: "pension", label: "厚生年金" },
   { key: "employment", label: "雇用保険" },
+] as const;
+
+const ADJUSTMENTS = [
+  { key: "incomeTax", label: "源泉所得税の調整" },
+  { key: "socialInsurance", label: "社会保険料の調整" },
 ] as const;
 
 function isAmount(value: unknown): value is Money {
@@ -180,6 +206,22 @@ function validateInput(input: PayrollInput): void {
       message: "役員は雇用保険の被保険者になりません。雇用保険を「なし」にしてください",
     });
   }
+  const adjustments: unknown = input.adjustments;
+  if (adjustments !== undefined) {
+    const values =
+      typeof adjustments === "object" && adjustments !== null
+        ? (adjustments as Record<string, unknown>)
+        : {};
+    for (const { key, label } of ADJUSTMENTS) {
+      if (typeof values[key] !== "bigint") {
+        issues.push({
+          code: "INVALID_ADJUSTMENT",
+          field: `adjustments.${key}`,
+          message: `${label}は円の整数（マイナスも可）にしてください`,
+        });
+      }
+    }
+  }
   if (input.coverage?.care === true && input.coverage.health !== true) {
     issues.push({
       code: "CARE_WITHOUT_HEALTH",
@@ -250,12 +292,12 @@ function resolveTables(input: PayrollInput): Omit<PayrollTables, "employment"> &
 /**
  * One month's pay of one officer or employee (22-payroll §2・§4): social insurance and
  * employment insurance premiums, withholding income tax on (taxable pay − those premiums),
- * resident tax as given, and the net pay. Tables come from the registry by date unless pinned in
- * `input.tables`; the result names every table it used.
+ * resident tax as given, the adjustments (調整) and the net pay. Tables come from the registry by
+ * date unless pinned in `input.tables`; the result names every table it used.
  *
  * Throws `PayrollInputError` for invalid input (negative or non-integer amounts, a non-integer
  * number of dependents, an officer with employment insurance, a standard remuneration that is not
- * a grade amount) and `PayrollTableMissingError` when no table covers the date or month.
+ * a grade amount, an adjustment that is not a bigint) and `PayrollTableMissingError` when no table covers the date or month.
  */
 export function calculatePayroll(input: PayrollInput): PayrollResult {
   validateInput(input);
@@ -271,10 +313,16 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const employmentInsurance = tables.employment
     ? employmentInsurancePremium(tables.employment, grossPay)
     : null;
-  const insuranceDeductions = socialInsurance.employeeTotal + (employmentInsurance?.employee ?? 0n);
+  const adjustments: PayrollAdjustments = {
+    incomeTax: input.adjustments?.incomeTax ?? 0n,
+    socialInsurance: input.adjustments?.socialInsurance ?? 0n,
+  };
+  const socialInsuranceEmployeeTotal = socialInsurance.employeeTotal + adjustments.socialInsurance;
+  const insuranceDeductions = socialInsuranceEmployeeTotal + (employmentInsurance?.employee ?? 0n);
   const withholdingBase = input.taxablePay - insuranceDeductions;
   const incomeTax = withholdingTax(tables.withholding, input.taxColumn, withholdingBase);
-  const totalDeductions = insuranceDeductions + incomeTax + input.residentTax;
+  const incomeTaxTotal = incomeTax + adjustments.incomeTax;
+  const totalDeductions = insuranceDeductions + incomeTaxTotal + input.residentTax;
   return {
     grossPay,
     socialInsurance,
@@ -282,6 +330,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     withholdingBase,
     incomeTax,
     residentTax: input.residentTax,
+    adjustments,
+    incomeTaxTotal,
+    socialInsuranceEmployeeTotal,
     totalDeductions,
     netPay: grossPay - totalDeductions,
     tables: {

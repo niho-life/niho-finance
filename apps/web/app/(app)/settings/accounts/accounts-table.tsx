@@ -20,6 +20,7 @@ import {
   TextCell,
   useFormSubmit,
   useRowSave,
+  type CommitOutcome,
 } from "@/components/settings/inline";
 import {
   ActiveToggleButton,
@@ -41,9 +42,57 @@ import {
 } from "../actions";
 
 const COLUMNS = {
-  columns: "52px minmax(0,1.4fr) 150px 180px 60px 96px 104px minmax(72px,130px)",
+  columns: "52px minmax(0,1.4fr) 150px minmax(128px,1fr) 180px 60px 96px 104px minmax(72px,130px)",
   mobileColumns: "minmax(0,1fr) minmax(0,1fr)",
 };
+
+/** 勘定科目コード of an account in today's edition (17-financial-statements §6.4). */
+export interface AccountCodeCell {
+  /** `10A100020`, or 「10E200010 の枝番」 for a custom item. */
+  displayCode: string;
+  tableLabel: string;
+  /** 標準 / 個別に設定 / 独自科目 */
+  originLabel: string;
+  /** Why the override or the standard code is not used, or `null`. */
+  note: string | null;
+}
+
+/**
+ * The override typed in the row (empty = 標準), with the code in effect, its name in the code table
+ * and where it comes from under it. Internal accounts never reach the statements: no code.
+ */
+function EtaxCodeCell({
+  account,
+  code,
+  commit,
+}: {
+  account: AccountSettings;
+  code: AccountCodeCell | undefined;
+  commit: (field: string, value: string) => Promise<CommitOutcome>;
+}) {
+  if (!code) return <span className="px-[7px] text-muted-2">—</span>;
+  return (
+    <>
+      <TextCell
+        label={`${account.code} の勘定科目コード`}
+        value={account.eTaxCode ?? ""}
+        placeholder={account.eTaxCode ? undefined : "標準"}
+        maxLength={30}
+        onCommit={(value) => commit("eTaxCode", value)}
+        className="num"
+      />
+      <span
+        className="block truncate px-[7px] text-[11px] text-muted-2"
+        title={`${code.displayCode} ${code.tableLabel} · ${code.originLabel}`}
+      >
+        <span className="num">{code.displayCode}</span> {code.tableLabel} · {code.originLabel}
+      </span>
+      {code.note ? (
+        <span className="block px-[7px] text-[11px] leading-snug text-warn">{code.note}</span>
+      ) : null}
+    </>
+  );
+}
 
 function groupOptions(kind: AccountKind) {
   return ACCOUNT_GROUPS_BY_KIND[kind].map((group) => ({
@@ -59,10 +108,12 @@ function taxSelectOptions(taxOptions: readonly SelectOption[]) {
 function AccountRow({
   account,
   taxOptions,
+  code,
   onOpen,
 }: {
   account: AccountSettings;
   taxOptions: readonly SelectOption[];
+  code: AccountCodeCell | undefined;
   onOpen: () => void;
 }) {
   const { status, commit, run, pending } = useRowSave((patch) =>
@@ -91,6 +142,9 @@ function AccountRow({
           options={groupOptions(account.kind)}
           onCommit={(value) => commit("group", value)}
         />
+      </Td>
+      <Td sm="hide">
+        <EtaxCodeCell account={account} code={code} commit={commit} />
       </Td>
       <Td>
         <SelectCell
@@ -186,11 +240,13 @@ function AccountSheet({
   account,
   subAccounts,
   taxOptions,
+  code,
   onClose,
 }: {
   account: AccountSettings;
   subAccounts: SubAccountSettings[];
   taxOptions: readonly SelectOption[];
+  code: AccountCodeCell | undefined;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -235,6 +291,9 @@ function AccountSheet({
             options={groupOptions(account.kind)}
             onCommit={(value) => commit("group", value)}
           />
+        </SheetField>
+        <SheetField label="勘定科目コード">
+          <EtaxCodeCell account={account} code={code} commit={commit} />
         </SheetField>
         <SheetField label="既定の税区分">
           <SelectCell
@@ -392,10 +451,16 @@ export function AccountsTable({
   accounts,
   subAccounts,
   taxOptions,
+  codes = {},
+  editionLabel,
 }: {
   accounts: AccountSettings[];
   subAccounts: SubAccountSettings[];
   taxOptions: SelectOption[];
+  /** 勘定科目コード by account id (internal accounts have none). */
+  codes?: Readonly<Record<string, AccountCodeCell>>;
+  /** The code table of today's fiscal year (「2019 年版・一般商工業」). */
+  editionLabel?: string;
 }) {
   const [showInactive, setShowInactive] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -409,6 +474,7 @@ export function AccountsTable({
           <Th>コード</Th>
           <Th>名前</Th>
           <Th sm="hide">決算書の区分</Th>
+          <Th sm="hide">勘定科目コード</Th>
           <Th>既定の税区分</Th>
           <Th sm="hide">現預金</Th>
           <Th>補助科目</Th>
@@ -428,6 +494,7 @@ export function AccountsTable({
                   key={account.id}
                   account={account}
                   taxOptions={taxOptions}
+                  code={codes[account.id]}
                   onOpen={() => setOpenId(account.id)}
                 />
               ))}
@@ -445,12 +512,19 @@ export function AccountsTable({
         コードは 4 桁（1 資産・2 負債・3 純資産・4 収益・5〜8 費用・9
         内部）。削除はできず、使わない科目は無効にします。
       </p>
+      {editionLabel ? (
+        <p className="mt-1 text-[12px] text-muted">
+          勘定科目コードは e-Tax の財務諸表 CSV と決算書の行に使います（{editionLabel}
+          のコード表）。空にすると標準のコードに戻ります。
+        </p>
+      ) : null}
       {opened ? (
         <AccountSheet
           key={opened.id}
           account={opened}
           subAccounts={subAccounts.filter((sub) => sub.accountId === opened.id)}
           taxOptions={taxOptions}
+          code={codes[opened.id]}
           onClose={() => setOpenId(null)}
         />
       ) : null}

@@ -286,7 +286,7 @@ export const inboxDocumentsTodo: HomeTodoSource = async (db) => {
 
 export const DEADLINE_WINDOW_DAYS = 7;
 
-/** Deadlines due within 7 days (overdue ones first); the calendar screen is S8's. */
+/** Deadlines due within 7 days (overdue ones first); each row opens the calendar screen (24). */
 export const upcomingDeadlinesTodo: HomeTodoSource = async (db, today) => {
   const items = await db.calendarItem.findMany({
     where: { completedAt: null, dueDate: { lte: toDbDate(addDays(today, DEADLINE_WINDOW_DAYS)) } },
@@ -301,7 +301,7 @@ export const upcomingDeadlinesTodo: HomeTodoSource = async (db, today) => {
       badge: `${Number(month)}/${Number(day)}`,
       tone: "date",
       label: dueDate < today ? `${item.title}（期限切れ）` : item.title,
-      href: null,
+      href: "/calendar",
       dueDate,
     };
   });

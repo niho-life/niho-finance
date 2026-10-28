@@ -45,6 +45,7 @@ import {
 import { EditDialog, IgnoreDialog, NoteDialog, TransferDialog } from "./row-dialogs";
 import type { MenuItem } from "./row-menu";
 import { SplitDialog } from "./split-dialog";
+import { StatementDocumentsSheet } from "./statement-documents";
 import { StatementRowView, type RowHandlers } from "./statement-row";
 import { UndoBar, type UndoState } from "./undo-bar";
 
@@ -53,6 +54,7 @@ type DialogState =
   | { kind: "transfer"; rowId: string }
   | { kind: "split"; rowId: string; draft: RowDraft }
   | { kind: "note"; rowId: string }
+  | { kind: "documents"; rowId: string }
   | { kind: "ignore"; rowId: string }
   | { kind: "reopen"; rowId: string }
   | { kind: "bulkRegister" }
@@ -543,7 +545,14 @@ export function StatementsList({
   function menuItems(row: ClientStatementRow): MenuItem[] {
     if (row.status === "pending") {
       return [
-        { label: "証憑を紐づける", disabled: true, note: "準備中" },
+        // 請求 (#16, 18 §9.4): a deposit can pay an issued invoice (売掛金の消込).
+        ...(BigInt(row.amount) > 0n
+          ? [{ label: "この請求に充てる", href: `/invoices/apply?statement=${row.id}` }]
+          : []),
+        {
+          label: "証憑を紐づける",
+          onSelect: () => setDialog({ kind: "documents", rowId: row.id }),
+        },
         { label: "メモ", onSelect: () => setDialog({ kind: "note", rowId: row.id }) },
         {
           label: "分割",
@@ -556,6 +565,7 @@ export function StatementsList({
     return [
       ...(row.entry ? [{ label: "取引を開く", href: `/entries/${row.entry.id}` }] : []),
       { label: "未処理に戻す", onSelect: () => setDialog({ kind: "reopen", rowId: row.id }) },
+      { label: "証憑を紐づける", onSelect: () => setDialog({ kind: "documents", rowId: row.id }) },
       { label: "メモ", onSelect: () => setDialog({ kind: "note", rowId: row.id }) },
     ];
   }
@@ -567,6 +577,7 @@ export function StatementsList({
     onSecondary: secondary,
     onChip: (row, field) => setDialog({ kind: "edit", rowId: row.id, focus: field }),
     onTransferChip: (row) => setDialog({ kind: "transfer", rowId: row.id }),
+    onDocuments: (row) => setDialog({ kind: "documents", rowId: row.id }),
     onToggle: toggle,
     menuItems,
   };
@@ -751,6 +762,14 @@ export function StatementsList({
             setDialog(null);
             ignore(dialogRow, text);
           }}
+        />
+      ) : null}
+
+      {dialog?.kind === "documents" && dialogRow ? (
+        <StatementDocumentsSheet
+          row={dialogRow}
+          thisYear={thisYear}
+          onClose={() => closeDialog(dialogRow.id)}
         />
       ) : null}
 

@@ -13,6 +13,7 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:reset": "prisma migrate reset --force",
     "seed": "prisma db seed",
+    "restore": "tsx scripts/restore-snapshot.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts"
@@ -20,6 +21,7 @@
   "dependencies": {
     "@niho-finance/importers": "*",
     "@niho-finance/ledger": "*",
+    "@niho-finance/payroll": "*",
     "@niho-finance/reports": "*",
     "@prisma/client": "6.19.3",
     "ulid": "^3.0.2",

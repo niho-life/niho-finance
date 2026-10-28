@@ -158,6 +158,9 @@ enum SourceKind {
   recurring
   import
   system
+  payroll
+  /// Year-end entries not about one fixed asset (繰延資産の償却・前払未払・消費税・法人税等・決算振替)
+  year_end
 
   @@map("source_kind")
 }
@@ -301,21 +304,25 @@ model Company {
 }
 
 model FiscalYear {
-  id               String               @id
-  companyId        String               @map("company_id")
+  id                String               @id
+  companyId         String               @map("company_id")
   /// 第 n 期
-  no               Int
-  startDate        DateTime             @map("start_date") @db.Date
-  endDate          DateTime             @map("end_date") @db.Date
-  status           FiscalYearStatus     @default(open)
-  consumptionTax   ConsumptionTaxMethod @map("consumption_tax")
-  accountingMethod AccountingMethod     @map("accounting_method")
+  no                Int
+  startDate         DateTime             @map("start_date") @db.Date
+  endDate           DateTime             @map("end_date") @db.Date
+  status            FiscalYearStatus     @default(open)
+  consumptionTax    ConsumptionTaxMethod @map("consumption_tax")
+  accountingMethod  AccountingMethod     @map("accounting_method")
   /// Monthly close: no posting or voiding on or before this date
-  lockedThrough    DateTime?            @map("locked_through") @db.Date
+  lockedThrough     DateTime?            @map("locked_through") @db.Date
   /// Next JournalEntry.no to assign. Incremented in the posting transaction (no gaps).
-  nextEntryNo      Int                  @default(1) @map("next_entry_no")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  nextEntryNo       Int                  @default(1) @map("next_entry_no")
+  /// Year-end checklist confirmations: { balances?: { at, actor }, accruals?: { at, actor } }
+  yearEndChecks     Json?                @map("year_end_checks")
+  /// 決算書の設定 (17-financial-statements §3.1): words and dates of the statements, never numbers
+  statementSettings Json?                @map("statement_settings")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   company        Company        @relation(fields: [companyId], references: [id])
   journalEntries JournalEntry[]
@@ -696,7 +703,8 @@ model JournalEntry {
   walletTransactions WalletTransaction[]
   documentLinks      DocumentLink[]
   invoices           Invoice[]
-  disposedAssets     FixedAsset[]
+  disposedAssets     FixedAsset[]        @relation("FixedAssetDisposal")
+  acquiredAssets     FixedAsset[]        @relation("FixedAssetAcquisition")
 
   @@unique([fiscalYearId, no])
   @@index([fiscalYearId, entryDate])
@@ -901,14 +909,21 @@ model FixedAsset {
   segmentId               String?            @map("segment_id")
   disposedAt              DateTime?          @map("disposed_at") @db.Date
   disposalEntryId         String?            @map("disposal_entry_id")
+  /// The journal entry the asset was bought with (登録の「取得の仕訳から」 or 「仕訳も一緒に登録」)
+  acquisitionEntryId      String?            @map("acquisition_entry_id")
   note                    String?
+  /// Logical delete of the registration (登録の取消); the acquisition entry stays as it is
+  voidedAt                DateTime?          @map("voided_at") @db.Timestamptz(6)
+  voidReason              String?            @map("void_reason")
   createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  account       Account       @relation(fields: [accountId], references: [id])
-  segment       Segment?      @relation(fields: [segmentId], references: [id])
-  disposalEntry JournalEntry? @relation(fields: [disposalEntryId], references: [id])
+  account          Account       @relation(fields: [accountId], references: [id])
+  segment          Segment?      @relation(fields: [segmentId], references: [id])
+  disposalEntry    JournalEntry? @relation("FixedAssetDisposal", fields: [disposalEntryId], references: [id])
+  acquisitionEntry JournalEntry? @relation("FixedAssetAcquisition", fields: [acquisitionEntryId], references: [id])
 
+  @@index([acquisitionEntryId])
   @@map("fixed_asset")
 }
 
@@ -948,18 +963,20 @@ model RecurringItem {
 
 /// Tax and legal deadlines generated from the fiscal year by rule.
 model CalendarItem {
-  id           String           @id
-  fiscalYearId String?          @map("fiscal_year_id")
-  kind         CalendarItemKind
-  title        String
-  dueDate      DateTime         @map("due_date") @db.Date
+  id             String           @id
+  fiscalYearId   String?          @map("fiscal_year_id")
+  kind           CalendarItemKind
+  title          String
+  dueDate        DateTime         @map("due_date") @db.Date
   /// Identifier of the generating rule (unique per fiscal year)
-  ruleKey      String?          @map("rule_key")
-  completedAt  DateTime?        @map("completed_at") @db.Timestamptz(6)
-  completedBy  String?          @map("completed_by")
-  note         String?
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ruleKey        String?          @map("rule_key")
+  completedAt    DateTime?        @map("completed_at") @db.Timestamptz(6)
+  completedBy    String?          @map("completed_by")
+  note           String?
+  /// Last day a reminder mail went out (7 days before and on/after the due date)
+  lastNotifiedOn DateTime?        @map("last_notified_on") @db.Date
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   fiscalYear FiscalYear? @relation(fields: [fiscalYearId], references: [id])
 
@@ -1000,4 +1017,99 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("app_user")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll (docs/design/22-payroll.md §5)
+// ---------------------------------------------------------------------------
+
+/// 役員 (役員報酬) or 従業員 (給料手当).
+enum EmployeeKind {
+  officer
+  employee
+
+  @@map("employee_kind")
+}
+
+/// 甲欄 (扶養控除等申告書あり) or 乙欄.
+enum WithholdingColumn {
+  kou
+  otsu
+
+  @@map("withholding_column")
+}
+
+/// 社会保険料の控除の月: 翌月控除 (the previous month's premium) or 当月控除.
+enum PremiumTiming {
+  next_month
+  same_month
+
+  @@map("premium_timing")
+}
+
+/// 従業員 (役員を含む). Personal data is kept minimal: no My Number, address or bank account.
+/// Never deleted: deactivated instead. Changes are in the audit log (employee.create / update).
+model Employee {
+  id                String            @id
+  /// 表示名 on the payslip and the screens
+  name              String
+  kind              EmployeeKind
+  /// Only for the age rules of 介護・厚年・健保 (22-payroll §2.9)
+  birthDate         DateTime          @map("birth_date") @db.Date
+  /// 毎月の課税支給額 (役員報酬・基本給): the default of a pay run
+  basePay           BigInt            @map("base_pay")
+  /// 毎月の通勤手当 (non-taxable part): the default of a pay run
+  commuteAllowance  BigInt            @default(0) @map("commute_allowance")
+  /// 健康保険・厚生年金の被保険者
+  socialInsured     Boolean           @map("social_insured")
+  /// 資格取得日: premiums from the month it belongs to (required when socialInsured)
+  insuredFrom       DateTime?         @map("insured_from") @db.Date
+  /// 標準報酬月額 (健保), a grade amount (required when socialInsured)
+  healthSmr         BigInt?           @map("health_smr")
+  /// 標準報酬月額 (厚年), a grade amount (required when socialInsured)
+  pensionSmr        BigInt?           @map("pension_smr")
+  /// 雇用保険の被保険者 (never for an officer)
+  employmentInsured Boolean           @map("employment_insured")
+  taxColumn         WithholdingColumn @map("tax_column")
+  /// 扶養親族等の数 (甲欄), or the number on 従たる給与の申告書 (乙欄)
+  dependents        Int               @default(0)
+  /// 住民税の月額 (特別徴収): the default of a pay run
+  residentTax       BigInt            @default(0) @map("resident_tax")
+  isActive          Boolean           @default(true) @map("is_active")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("employee")
+}
+
+/// A confirmed pay run (1 per pay month). Append-only (DB triggers): corrections are made by the
+/// adjustments of a later run or by correcting its entries.
+model PayrollRun {
+  id                    String        @id
+  /// 支給月 (YYYY-MM) = the month of paymentDate
+  payMonth              String        @unique @map("pay_month")
+  /// 支払日: the date of the entries and the year of the withholding table
+  paymentDate           DateTime      @map("payment_date") @db.Date
+  /// Fixed by the first run
+  premiumTiming         PremiumTiming @map("premium_timing")
+  /// 対象月 (YYYY-MM) of the premiums deducted: each premium month is deducted once
+  premiumMonth          String        @unique @map("premium_month")
+  /// 支払元の口座; null = 未払金〔給与〕
+  payFromWalletId       String?       @map("pay_from_wallet_id")
+  /// 源泉所得税の納期の特例
+  withholdingSpecialDue Boolean       @map("withholding_special_due")
+  /// 住民税の納期の特例
+  residentTaxSpecialDue Boolean       @map("resident_tax_special_due")
+  /// Ids of the table versions used (withholding / kenpo / pension / employment)
+  tableIds              Json          @map("table_ids")
+  /// Per person: input and result, amounts as strings (22-payroll §5.5)
+  items                 Json
+  /// 1 本目 (本人分)
+  payEntryId            String        @map("pay_entry_id")
+  /// 2 本目 (会社負担); null when it is 0
+  employerEntryId       String?       @map("employer_entry_id")
+  confirmedAt           DateTime      @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  confirmedBy           String        @map("confirmed_by")
+
+  @@map("payroll_run")
 }

@@ -2,12 +2,15 @@ import { LedgerValidationError, type CalendarDate } from "@niho-finance/ledger";
 import type { Company, FiscalYear, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
+import { randomBytes } from "node:crypto";
 import {
+  attachInvoicePdf,
   cancelInvoicePayment,
   createInvoiceDraft,
   describeAuditTargets,
   discardInvoiceDraft,
   fromDbDate,
+  getDocumentDetail,
   getInvoiceDetail,
   getInvoiceSettings,
   issueInvoice,
@@ -16,9 +19,11 @@ import {
   loadInvoiceDraftInput,
   loadInvoiceFormOptions,
   loadInvoiceHistory,
+  loadInvoicesForDeposit,
   markInvoiceSent,
   newId,
   recordInvoicePayment,
+  registerDocument,
   SettingsError,
   toDbDate,
   updateInvoiceDraft,
@@ -1221,5 +1226,168 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
     ]);
     expect(names.get(`invoice:${draft.id}`)).toBe(`請求 ${result.number}`);
     expect(names.get(`invoice:${quote.id}`)).toBe("請求 見積書（下書き）");
+  });
+
+  it("ties the stored copy of an issued PDF to the document once (18 §11)", async () => {
+    const pdfDocument = async () =>
+      (
+        await registerDocument(
+          prisma,
+          {
+            storageKey: `documents/2051/11/${newId()}.pdf`,
+            sha256: randomBytes(32).toString("hex"),
+            mime: "application/pdf",
+            byteSize: 2_048,
+            originalName: "20511101-架空デザイン合同会社御中_請求書.pdf",
+            source: "generated",
+            kind: "invoice_out",
+          },
+          options,
+        )
+      ).document;
+
+    const draft = await createInvoiceDraft(
+      prisma,
+      draftInput({ issueDate: "2051-11-01" }),
+      options,
+    );
+    const copy = await pdfDocument();
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, draft.id, { documentId: copy.id }, options)),
+      ).message,
+    ).toContain("下書き");
+
+    const invoice = await issueInvoice(prisma, draft.id, options);
+    await attachInvoicePdf(prisma, invoice.id, { documentId: copy.id }, options);
+    const detail = await getInvoiceDetail(prisma, invoice.id, { today: "2051-11-02" });
+    expect(detail?.pdfDocumentId).toBe(copy.id);
+    const linked = await getDocumentDetail(prisma, copy.id);
+    expect(linked?.status).toBe("linked");
+    expect(linked?.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "invoice", id: invoice.id, number: invoice.number }),
+        expect.objectContaining({ kind: "journal_entry", id: invoice.journalEntryId }),
+      ]),
+    );
+    expect(linked?.links).toHaveLength(2);
+
+    // The same copy again changes nothing; another one is refused, and so is the DB.
+    await attachInvoicePdf(prisma, invoice.id, { documentId: copy.id }, options);
+    const other = await pdfDocument();
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, invoice.id, { documentId: other.id }, options)),
+      ).message,
+    ).toContain("すでに");
+    await expect(
+      prisma.invoice.update({ where: { id: invoice.id }, data: { pdfDocumentId: other.id } }),
+    ).rejects.toThrow(/already set/);
+
+    const history = await loadInvoiceHistory(prisma, invoice.id);
+    expect(history.filter((row) => row.action === "invoice.attach_pdf")).toHaveLength(1);
+
+    // A void document never changes: its copy stays, and none can be attached any more.
+    const voided = await issued({ issueDate: "2051-11-03" });
+    await voidInvoice(prisma, voided.id, { reason: "宛名の誤り" }, options);
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, voided.id, { documentId: other.id }, options)),
+      ).message,
+    ).toContain("無効");
+  });
+
+  it("offers the invoices a deposit of the statements can pay, the closest first (18 §9.4)", async () => {
+    const line = (name: string, unitPrice: string): InvoiceLineFormInput => ({
+      date: "",
+      name,
+      quantity: "1",
+      unit: "",
+      unitPrice,
+      taxCategoryCode: "sales_10",
+    });
+    // Tax-exclusive prices at 10%: 100,000 → 110,000; 100,600 → 110,660; 50,000 → 55,000.
+    const exact = await issued({ issueDate: "2051-12-01", lines: [line("保守", "100000")] });
+    const withFee = await issued({ issueDate: "2051-12-02", lines: [line("保守", "100600")] });
+    const smaller = await issued({ issueDate: "2051-12-03", lines: [line("保守", "50000")] });
+    const later = await issued({ issueDate: "2051-12-20", lines: [line("保守", "100000")] });
+    const draft = await createInvoiceDraft(
+      prisma,
+      draftInput({ issueDate: "2051-12-01", lines: [line("保守", "100000")] }),
+      options,
+    );
+    const deposit = await statementLine(110_000n, "2051-12-15");
+
+    const offer = await loadInvoicesForDeposit(prisma, deposit.id, { today: "2051-12-16" });
+    expect(offer?.problem).toBeNull();
+    expect(offer?.line).toMatchObject({ amount: 110_000n, txnDate: "2051-12-15" });
+    const ids = offer?.invoices.map((invoice) => invoice.id) ?? [];
+    expect(ids.slice(0, 2)).toEqual([exact.id, withFee.id]);
+    expect(offer?.invoices[1]?.difference).toBe(660n);
+    for (const excluded of [smaller.id, later.id, draft.id]) expect(ids).not.toContain(excluded);
+
+    // Paying from the line settles it; the line is then no longer offered.
+    await recordInvoicePayment(
+      prisma,
+      withFee.id,
+      payment({
+        paidOn: "2051-12-15",
+        amount: "110,000",
+        fee: "660",
+        walletTransactionId: deposit.id,
+      }),
+      options,
+    );
+    expect((await getInvoiceDetail(prisma, withFee.id, { today: "2051-12-16" }))?.status).toBe(
+      "paid",
+    );
+    const after = await loadInvoicesForDeposit(prisma, deposit.id, { today: "2051-12-16" });
+    expect(after?.problem).toContain("処理済み");
+    expect(after?.invoices).toEqual([]);
+
+    const outflow = await statementLine(-5_000n, "2051-12-15");
+    expect(
+      (await loadInvoicesForDeposit(prisma, outflow.id, { today: "2051-12-16" }))?.problem,
+    ).toContain("出金");
+    const card = await statementLine(110_000n, "2051-12-15", cardWalletId);
+    expect(
+      (await loadInvoicesForDeposit(prisma, card.id, { today: "2051-12-16" }))?.problem,
+    ).toContain("架空カード");
+    expect(await loadInvoicesForDeposit(prisma, newId(), { today: "2051-12-16" })).toBeNull();
+  });
+
+  it("records every mail of a paid document, while marking it sent by hand stays once (18 §11)", async () => {
+    const invoice = await issued({ issueDate: "2051-12-05" });
+    await recordInvoicePayment(
+      prisma,
+      invoice.id,
+      payment({ paidOn: "2051-12-06", amount: "138,622" }),
+      options,
+    );
+    await markInvoiceSent(prisma, invoice.id, { sentTo: "郵送" }, options);
+    expect(
+      settingsError(
+        await rejectionOf(markInvoiceSent(prisma, invoice.id, { sentTo: "郵送" }, options)),
+      ).message,
+    ).toContain("送付の記録があります");
+
+    const mailed = await markInvoiceSent(
+      prisma,
+      invoice.id,
+      { sentTo: "billing@example.com", mailSubject: "請求書（再送）" },
+      options,
+    );
+    expect(mailed.status).toBe("paid");
+    const detail = await getInvoiceDetail(prisma, invoice.id, { today: "2051-12-07" });
+    expect(detail?.sentTo).toBe("billing@example.com");
+    const sends = (await loadInvoiceHistory(prisma, invoice.id)).filter(
+      (row) => row.action === "invoice.send",
+    );
+    expect(sends).toHaveLength(2);
+    expect(sends[1]?.after).toMatchObject({
+      status: "paid",
+      sentTo: "billing@example.com",
+      mailSubject: "請求書（再送）",
+    });
   });
 });

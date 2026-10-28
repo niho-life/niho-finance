@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
+import { invoicePdfFileNames } from "@/lib/pdf/invoice";
 import { entryNo, formatDate } from "@/lib/format";
 import { InvoiceChecklistView } from "../_components/invoice-checklist";
 import { InvoiceDocument } from "../_components/invoice-document";
@@ -23,6 +24,8 @@ import { InvoiceOperations, type InvoiceOperationsModel } from "../_components/i
 import { documentName, listHref } from "../_components/list-query";
 import { RecordPaymentButton, type PaymentSheetModel } from "../_components/payment-controls";
 import { PaymentsSection } from "../_components/payments-section";
+import { SavePdfButton } from "../_components/save-pdf-button";
+import { buildInvoiceMailDraft } from "../_lib/mail-draft";
 
 export const metadata: Metadata = { title: "請求の詳細" };
 
@@ -91,6 +94,28 @@ function Bands({ detail, blockedEdit }: { detail: InvoiceDetail; blockedEdit: bo
             反対仕訳 <EntryLink entry={detail.journalEntry.reversal} />
           </>
         ) : null}
+      </Band>,
+    );
+  }
+  // 発行した PDF の写し (18 §11): kept as a 証憑, or offered again when saving it failed.
+  if (detail.pdfDocumentId) {
+    bands.push(
+      <Band key="pdf">
+        発行した PDF を証憑に保存しました（
+        <Link
+          href={`/documents/${detail.pdfDocumentId}`}
+          className="font-bold underline underline-offset-4"
+        >
+          証憑を開く
+        </Link>
+        ）
+      </Band>,
+    );
+  } else if (detail.status === "issued" || detail.status === "sent" || detail.status === "paid") {
+    bands.push(
+      <Band key="pdf" tone="warn">
+        <span className="mr-3">発行した PDF がまだ証憑に保存されていません</span>
+        <SavePdfButton invoiceId={detail.id} />
       </Band>,
     );
   }
@@ -224,6 +249,13 @@ export default async function InvoiceDetailPage({
     canVoid: actions.canVoid,
     canCopy: detail.status !== "draft",
     convertTo: actions.convertTo,
+    mail:
+      detail.status === "draft" || detail.status === "void"
+        ? null
+        : {
+            ...buildInvoiceMailDraft(detail),
+            attachmentName: invoicePdfFileNames(detail).utf8FileName,
+          },
   };
 
   const meta = [

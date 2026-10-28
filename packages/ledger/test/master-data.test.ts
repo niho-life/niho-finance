@@ -35,6 +35,7 @@ describe("labels of entries and the audit log", () => {
     for (const status of ENTRY_STATUSES) expect(ENTRY_STATUS_LABELS[status]).toBeTruthy();
     for (const entity of AUDIT_ENTITIES) expect(AUDIT_ENTITY_LABELS[entity]).toBeTruthy();
     expect(SOURCE_KIND_LABELS.system).toBe("初期設定");
+    expect(SOURCE_KIND_LABELS.payroll).toBe("給与");
   });
 
   it("label audit actions by their own name or by the shared verb", () => {
@@ -49,6 +50,16 @@ describe("labels of entries and the audit log", () => {
     expect(auditActionLabel("tax_rate_rule.enable")).toBe("有効化");
     expect(auditActionLabel("setup.skip")).toBe("初期設定を後回し");
     expect(auditActionLabel("document.void")).toBe("証憑の無効化");
+    expect(auditActionLabel("employee.create")).toBe("従業員の追加");
+    expect(auditActionLabel("employee.update")).toBe("従業員の変更");
+    expect(auditActionLabel("employee.deactivate")).toBe("無効化");
+    expect(auditActionLabel("payroll_run.confirm")).toBe("支給の確定");
+    expect(auditActionLabel("payroll_payment.post")).toBe("納付の登録");
+    expect(auditActionLabel("calendar_item.complete")).toBe("完了にする");
+    expect(auditActionLabel("calendar_item.reopen")).toBe("未完了に戻す");
+    expect(auditActionLabel("calendar_item.notify")).toBe("期限の通知");
+    expect(auditActionLabel("calendar_item.delete")).toBe("期限の削除");
+    expect(auditActionLabel("calendar_item.update")).toBe("変更");
     expect(auditActionLabel("seed.apply")).toBeNull();
     expect(auditActionLabel("create")).toBeNull();
   });

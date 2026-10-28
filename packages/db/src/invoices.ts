@@ -61,6 +61,7 @@ import {
 import { Prisma, type Account, type FiscalYear, type Invoice } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { linkDocument } from "./documents";
 import {
   loadSimpleEntryContext,
   loadTaxRules,
@@ -822,6 +823,8 @@ export interface InvoiceDetail {
   sentTo: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
+  /** The stored copy of the issued PDF (証憑 `invoice_out`, 18 §11); `null` until it is saved. */
+  pdfDocumentId: string | null;
   createdAt: Date;
   updatedAt: Date;
   actions: InvoiceActions;
@@ -1098,6 +1101,7 @@ export async function getInvoiceDetail(
     sentTo: row.sentTo,
     voidedAt: row.voidedAt,
     voidReason: row.voidReason,
+    pdfDocumentId: row.pdfDocumentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     actions: invoiceActions({
@@ -1404,6 +1408,117 @@ export async function loadDepositCandidates(
       return a.txnDate === b.txnDate ? 0 : a.txnDate > b.txnDate ? -1 : 1;
     })
     .slice(0, CANDIDATE_LIMIT);
+}
+
+/** An invoice a statement line can pay (18 §9.4: 明細から「この請求に充てる」). */
+export interface InvoiceForDeposit {
+  id: string;
+  number: string;
+  partnerName: string;
+  title: string | null;
+  issueDate: CalendarDate;
+  dueDate: CalendarDate | null;
+  total: Money;
+  balance: Money;
+  /** 残高 − 入金額: the shortfall (a fee or a partial payment). */
+  difference: Money;
+  overdue: boolean;
+}
+
+/** A deposit of the statement and the invoices it can pay. */
+export interface DepositForInvoices {
+  line: {
+    id: string;
+    walletId: string;
+    walletName: string;
+    txnDate: CalendarDate;
+    description: string;
+    counterparty: string | null;
+    amount: Money;
+  };
+  /** Why the line cannot pay an invoice (owner-facing); `null` when it can. */
+  problem: string | null;
+  /** Nearest to the amount first (an exact match first), then the oldest due date. */
+  invoices: InvoiceForDeposit[];
+}
+
+/**
+ * 明細から「この請求に充てる」 (18 §9.4, S5's statement screen): a `pending` deposit on an active asset
+ * wallet and the issued (or sent) invoices it can pay: issued on or before the deposit, with a
+ * balance of at least its amount, and a 売掛金 entry still in force. `null` when the line is missing.
+ */
+export async function loadInvoicesForDeposit(
+  db: Db,
+  walletTransactionId: string,
+  options: { today: CalendarDate },
+): Promise<DepositForInvoices | null> {
+  const row = await db.walletTransaction.findUnique({
+    where: { id: walletTransactionId },
+    include: {
+      wallet: { select: { name: true, isActive: true, account: { select: { kind: true } } } },
+    },
+  });
+  if (!row) return null;
+  const line: DepositForInvoices["line"] = {
+    id: row.id,
+    walletId: row.walletId,
+    walletName: row.wallet.name,
+    txnDate: fromDbDate(row.txnDate),
+    description: row.descriptionRaw,
+    counterparty: row.counterpartyRaw,
+    amount: row.amount,
+  };
+  let problem: string | null = null;
+  if (row.status !== "pending") {
+    problem = "この明細は処理済みです。未処理の入金の明細から選んでください";
+  } else if (row.amount <= 0n) {
+    problem = "出金の明細は請求に充てられません。入金の明細から選んでください";
+  } else if (!row.wallet.isActive || row.wallet.account.kind !== "asset") {
+    problem = `口座「${row.wallet.name}」の明細は請求に充てられません。銀行などの有効な口座の入金から選んでください`;
+  }
+  if (problem) return { line, problem, invoices: [] };
+
+  const rows = await db.invoice.findMany({
+    where: {
+      docType: "invoice",
+      status: { in: ["issued", "sent"] },
+      issueDate: { lte: row.txnDate },
+    },
+    orderBy: [{ issueDate: "asc" }, { id: "asc" }],
+    take: INVOICE_LIST_LIMIT,
+    include: {
+      partner: { select: { name: true } },
+      journalEntry: { select: { status: true } },
+    },
+  });
+  const invoices = rows
+    .filter((invoice) => invoice.journalEntry?.status !== "voided")
+    .flatMap((invoice): InvoiceForDeposit[] => {
+      const balance = balanceOf(invoice) ?? 0n;
+      if (balance < row.amount) return [];
+      const recipient = readRecipientSnapshot(invoice.recipientSnapshot);
+      return [
+        {
+          id: invoice.id,
+          number: invoice.number,
+          partnerName: recipient?.name ?? invoice.partner.name,
+          title: invoice.title,
+          issueDate: fromDbDate(invoice.issueDate),
+          dueDate: fromDbDateOrNull(invoice.dueDate),
+          total: invoice.total,
+          balance,
+          difference: balance - row.amount,
+          overdue: overdueOf(invoice, options.today).overdue,
+        },
+      ];
+    })
+    .sort((a, b) => {
+      if (a.difference !== b.difference) return a.difference < b.difference ? -1 : 1;
+      const due = (value: CalendarDate | null) => value ?? "9999-12-31";
+      return due(a.dueDate) < due(b.dueDate) ? -1 : due(a.dueDate) > due(b.dueDate) ? 1 : 0;
+    })
+    .slice(0, CANDIDATE_LIMIT);
+  return { line, problem: null, invoices };
 }
 
 export interface InvoiceHistoryRow {
@@ -1920,7 +2035,8 @@ export async function markInvoiceSent(
       case "void":
         throw new SettingsError("無効の書類は送付済みにできません");
       case "paid":
-        if (current.sentAt !== null) {
+        // A paid document is marked sent once by hand; a mail (re)sending is always recorded.
+        if (current.sentAt !== null && data.mailSubject === null) {
           throw new SettingsError("送付の記録があります。画面を読み込み直してください");
         }
         break;
@@ -1940,7 +2056,12 @@ export async function markInvoiceSent(
       entity: "invoice",
       entityId: id,
       before: { status: current.status, sentAt: current.sentAt, sentTo: current.sentTo },
-      after: { status: row.status, sentAt: row.sentAt, sentTo: row.sentTo },
+      after: {
+        status: row.status,
+        sentAt: row.sentAt,
+        sentTo: row.sentTo,
+        ...(data.mailSubject === null ? {} : { mailSubject: data.mailSubject }),
+      },
     });
     return toRecord(row);
   });
@@ -2275,6 +2396,63 @@ export async function cancelInvoicePayment(
       before: { status: current.status, payment },
       after: { status: row.status, payment: cancelled },
       reason: data.reason,
+    });
+    return toRecord(row);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Writes: 発行した PDF を証憑に (18 §11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ties the stored copy of an issued document's PDF (a document the app saved with
+ * `source = generated`) to the document: `Invoice.pdfDocumentId` (set once; the DB trigger refuses
+ * a second value) and the 証憑's links to the invoice and to its 売掛金 entry (`linkDocument`). Drafts have
+ * no copy and void documents never change. Attaching the same document again changes nothing.
+ */
+export async function attachInvoicePdf(
+  db: Db,
+  id: string,
+  input: { documentId: string },
+  options: ActorOptions,
+): Promise<InvoiceRecord> {
+  return runInTransaction(db, async (tx) => {
+    const current = await lockInvoice(tx, id);
+    switch (current.status) {
+      case "draft":
+        throw new SettingsError("下書きの PDF は証憑にしません。発行してから保存します");
+      case "void":
+        throw new SettingsError("無効の書類には PDF を保存できません");
+      case "issued":
+      case "sent":
+      case "paid":
+        break;
+    }
+    if (current.pdfDocumentId === input.documentId) return toRecord(current);
+    if (current.pdfDocumentId !== null) {
+      throw new SettingsError("この書類の PDF はすでに証憑に保存しています");
+    }
+    await linkDocument(tx, { kind: "invoice", id, documentId: input.documentId }, options);
+    // The copy is the evidence of the 売掛金 / 売上 entry too (it shows on the entry's detail).
+    if (current.journalEntryId) {
+      await linkDocument(
+        tx,
+        { kind: "journal_entry", id: current.journalEntryId, documentId: input.documentId },
+        options,
+      );
+    }
+    const row = await tx.invoice.update({
+      where: { id },
+      data: { pdfDocumentId: input.documentId },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "invoice.attach_pdf",
+      entity: "invoice",
+      entityId: id,
+      before: { pdfDocumentId: null },
+      after: { pdfDocumentId: input.documentId },
     });
     return toRecord(row);
   });

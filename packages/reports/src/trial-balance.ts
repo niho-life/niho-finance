@@ -17,6 +17,7 @@ import {
   compareAccounts,
   compareSubAccounts,
   indexSource,
+  withoutClosingOf,
   type ReportAccount,
   type ReportSource,
   type ReportSubAccount,
@@ -280,7 +281,12 @@ function runLedgerCheck(
 const BALANCE_SHEET_KINDS: readonly AccountKind[] = ["asset", "liability", "equity"];
 const INCOME_KINDS: readonly AccountKind[] = ["revenue", "expense"];
 
-export function buildTrialBalance(source: ReportSource, period: ReportPeriod): TrialBalanceReport {
+export function buildTrialBalance(
+  reportSource: ReportSource,
+  period: ReportPeriod,
+): TrialBalanceReport {
+  // The year's 決算振替 would zero its P&L (14 §1); the ledger check sees the same entries.
+  const source = withoutClosingOf(reportSource, period.fiscalYear.id);
   const index = indexSource(source);
   const all = aggregate(index, period, null);
   const filtered = period.segmentId ? aggregate(index, period, period.segmentId) : all;
