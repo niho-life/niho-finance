@@ -8,7 +8,7 @@
 
 - 最初の provider は Anthropic API（`@anthropic-ai/sdk`）。構造化出力（`output_config.format` の JSON Schema）で答えの形を強制する。
 - 既定のモデルは軽量の `claude-haiku-5-5`。精度が足りなければ環境変数 `NIHO_FINANCE_READER_MODEL=claude-sonnet-5-5` で切り替える（オーナーの指示 2026-10-28）。
-- 鍵 `ANTHROPIC_API_KEY` が入るまでは、架空の領収書 10 枚と記録済みの応答（合成）で作り、鍵が入ったら同じ 10 枚で実 API の一致率を測る（`npm -w @niho-finance/reader run record` → `eval`）。
+- 架空の領収書 10 枚（画像 7・PDF 3）で実 API の一致率を測った（2026-10-29、`npm -w @niho-finance/reader run record` → `eval`）。Haiku 5.5 で 10 枚とも 日付・合計・税率別の内訳・登録番号・発行者が一致し、費用は 10 枚で 約 $0.0056 だったので、既定は Haiku 5.5 のままにする。
 - Document AI と Azure は、Haiku と Sonnet の両方で一致率が足りないときに同じゴールドセットで比べる。
 
 ## 理由

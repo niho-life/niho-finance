@@ -87,8 +87,14 @@ describe("createReader", () => {
   it("builds the recorded provider with the model of its file", () => {
     expect(createReader({ NIHO_FINANCE_READER_PROVIDER: "recorded" })).toMatchObject({
       provider: "recorded",
-      model: "synthetic",
+      model: "claude-haiku-5-5",
     });
+    expect(
+      createReader({
+        NIHO_FINANCE_READER_PROVIDER: "recorded",
+        NIHO_FINANCE_READER_RECORDINGS: join(GOLD_SET_DIR, "recorded.synthetic.json"),
+      }),
+    ).toMatchObject({ provider: "recorded", model: "synthetic" });
   });
 
   it("reports a missing recording file", () => {

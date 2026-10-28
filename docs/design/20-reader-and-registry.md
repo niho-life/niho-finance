@@ -259,7 +259,7 @@ interface ProviderResult {
 
 - `packages/reader`（単体）:
   - ゴールドセット: 架空の領収書 10 枚（`fixtures/receipts/r01`〜`r10`。画像 7 枚・PDF 3 枚。発行者・登録番号はすべて架空で、登録番号は 9 の並びを基にした検査用数字の正しい番号）と正解 `expected.json`、記録済みの応答 `recorded.json`。日付・合計・税率別の内訳が 8 枚以上一致し、一致しない分はすべて `validateReading` が警告を出すこと。
-  - 記録済みの応答は、鍵が入るまでは正解に 2 枚の読み違い（合計の数字の読み違い・8% の内訳の読み違い）を加えて作った合成のもの。鍵が入ったら `npm -w @niho-finance/reader run record` が実 API で `recorded.json` を取り直し、`npm -w @niho-finance/reader run eval` がモデルごとの一致率を出す（Haiku で 8 枚に届かなければ Sonnet に切り替える判断に使う）。
+  - `recorded.json` は既定のモデル（`claude-haiku-5-5`）の実 API の応答（`npm -w @niho-finance/reader run record` で記録。2026-10-29 に 10 枚とも 日付・合計・内訳・登録番号・発行者が一致、10 枚で 約 $0.0056）。`recorded.synthetic.json` は正解に 2 枚の読み違い（合計の数字の読み違い・8% の内訳の読み違い）を加えた合成の応答で、一致しない分に警告が出る経路をテストで保つために残す。モデルや指示を変えたら `record` → `npm -w @niho-finance/reader run eval <file>` で測り直し、8 枚に届かなければ `claude-sonnet-5-5` を測る。
   - `parseReading`（null・型違い・不正な日付・負の金額・大きすぎる金額）、`validateReading` の各 code、`estimatePurchaseTaxCategory`、`costNanoUsd`、`readerConfig`（鍵なし → off、prod で recorded → off、未知のモデル → 設定の誤り）、Anthropic provider の要求の形（SDK をモックしてブロックの種類・`output_config`・拒否・切り詰め・形式違い）。
 - `packages/importers`（単体）: `parseNtaResponse`（新規・失効・取消・履歴・見つからない）、`statusAt` の境界（登録日当日・失効日当日）、`createNtaClient` の 10 件ずつの分割・間隔・キャッシュ・失敗の扱い・URL の形（fetch をモック）。
 - `packages/db`（`reading.db.test.ts`・`registry-check.db.test.ts`）: 読み取りが項目を変えず `document.read` だけを残すこと、保存で `document.update` が別に残り選んだ項目だけ変わること、error の項目と無効の証憑の拒否、取引先の当てはめ、重複の候補、未読の受信箱、件数の記録、照合で 5 列と監査ログ、検査用数字の誤りの番号は照合しないこと、取引日時点の状況。

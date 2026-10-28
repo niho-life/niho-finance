@@ -315,7 +315,7 @@ describe.skipIf(!hasTestDatabase)("reading repository", () => {
         originalName: "r09.pdf",
       });
       const reader = createRecordedReader({
-        recordings: loadRecordingFile(new URL("recorded.json", RECEIPTS)),
+        recordings: loadRecordingFile(new URL("recorded.synthetic.json", RECEIPTS)),
       });
       const registry = createFixtureNtaLookup(FIXTURE_NTA_REGISTRATIONS);
 

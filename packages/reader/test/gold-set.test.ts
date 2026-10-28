@@ -14,7 +14,10 @@ import { createRecordedReader, loadRecordingFile } from "../src/recorded";
 import { validateReading } from "../src/validate";
 
 const entries = loadGoldSet();
-const recordings = loadRecordingFile(defaultRecordingsPath());
+/** The real answers of the default model (`recorded.json`, `npm run record`). */
+const recorded = loadRecordingFile(defaultRecordingsPath());
+/** Synthetic answers with two misreads, to keep the warning path covered. */
+const synthetic = loadRecordingFile(join(GOLD_SET_DIR, "recorded.synthetic.json"));
 
 describe("the gold set (20-reader §12)", () => {
   it("has seven images and three PDFs, each small", () => {
@@ -61,7 +64,10 @@ describe("the gold set (20-reader §12)", () => {
     expect(exclusiveInvoices.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("has a recorded answer for every fixture", () => {
+  it.each([
+    ["recorded.json", recorded],
+    ["recorded.synthetic.json", synthetic],
+  ])("%s has an answer for every fixture", (_name, recordings) => {
     expect(Object.keys(recordings.responses).sort()).toEqual(
       entries.map((entry) => entry.sha256).sort(),
     );
@@ -70,7 +76,10 @@ describe("the gold set (20-reader §12)", () => {
     }
   });
 
-  it("reads 8 or more fixtures right, and warns about every one it reads wrong", async () => {
+  it.each([
+    ["recorded.json", recorded],
+    ["recorded.synthetic.json", synthetic],
+  ])("%s: 8 or more fixtures read right, every misread one warned", async (_name, recordings) => {
     const results = await evaluateGoldSet(createRecordedReader({ recordings }), entries);
     const summary = summarizeGoldSet(results);
 
@@ -81,17 +90,25 @@ describe("the gold set (20-reader §12)", () => {
       expect(result.issues.length, result.id).toBeGreaterThan(0);
     }
     expect(summary.passed).toBe(true);
+  });
 
-    // The synthetic recording: r05 misreads the total, r07 the 8% line.
-    if (recordings.model === "synthetic") {
-      const byId = new Map(results.map((result) => [result.id, result]));
-      expect(mismatches.map((result) => result.id)).toEqual(["r05", "r07"]);
-      expect(byId.get("r05")?.comparison).toMatchObject({ total: false, rates: true });
-      expect(byId.get("r05")?.issues.map((issue) => issue.code)).toEqual(["rates_sum"]);
-      expect(byId.get("r07")?.comparison).toMatchObject({ total: true, rates: false });
-      expect(byId.get("r07")?.issues.map((issue) => issue.code)).toEqual(["rates_sum", "rate_tax"]);
-      // r03's number is printed with hyphens and normalized.
-      expect(byId.get("r03")?.comparison?.registrationNumber).toBe(true);
-    }
+  it("records the default model's real answers", () => {
+    expect(recorded.model).toBe("claude-haiku-5-5");
+  });
+
+  it("warns about the two synthetic misreads", async () => {
+    const results = await evaluateGoldSet(createRecordedReader({ recordings: synthetic }), entries);
+    const byId = new Map(results.map((result) => [result.id, result]));
+    // r05 misreads the total, r07 the 8% line.
+    expect(results.filter((result) => !result.comparison?.all).map((result) => result.id)).toEqual([
+      "r05",
+      "r07",
+    ]);
+    expect(byId.get("r05")?.comparison).toMatchObject({ total: false, rates: true });
+    expect(byId.get("r05")?.issues.map((issue) => issue.code)).toEqual(["rates_sum"]);
+    expect(byId.get("r07")?.comparison).toMatchObject({ total: true, rates: false });
+    expect(byId.get("r07")?.issues.map((issue) => issue.code)).toEqual(["rates_sum", "rate_tax"]);
+    // r03's number is printed with hyphens and normalized.
+    expect(byId.get("r03")?.comparison?.registrationNumber).toBe(true);
   });
 });

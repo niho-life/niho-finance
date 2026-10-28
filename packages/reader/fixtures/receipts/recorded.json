@@ -1,6 +1,6 @@
 {
-  "model": "synthetic",
-  "note": "鍵が入るまでの合成の応答。正解に 2 枚の読み違いを加えたもの（r05: 合計の数字の読み違い 2,860 → 2,960、r07: 8% の対価の読み違い 2,392 → 2,892）。r03 の登録番号は印字どおりハイフン付き。`npm -w @niho-finance/reader run record` で実 API の応答に取り直す。",
+  "model": "claude-haiku-5-5",
+  "note": "claude-haiku-5-5 の実 API の応答（2026-10-29 JST に npm -w @niho-finance/reader run record で記録）。",
   "responses": {
     "9633bd33ad38093a449438e1452f023c15dae46e45d05329594a5a40d8464c51": {
       "fixture": "r01",
@@ -20,11 +20,11 @@
             "taxAmount": 227
           }
         ],
-        "description": "日替わり定食・ドリンク"
+        "description": "日替わり定食×2、ドリンク"
       },
       "usage": {
-        "inputTokens": 1612,
-        "outputTokens": 412
+        "inputTokens": 3088,
+        "outputTokens": 744
       }
     },
     "23cff8d2011b57c2ec494e6caa311483be7c1955fa94e765bfc19f1ecaa81f1a": {
@@ -51,11 +51,11 @@
             "taxAmount": 80
           }
         ],
-        "description": "お茶・おにぎり・ボールペン・乾電池"
+        "description": "お茶、おにぎり×2、ボールペン、乾電池（※は軽減税率対象）"
       },
       "usage": {
-        "inputTokens": 1794,
-        "outputTokens": 588
+        "inputTokens": 3192,
+        "outputTokens": 478
       }
     },
     "7a78f19a54bb0213cf296bb9bb91dca92a9d283ee1f8feb8a5c9a84c5654909d": {
@@ -79,8 +79,8 @@
         "description": "タクシー代として"
       },
       "usage": {
-        "inputTokens": 1655,
-        "outputTokens": 395
+        "inputTokens": 3088,
+        "outputTokens": 439
       }
     },
     "66e4675d0fef21850e65235797690bf375130bb16ecd69fe0d819ee51bfef22e": {
@@ -101,11 +101,11 @@
             "taxAmount": 72
           }
         ],
-        "description": "駐車料金"
+        "description": "駐車料金（2026/10/09 13:05入庫、15:20出庫、駐車時間2時間15分）"
       },
       "usage": {
-        "inputTokens": 1540,
-        "outputTokens": 361
+        "inputTokens": 2958,
+        "outputTokens": 330
       }
     },
     "89de026b703a6bbdf40c0123c8c68cdcd05402e7d226d57cc4924a37b457f03a": {
@@ -117,7 +117,7 @@
         "registrationNumber": "T5999999999904",
         "transactionDate": "2026-10-12",
         "currency": "JPY",
-        "totalAmount": 2960,
+        "totalAmount": 2860,
         "rates": [
           {
             "ratePercent": 10,
@@ -126,11 +126,11 @@
             "taxAmount": 260
           }
         ],
-        "description": "書籍・雑誌"
+        "description": "書籍 架空の簿記入門、雑誌 月刊架空"
       },
       "usage": {
-        "inputTokens": 1561,
-        "outputTokens": 437
+        "inputTokens": 2958,
+        "outputTokens": 150
       }
     },
     "67b2c3e935fe001b894c08d373a7fa5e6b4caa626bf7348262dd9fa6ec7184ba": {
@@ -151,11 +151,11 @@
             "taxAmount": 230
           }
         ],
-        "description": "ノート・クリアファイル・万年筆インク"
+        "description": "ノート×3、クリアファイル×2、万年筆インク"
       },
       "usage": {
-        "inputTokens": 1508,
-        "outputTokens": 452
+        "inputTokens": 2906,
+        "outputTokens": 758
       }
     },
     "842ade2e551ca2f32147a9479d82de51acfd132ef14b4952f629b7b0c7f718be": {
@@ -171,7 +171,7 @@
         "rates": [
           {
             "ratePercent": 8,
-            "amount": 2892,
+            "amount": 2392,
             "taxIncluded": true,
             "taxAmount": 177
           },
@@ -182,11 +182,11 @@
             "taxAmount": 73
           }
         ],
-        "description": "食料品・日用品"
+        "description": "牛乳・食パン・弁当・コーヒー豆・キッチンペーパー・洗剤など"
       },
       "usage": {
-        "inputTokens": 1863,
-        "outputTokens": 694
+        "inputTokens": 3270,
+        "outputTokens": 455
       }
     },
     "26b4f3d4e1e48517faf3946f1d679d240aad323d7b52a7d367ca9ba93a27de56": {
@@ -207,11 +207,11 @@
             "taxAmount": 1200
           }
         ],
-        "description": "クラウド利用料（2026年10月分）"
+        "description": "クラウド利用料（2026年10月分） 1式"
       },
       "usage": {
-        "inputTokens": 2271,
-        "outputTokens": 517
+        "inputTokens": 3879,
+        "outputTokens": 152
       }
     },
     "5d1318488fe201633bb2aeefce915b645dc1fa5697ce75e70cd473b3df47ea8d": {
@@ -232,11 +232,11 @@
             "taxAmount": 2300
           }
         ],
-        "description": "名刺印刷・チラシ印刷"
+        "description": "名刺印刷 100枚×2名、チラシ印刷 1,000枚"
       },
       "usage": {
-        "inputTokens": 2304,
-        "outputTokens": 563
+        "inputTokens": 3879,
+        "outputTokens": 675
       }
     },
     "6a9a6f22b386116993d6d30b006d1837ba9f1000b22622dafb48efc824a5b26d": {
@@ -263,11 +263,11 @@
             "taxAmount": 100
           }
         ],
-        "description": "菓子詰め合わせ・配送料"
+        "description": "菓子詰め合わせ10箱（軽減税率対象）、配送料"
       },
       "usage": {
-        "inputTokens": 2338,
-        "outputTokens": 846
+        "inputTokens": 3879,
+        "outputTokens": 484
       }
     }
   }

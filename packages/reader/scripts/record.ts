@@ -19,7 +19,7 @@ if (!apiKey) {
     "ANTHROPIC_API_KEY がありません。実 API で記録するには鍵を設定して、もう一度実行してください。",
   );
   console.error(
-    "鍵がない間は、合成の記録（fixtures/receipts/recorded.json）で npm run eval が動きます。",
+    "鍵がない間も、記録済みの応答（fixtures/receipts/recorded.json）で npm run eval が動きます。",
   );
   process.exit(1);
 }
