@@ -45,6 +45,15 @@ const environmentSchema = z.object({
   NIHO_FINANCE_APP_URL: optionalText,
   /** The deployed commit (backup manifest, health check). */
   NIHO_FINANCE_GIT_SHA: optionalText,
+  /**
+   * The Cloud Tasks queue for jobs the screens start (`projects/<p>/locations/<r>/queues/<q>`;
+   * 受け渡しパッケージ, 14-reports §15.4). Unset locally: the screen runs the job itself.
+   */
+  NIHO_FINANCE_TASKS_QUEUE: optionalText,
+  /** The jobs service's URL (the task's target and its OIDC audience). */
+  NIHO_FINANCE_JOB_URL: optionalText,
+  /** The service account whose OIDC token the task carries (the scheduler's, 12-imports §5). */
+  NIHO_FINANCE_JOB_SERVICE_ACCOUNT: optionalText,
 });
 
 export type AppEnv = z.infer<typeof environmentSchema>;
