@@ -57,9 +57,9 @@ v2 #17 の仕様です。法人口座（[D3](../decisions/2026-10-28-bank-gmo-ao
 
 ### 2.4 失効と再接続
 
-- 次は 再接続が必要（状態 `reauth_required`）にする: トークンエンドポイントが `invalid_grant` / `invalid_client` / 401 を返す、更新後もなお API が 401、トークンの方式で API が 401、口座に保存した環境と今の環境が違う（sunabar で接続した口座を本番で同期しようとした）、暗号鍵で復号できない（鍵の差し替え）。
+- 次は 再接続が必要（状態 `reauth_required`）にする: トークンエンドポイントが `invalid_grant` / `invalid_client` / 401 を返す、更新後もなお API が 401、トークンの方式で API が 401、口座に保存した環境と今の環境が違う（sunabar で接続した口座を本番で同期しようとした）、暗号鍵で復号できない（鍵の差し替え）。暗号鍵そのものがない・形式が違うのは設定の問題で、再接続にはせず失敗として記録する。
 - このとき同期は失敗として `ImportBatch`（`error` 入り）を記録し、口座の `bank_api_error` に理由を残して終える（throw しない。ジョブは 200）。監査ログ `wallet.require_bank_reauth`。
-- 再接続（§1.1）が成功すると状態を `connected` に戻し、`bank_api_error` を消す。口座と取得済みの期間は変えない。
+- 再接続（§1.1）が成功すると状態を `connected` に戻し、`bank_api_error` を消す。同じ環境なら口座と取得済みの期間は変えない。別の環境で認可し直したときは（sunabar の口座 ID は本番の一覧にない）、口座と取得済みの期間を消して「口座の選択」に戻す。
 - 429（`WG_ERR_154`。利用上限）・5xx・通信の失敗は再接続にしない。失敗として記録し、次の同期で取り直す（取得済みの期間を進めないので取りこぼさない）。
 
 ## 3. 同期
@@ -96,7 +96,7 @@ v2 #17 の仕様です。法人口座（[D3](../decisions/2026-10-28-bank-gmo-ao
 | `occurredAt` | null（`itemKey` は登録の時刻で、取引の時刻とは限らない） |
 | `raw` | 明細のオブジェクトそのまま（`transferRequestInfo` を含む） |
 
-- 読めない明細（`itemKey` がない、日付・金額・入払コードが読めない）は失敗行（`RowFailure`。行番号は取得した中の順、元の行は 日付・入払・金額・摘要）。ただし重ねて読んだ期間（前回の取得済みの期間の末日以前）の失敗は、最初に読んだ同期が記録済みなので数えない。
+- 読めない明細（`itemKey` がない、日付・金額・入払コードが読めない）は失敗行（`RowFailure`。行番号は取得した中の順、元の行は 日付・入払・金額・摘要）。ただし重ねて読んだ期間（前回の取得済みの期間の末日より前）の失敗は、最初に読んだ同期が記録済みなので数えない。末日の分は前回の同期の後に届いた行があり得るので数える（同じ失敗を最大 2 回数える）。
 - 取得した行の残高の連続性（前の行の残高 + 金額 = この行の残高）を S4 の `checkBalanceContinuity` で見て、崩れたら警告（取込は止めない）。
 - 続けて `GET {apiBase}/accounts/balances?accountId=…` の `balance` と `baseDate` を口座に記録する（§4）。残高だけ取れなかったときは警告「銀行の残高を取得できませんでした」にして、明細は取り込む。
 
@@ -115,7 +115,7 @@ v2 #17 の仕様です。法人口座（[D3](../decisions/2026-10-28-bank-gmo-ao
 - 1 回の同期 = 1 `ImportBatch`（`source = api`、`importer = gmo_aozora`、`periodFrom` / `periodTo` = 取得の期間、`rowCount` = 取得した明細の数〔重ね読みで数えない失敗を除く〕、`importedCount` / `duplicateCount`〔`itemKey` の重複と CSV への結びの合計〕/ `failedCount`、`failures`、`warnings`）。
 - 新しい明細も新しい失敗もない同期は `ImportBatch` を作らず、口座の最終同期と残高と監査ログ（`import_batch.sync`、entityId なし）だけ更新する（3 日の重ねで毎日「新規 0」の履歴が増えないように。S4 の Stripe と同じ）。
 - 新しい明細は `pending` で入れ、`finishImportBatch` の差し込み点で S5 の `settleAfterImport`（取込時の自動登録）を渡す。取込は仕訳を直接作らない。
-- 失敗（§2.4・通信・429・通貨・ページングの異常）は `ImportBatch`（`error` 入り。`rowCount = 0`）と監査ログ `import_batch.sync` に残し、口座の `bank_api_error` に同じ理由を置く。成功したら `bank_api_error` を消す。
+- 失敗（§2.4・通信・429・通貨・ページングの異常）は `ImportBatch`（`error` 入り。`rowCount = 0`、`periodFrom` / `periodTo` は取得しようとした期間）と監査ログ `import_batch.sync` に残し、口座の `bank_api_error` に同じ理由を置く。成功したら `bank_api_error` を消す。
 
 ### 3.5 手動の同期とジョブ
 
@@ -150,7 +150,8 @@ v2 #17 の仕様です。法人口座（[D3](../decisions/2026-10-28-bank-gmo-ao
 | `stg` | `https://stg-api.gmo-aozora.com/ganb/api/corporation/v1` | `https://stg-api.gmo-aozora.com/ganb/api/auth/v1`・`https://stg-api.gmo-aozora.com` |
 | `prod` | `https://api.gmo-aozora.com/ganb/api/corporation/v1` | `https://api.gmo-aozora.com/ganb/api/auth/v1`・`https://api.gmo-aozora.com` |
 
-- 上書きの URL は `https://` で、ホストが `gmo-aozora.com` か その下位のドメインのものだけ受け付ける（トークンを他所へ送らない）。`NIHO_FINANCE_ENV ≠ prod` のときだけ `http://localhost` / `http://127.0.0.1` も許す（手元の模擬サーバで画面を確かめるため）。
+- `_AUTH_BASE` で上書きしたときは、そのオリジンを ID Token の `iss` とする（sunabar の認可利用でも `iss` を検証する）。
+- 上書きの URL は `https://` で、ホストが `gmo-aozora.com` か その下位のドメインのものだけ受け付ける（資格情報・クエリ・フラグメントは不可。HTTP のリダイレクトは追わない。トークンを他所へ送らない）。`NIHO_FINANCE_ENV ≠ prod` のときだけ `http://localhost` / `http://127.0.0.1` も許す（手元の模擬サーバで画面を確かめるため）。
 - 切替: sunabar で接続した口座は `bank_api_env = sunabar` を持つ。本番に切り替えたら、その口座は再接続が必要になる（§2.4）。本番の口座は新しい口座（設定 › 口座）で接続するのを勧める（sunabar の架空の明細を本番の帳簿の口座に残さないため）。
 - 本番の接続の手順（口座開設と API 契約の後。[07](07-operations.md) の設立直後の手順に足す）: GMO の接続通知書のクライアント ID・シークレットを Secret Manager に入れる → リダイレクト URI を GMO に登録 → Cloud Run の画面とジョブのサービスに環境変数と秘密を結ぶ → 設定 › 口座 の法人口座で「接続する」→ Scheduler の `bank-sync` を有効にする。
 - sunabar の使い方（開発）: GMO あおぞらの口座保有者が sunabar ポータルで法人の口座のアクセストークンを発行し、`.env` に `NIHO_FINANCE_GMO_AOZORA_ENV=sunabar` と `NIHO_FINANCE_GMO_AOZORA_ACCESS_TOKEN` を書く（コミットしない）。sunabar の残高は 0 円から始まるので、シミュレータで入出金を作ってから同期する。
@@ -189,7 +190,7 @@ export function resolveGmoAozoraConfig(env?: NodeJS.ProcessEnv, options?: { allo
 
 // OAuth（fetch は差し替えられる）
 export function buildAuthorizationUrl(auth, params: { state: string; nonce: string }): string;
-export function exchangeAuthorizationCode(auth, code: string, options?: { fetch?; now? }): Promise<GmoTokenSet>;   // ID Token を検証（nonce は呼び出し側が照合）
+export function exchangeAuthorizationCode(auth, code: string, options: { nonce: string; fetch?; now? }): Promise<GmoTokenSet>; // ID Token を nonce まで検証（照合を忘れられない形）
 export function refreshAccessToken(auth, refreshToken: string, options?: { fetch?; now? }): Promise<GmoTokenSet>;
 export function verifyIdToken(idToken: string, auth, expected: { nonce: string | null; now: Date }): { ok: true; claims } | { ok: false; reason: string };
 export interface GmoTokenSet { accessToken: string; refreshToken: string | null; accessTokenExpiresAt: Date; scope: string; idToken: string | null }

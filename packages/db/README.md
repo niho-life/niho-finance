@@ -37,8 +37,9 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 | --- | --- |
 | `src/imports.ts` | 取込できる口座（`listImportableWallets`）と取込形式の設定（`updateWalletImporter`）、CSV のプレビュー（`previewCsvImport`。何も書かない）と取込（`importCsv`）、履歴（`listImportBatches` / `getImportBatch`）。どの元でも使う明細の挿入（`insertWalletTransactions`。`(walletId, externalId)` で重複を数える）と、取込後の差し込み点（`finishImportBatch` が `afterImport` を呼ぶ唯一の場所。S5 のルール） |
 | `src/stripe-links.ts` | Stripe の接続（アカウント ID と、鍵を置いた環境変数の名前。鍵そのものは持たない）と同期（`syncStripeWallet` / `syncAllStripeWallets`）。鍵がない・API の失敗は `ImportBatch.error` に残して結果で返す（throw しない） |
+| `src/bank-links.ts` | 銀行 API（GMO あおぞらネット銀行）の接続（認可の保存・口座の選択・切断）と同期（`syncBankWallet` / `syncAllBankWallets`。3 日の重ね、`itemKey` の冪等、CSV との日付・金額の突合）。トークンは暗号化して口座に置き、失効は「再接続が必要」にして `ImportBatch.error` に残す（throw しない。[19](../../docs/design/19-bank-api.md)） |
 
-取込は仕訳を作らず、明細を `pending` で入れるだけです。CSV の読み取りと Stripe の変換は `@niho-finance/importers`（DB を知らない）が受け持ちます。監査ログの action は `import_batch.import`・`import_batch.sync`・`wallet.update_importer`・`stripe_account_link.create` / `.update` / `.delete` で、スナップショットに `fileBytes`・明細の `raw`・鍵は入れません。
+取込は仕訳を作らず、明細を `pending` で入れるだけです。CSV の読み取りと Stripe の変換は `@niho-finance/importers`（DB を知らない）が受け持ちます。監査ログの action は `import_batch.import`・`import_batch.sync`・`wallet.update_importer`・`stripe_account_link.create` / `.update` / `.delete`、銀行 API の `wallet.authorize_bank` / `.connect_bank` / `.disconnect_bank` / `.require_bank_reauth` で、スナップショットに `fileBytes`・明細の `raw`・鍵・銀行のトークンと口座 ID は入れません。
 
 ## migration
 
