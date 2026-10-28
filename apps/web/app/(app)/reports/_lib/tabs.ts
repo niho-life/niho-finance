@@ -1,11 +1,12 @@
 import type { PdfOrientation } from "@/lib/pdf/document";
 
-/** The six tabs of 報告 (14-reports §2), in the order of the tab row. */
+/** The tabs of 報告 (14-reports §2), in the order of the tab row; 資金繰り is v2 #19 (21 §6). */
 export const REPORT_TABS = [
   "trial-balance",
   "monthly",
   "segments",
   "cash",
+  "cashflow",
   "journal",
   "ledger",
 ] as const;
@@ -16,6 +17,7 @@ export const REPORT_TAB_LABELS: Readonly<Record<ReportTab, string>> = {
   monthly: "月次推移",
   segments: "セグメント損益",
   cash: "現預金",
+  cashflow: "資金繰り",
   journal: "仕訳帳",
   ledger: "総勘定元帳",
 };
@@ -26,6 +28,7 @@ export const REPORT_PDF_ORIENTATION: Readonly<Record<ReportTab, PdfOrientation>>
   monthly: "landscape",
   segments: "portrait",
   cash: "portrait",
+  cashflow: "portrait",
   journal: "landscape",
   ledger: "landscape",
 };

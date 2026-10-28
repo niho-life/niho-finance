@@ -1,40 +1,49 @@
 import {
   getPrismaClient,
   getSetupProgress,
+  loadCashflowInputs,
   loadReportSource,
   loadWalletStatus,
   recordExport,
   todayInJapan,
 } from "@niho-finance/db";
+import type { CalendarDate } from "@niho-finance/ledger";
 import {
+  buildCashflowForecast,
   buildCashReport,
   buildGeneralLedger,
   buildMonthlyTrend,
   buildSegmentReport,
+  CASHFLOW_DAYS,
+  cashflowCsvRows,
   csvText,
   CSV_CONTENT_TYPES,
   encodeCsv,
+  forecastStartDate,
   journalCsvRows,
   journalEntries,
   ledgerCsvRows,
   reportFileName,
   resolveReportPeriod,
+  type CashflowInputs,
   type CsvCell,
   type ReportPeriod,
   type ReportSource,
 } from "@niho-finance/reports";
 import { redirect } from "next/navigation";
 import { createElement, type ReactElement } from "react";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { csvResponse, pdfResponse } from "@/lib/pdf/download";
 import { renderPdf } from "@/lib/pdf/render";
 import { CashPdf } from "../_pdf/cash";
+import { CashflowPdf } from "../_pdf/cashflow";
 import type { PdfReportHeader } from "../_pdf/common";
 import { JournalPdf } from "../_pdf/journal";
 import { LedgerPdf } from "../_pdf/ledger";
 import { MonthlyPdf } from "../_pdf/monthly";
 import { SegmentsPdf } from "../_pdf/segments";
 import { TrialBalancePdf } from "../_pdf/trial-balance";
+import { cashflowPeriodLabel } from "./cashflow-text";
 import { cashCsvRows, monthlyCsvRows, segmentsCsvRows, trialBalanceCsvRows } from "./csv-rows";
 import { pdfPeriodLabel, segmentName } from "./format";
 import { parseReportParams, searchParamsRecord, type ReportParams } from "./query";
@@ -47,6 +56,11 @@ interface ReportOutput {
   name: string;
   csv: () => CsvCell[][];
   pdf: (header: PdfReportHeader) => ReactElement;
+  /**
+   * Dates of its own instead of the URL's period (資金繰り: the start and 90 days later, 21 §6):
+   * the file name, the PDF header and the audit log use them, without a fiscal year or segment.
+   */
+  range?: { from: CalendarDate; to: CalendarDate; label: string };
 }
 
 function notFound(message: string): Response {
@@ -62,6 +76,8 @@ async function outputOf(
   period: ReportPeriod,
   params: ReportParams,
   loadStatus: () => ReturnType<typeof loadWalletStatus>,
+  today: CalendarDate,
+  loadCashflow: (start: CalendarDate) => Promise<CashflowInputs>,
 ): Promise<ReportOutput | null> {
   const segment = period.segmentId ? segmentName(source.segments, period.segmentId) : null;
   switch (tab) {
@@ -99,6 +115,20 @@ async function outputOf(
         name: tab,
         csv: () => cashCsvRows(report),
         pdf: (header) => createElement(CashPdf, { report, header }),
+      };
+    }
+    case "cashflow": {
+      // Always the start (today) and 90 days; written even without rows (the start row).
+      const start = forecastStartDate(source.fiscalYears, today);
+      const forecast = buildCashflowForecast(source, await loadCashflow(start), {
+        start,
+        days: CASHFLOW_DAYS,
+      });
+      return {
+        name: tab,
+        csv: () => cashflowCsvRows(forecast),
+        pdf: (header) => createElement(CashflowPdf, { forecast, header }),
+        range: { from: forecast.start, to: forecast.end, label: cashflowPeriodLabel(forecast) },
       };
     }
     case "journal": {
@@ -148,29 +178,37 @@ export async function exportReport(request: Request): Promise<Response> {
 
   const source = await loadReportSource(prisma);
   const params = parseReportParams(searchParamsRecord(url.searchParams), source);
-  const period = resolveReportPeriod(params.query, source.fiscalYears, todayInJapan());
+  const today = todayInJapan();
+  const period = resolveReportPeriod(params.query, source.fiscalYears, today);
   if (!period) redirect("/settings/fiscal-years");
 
-  const output = await outputOf(tab, source, period, params, () =>
-    loadWalletStatus(prisma, { through: period.to }),
+  const output = await outputOf(
+    tab,
+    source,
+    period,
+    params,
+    () => loadWalletStatus(prisma, { through: period.to }),
+    today,
+    (start) => loadCashflowInputs(prisma, { start, days: CASHFLOW_DAYS }),
   );
   if (!output) {
     return notFound("この条件では書き出す行がありません。報告の画面で条件を確かめてください。");
   }
 
   const response = await respond(output, format, source, period, tab);
+  const { range } = output;
   await recordExport(
     prisma,
     {
       kind: tab,
       format,
-      fiscalYearNo: period.fiscalYear.no,
-      from: period.from,
-      to: period.to,
-      segment: period.segmentId,
+      fiscalYearNo: range ? null : period.fiscalYear.no,
+      from: range ? range.from : period.from,
+      to: range ? range.to : period.to,
+      segment: range ? null : period.segmentId,
       encoding: format === "csv" ? "utf8" : null,
     },
-    { actor: actor() },
+    { actor: await actor() },
   );
   return response;
 }
@@ -182,14 +220,21 @@ async function respond(
   period: ReportPeriod,
   tab: ReportTab,
 ): Promise<Response> {
-  const fileName = reportFileName(output.name, period.from, period.to, format);
+  const { range } = output;
+  const fileName = reportFileName(
+    output.name,
+    range ? range.from : period.from,
+    range ? range.to : period.to,
+    format,
+  );
   if (format === "csv") {
     return csvResponse(encodeCsv(csvText(output.csv()), "utf8"), fileName, CSV_CONTENT_TYPES.utf8);
   }
-  const segment = period.segmentId ? segmentName(source.segments, period.segmentId) : null;
+  const segment =
+    period.segmentId && !range ? segmentName(source.segments, period.segmentId) : null;
   const header: PdfReportHeader = {
     company: source.company.name,
-    periodLabel: pdfPeriodLabel(period),
+    periodLabel: range ? range.label : pdfPeriodLabel(period),
     subtitle:
       segment && tab !== "segments" && tab !== "cash" ? `セグメント: ${segment}` : undefined,
   };

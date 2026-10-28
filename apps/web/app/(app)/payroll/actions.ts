@@ -27,7 +27,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { attemptPayroll } from "./_lib/errors";
 import {
   loadPaymentPreview,
@@ -43,7 +43,7 @@ import {
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -73,11 +73,15 @@ export async function saveEmployeeAction(
   values: unknown,
 ): Promise<ActionResult<SavedEmployee>> {
   return write(
-    () => {
+    async () => {
       const input = valuesSchema.parse(values);
       return id === null
-        ? createEmployee(prisma(), input as EmployeeCreateInput, by())
-        : updateEmployee(prisma(), { ...input, id: parseId(id) } as EmployeeUpdateInput, by());
+        ? createEmployee(prisma(), input as EmployeeCreateInput, await by())
+        : updateEmployee(
+            prisma(),
+            { ...input, id: parseId(id) } as EmployeeUpdateInput,
+            await by(),
+          );
     },
     ({ employee, warnings }) => ({
       name: employee.name,
@@ -91,7 +95,12 @@ export async function setEmployeeActiveAction(
   isActive: boolean,
 ): Promise<ActionResult> {
   return write(
-    () => setEmployeeActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, by()),
+    async () =>
+      setEmployeeActive(
+        prisma(),
+        { id: parseId(id), isActive: parseBoolean(isActive) },
+        await by(),
+      ),
     () => null,
   );
 }
@@ -151,7 +160,8 @@ export async function confirmPayrollRunAction(
   values: unknown,
 ): Promise<ActionResult<ConfirmedRun>> {
   return write(
-    () => confirmPayrollRun(prisma(), valuesSchema.parse(values) as PayrollRunInput, by()),
+    async () =>
+      confirmPayrollRun(prisma(), valuesSchema.parse(values) as PayrollRunInput, await by()),
     (run) => ({ id: run.id, payMonthLabel: yearMonthLabel(run.payMonth) }),
   );
 }
@@ -176,7 +186,8 @@ export async function postPayrollPaymentAction(
   values: unknown,
 ): Promise<ActionResult<PostedPayment>> {
   return write(
-    () => postPayrollPayment(prisma(), valuesSchema.parse(values) as PayrollPaymentInput, by()),
+    async () =>
+      postPayrollPayment(prisma(), valuesSchema.parse(values) as PayrollPaymentInput, await by()),
     ({ item, entry }) => ({ title: item.title, no: entry.no }),
   );
 }
@@ -186,7 +197,7 @@ export async function markPayrollPaymentDoneAction(
   calendarItemId: string,
 ): Promise<ActionResult<{ title: string }>> {
   return write(
-    () => markPayrollPaymentDone(prisma(), parseId(calendarItemId), by()),
+    async () => markPayrollPaymentDone(prisma(), parseId(calendarItemId), await by()),
     (row) => ({ title: row.title }),
   );
 }

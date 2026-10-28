@@ -17,6 +17,7 @@ import {
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { appendAuditLog } from "./audit";
 import { bootstrapStandardData } from "./bootstrap";
+import { CALENDAR_RULES } from "./calendar";
 import { toDbDate } from "./dates";
 import { newId } from "./ids";
 import { postJournalEntryInTransaction, voidJournalEntryInTransaction } from "./journal";
@@ -366,14 +367,18 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
   await tx.user.create({
     data: { id: newId(), email: "owner@example.com", name: "架空 太郎", role: "owner" },
   });
+  // One deadline of 第 1 期 as the calendar job (S8, calendar.ts) generates it; the job adds the rest.
+  const taxReturn = CALENDAR_RULES.find((rule) => rule.key === "annual.tax-return");
+  if (!taxReturn) throw new Error("seed: the calendar rule annual.tax-return is missing");
   await tx.calendarItem.create({
     data: {
       id: newId(),
       fiscalYearId,
-      kind: "filing",
-      title: "法人税等の確定申告・納付",
+      kind: taxReturn.kind,
+      title: taxReturn.title,
+      note: taxReturn.note ?? null,
       dueDate: toDbDate("2027-05-31"),
-      ruleKey: "corporate_tax_return",
+      ruleKey: taxReturn.key,
     },
   });
 

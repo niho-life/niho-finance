@@ -45,12 +45,19 @@ import {
 import type { FiscalYear, Prisma, WalletTransaction } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import {
+  listDocumentLinks,
+  searchDocuments,
+  type DocumentListRow,
+  type LinkedDocument,
+} from "./documents";
 import { voidJournalEntryWithOpenDate } from "./entries";
 import { SettingsError } from "./errors";
 import type { AfterImportHook } from "./imports";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
 import { loadActiveRules, parseRuleMatch } from "./rule-json";
 import {
+  documentSearchSchema,
   ignoreStatementSchema,
   registerStatementSchema,
   reopenStatementSchema,
@@ -87,7 +94,9 @@ export type StatementErrorCode =
   | "STATEMENT_NOT_SETTLED"
   | "WALLET_INACTIVE"
   | "ZERO_AMOUNT"
-  | "CANDIDATE_MISMATCH";
+  | "CANDIDATE_MISMATCH"
+  /** The line paid an invoice (請求, #16): it is reopened by cancelling that payment there. */
+  | "INVOICE_PAYMENT";
 
 /**
  * A statement line that cannot be settled or reopened as asked. A `SettingsError`, so that the web's
@@ -870,6 +879,17 @@ export async function reopenWalletTransaction(
       where: { id: entryId },
       select: { status: true, sourceKind: true, sourceId: true },
     });
+    // A payment of an invoice (請求, decision 2026-10-29): the document holds the payment, so the
+    // line goes back only by cancelling that payment on the invoice (入金の取消).
+    if (entry.sourceKind === "invoice") {
+      const invoice = entry.sourceId
+        ? await tx.invoice.findUnique({ where: { id: entry.sourceId }, select: { number: true } })
+        : null;
+      throw new StatementError(
+        "INVOICE_PAYMENT",
+        `この明細は${invoice ? `請求書 ${invoice.number} の` : "請求書の"}入金に充てています。未処理に戻すには、請求の画面で入金を取り消してください`,
+      );
+    }
     // 照合 (the line was matched to an entry posted otherwise: by hand, or for the other line of a
     // transfer): only this line is unlinked; the entry stays as it is.
     if (!ownsEntry(entry, row.id)) {
@@ -1251,6 +1271,8 @@ export interface StatementEntrySummary {
    * voids it. Otherwise the line was only matched to it (照合) and 未処理に戻す unlinks the line.
    */
   ownsEntry: boolean;
+  /** The invoice whose payment the entry is (請求, #16): reopened there, not on this screen. */
+  invoiceId: string | null;
 }
 
 export interface StatementRow {
@@ -1369,6 +1391,7 @@ function entrySummary(row: ListRow, wallets: readonly WalletRef[]): StatementEnt
     replacedByNo: entry.replacedBy?.no ?? null,
     summary,
     ownsEntry: ownsEntry(entry, row.id),
+    invoiceId: entry.sourceKind === "invoice" ? entry.sourceId : null,
   };
 }
 
@@ -1692,6 +1715,64 @@ export async function settleImportedWalletTransactions(
     orderBy: [{ txnDate: "asc" }, { id: "asc" }],
   });
   return settlePendingLines(db, rows, { actor: options.actor, storeSuggestion: true });
+}
+
+// ---------------------------------------------------------------------------
+// 証憑 of a line (15 §5; the documents themselves are S6's, 13-documents §9)
+// ---------------------------------------------------------------------------
+
+/** How many inbox documents the sheet offers. */
+const DOCUMENT_CHOICES = 50;
+
+export interface StatementInboxDocument extends DocumentListRow {
+  /** The document's amount is the line's |amount|: offered first. */
+  sameAmount: boolean;
+  /** Days between the document's date and the line's (`null` when the document has no date). */
+  days: number | null;
+}
+
+export interface StatementDocuments {
+  /** The documents linked to the line (voided ones included, as the record of the link). */
+  linked: LinkedDocument[];
+  /**
+   * The inbox (unlinked or unsorted documents, 13 §1) without the linked ones: the same amount
+   * first, then the nearest date (undated last), then the inbox's own order.
+   */
+  inbox: StatementInboxDocument[];
+}
+
+/** 証憑 of a statement line (15 §5): what is linked, and the inbox to link from. Reads only. */
+export async function loadStatementDocuments(db: Db, id: string): Promise<StatementDocuments> {
+  const line = await db.walletTransaction.findUnique({
+    where: { id },
+    select: { id: true, txnDate: true, amount: true },
+  });
+  if (!line) throw new StatementError("STATEMENT_NOT_FOUND", NOT_FOUND);
+  const linked = await listDocumentLinks(db, { kind: "wallet_transaction", id });
+  const linkedIds = new Set(linked.map((document) => document.id));
+  const { rows } = await searchDocuments(db, documentSearchSchema.parse({ tab: "inbox" }), {
+    pageSize: DOCUMENT_CHOICES,
+  });
+  const size = abs(line.amount);
+  const date = fromDbDate(line.txnDate);
+  const inbox = rows
+    .filter((row) => !linkedIds.has(row.id))
+    .map((row, index) => ({
+      index,
+      row: {
+        ...row,
+        sameAmount: row.amount !== null && row.amount === size,
+        days: row.txnDate ? Math.abs(daysBetween(date, row.txnDate)) : null,
+      },
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.row.sameAmount) - Number(a.row.sameAmount) ||
+        (a.row.days ?? Number.MAX_SAFE_INTEGER) - (b.row.days ?? Number.MAX_SAFE_INTEGER) ||
+        a.index - b.index,
+    )
+    .map(({ row }) => row);
+  return { linked, inbox };
 }
 
 /**

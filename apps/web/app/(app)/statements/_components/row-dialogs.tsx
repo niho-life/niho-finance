@@ -25,7 +25,7 @@ import {
 } from "./model";
 
 /** 「01/05 振込 ｶ)ｶｸｳﾌﾄﾞｳｻﾝ −88,000」: which line a dialog is about. */
-function lineSummary(row: ClientStatementRow, thisYear: number): string {
+export function lineSummary(row: ClientStatementRow, thisYear: number): string {
   return `${shortDate(row.txnDate, thisYear)} ${row.walletName} · ${row.descriptionRaw} ${signedAmount(row.amount)}`;
 }
 

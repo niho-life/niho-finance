@@ -1,0 +1,49 @@
+{
+  "form": "HOT010",
+  "formVersion": "3.0",
+  "edition": "2019",
+  "industry": "10",
+  "effectiveFrom": "2020-04-01",
+  "note": "勘定科目コード表（2019年版・一般商工業）。令和2年4月1日以後提出分。effectiveFrom は提出日（期末の 2 か月後とみなす）と比べる（17-financial-statements §6）",
+  "retrievedOn": "2026-10-28",
+  "statements": { "BS": "bs-10.json", "PL": "pl-10.json", "SS": "ss.json", "NT": "nt.json" },
+  "defaultMapping": "default-mapping.json",
+  "sources": [
+    {
+      "file": "BScode10_2019.xlsx",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/1/BScode10_2019.xlsx",
+      "lastModified": "2024-01-19",
+      "sha256": "32b735ca13f0c0e070b533719a4926171a848fc799e707830dfa78260b2736ca"
+    },
+    {
+      "file": "PLcode10_2019.xlsx",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/2/PLcode10_2019.xlsx",
+      "lastModified": "2024-01-19",
+      "sha256": "e3556061881c5106ac273ce34cf8e758d4f249154af44e5c700105c541ecc364"
+    },
+    {
+      "file": "SScode_2019.xlsx",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/3/SScode_2019.xlsx",
+      "lastModified": "2024-01-19",
+      "sha256": "d3fc614131c11727fd4381d4165a0238618ca7c5bb20dbaad172bd876d3c267d"
+    },
+    {
+      "file": "NTcode_2019.xlsx",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/3/NTcode_2019.xlsx",
+      "lastModified": "2024-01-19",
+      "sha256": "f3d84694313f6925d2476218cba8aaca95e19e60b0a49fa837dfa98564aeba30"
+    },
+    {
+      "file": "HOT010_3.0_NT.xlsx",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/3/HOT010_3.0_NT.xlsx",
+      "lastModified": "2024-01-19",
+      "sha256": "613ffd7614c8fe88e0e1cc3998d144edc16f838d419cf631e66198774df8087a"
+    },
+    {
+      "file": "csv_jyoho4_5_1.pdf",
+      "url": "https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho4_5_1.pdf",
+      "lastModified": "2024-04-09",
+      "sha256": "c435332bd1e52da6f424beca16a4ce1ddf5a3b3ba8c8a5d373f82c2f4d71575f"
+    }
+  ]
+}

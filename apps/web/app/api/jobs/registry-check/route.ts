@@ -1,27 +1,12 @@
-import { checkPartnerRegistrations, getPrismaClient } from "@niho-finance/db";
-import { verifyJobRequest } from "@/lib/jobs/auth";
-import { methodNotAllowed } from "@/lib/jobs/stripe-sync";
+import { runJob } from "@/lib/jobs/run";
 import { getNtaLookup } from "@/lib/reader/config";
-import { handleRegistryCheckJob } from "@/lib/registry/job";
+import { createRegistryCheckJob } from "@/lib/registry/job";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Cloud Scheduler's monthly registry check (20-reader §11, 06 の invoice-registry-verify):
- * OIDC-authenticated, always 200 once in.
- */
-export async function POST(request: Request): Promise<Response> {
-  return handleRegistryCheckJob(request, {
-    verify: (incoming) => verifyJobRequest(incoming),
-    configured: () => getNtaLookup() !== null,
-    check: async (actor) => {
-      const lookup = getNtaLookup();
-      if (!lookup) throw new Error("the registry lookup is not configured");
-      return checkPartnerRegistrations(getPrismaClient(), lookup, { actor });
-    },
-  });
-}
+const registryCheckJob = createRegistryCheckJob({ lookup: getNtaLookup });
 
-export function GET(): Response {
-  return methodNotAllowed();
+/** The monthly registry check (20-reader §11; Cloud Scheduler, jobs service only). */
+export async function POST(request: Request): Promise<Response> {
+  return runJob(request, "registry-check", registryCheckJob);
 }

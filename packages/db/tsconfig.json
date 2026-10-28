@@ -8,6 +8,7 @@
     "test",
     "prisma/**/*.ts",
     "prisma.config.ts",
+    "scripts",
     "vitest.config.ts",
     "vitest.db.config.ts"
   ]

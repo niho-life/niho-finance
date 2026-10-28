@@ -159,6 +159,8 @@ enum SourceKind {
   import
   system
   payroll
+  /// Year-end entries not about one fixed asset (繰延資産の償却・前払未払・消費税・法人税等・決算振替)
+  year_end
 
   @@map("source_kind")
 }
@@ -302,21 +304,25 @@ model Company {
 }
 
 model FiscalYear {
-  id               String               @id
-  companyId        String               @map("company_id")
+  id                String               @id
+  companyId         String               @map("company_id")
   /// 第 n 期
-  no               Int
-  startDate        DateTime             @map("start_date") @db.Date
-  endDate          DateTime             @map("end_date") @db.Date
-  status           FiscalYearStatus     @default(open)
-  consumptionTax   ConsumptionTaxMethod @map("consumption_tax")
-  accountingMethod AccountingMethod     @map("accounting_method")
+  no                Int
+  startDate         DateTime             @map("start_date") @db.Date
+  endDate           DateTime             @map("end_date") @db.Date
+  status            FiscalYearStatus     @default(open)
+  consumptionTax    ConsumptionTaxMethod @map("consumption_tax")
+  accountingMethod  AccountingMethod     @map("accounting_method")
   /// Monthly close: no posting or voiding on or before this date
-  lockedThrough    DateTime?            @map("locked_through") @db.Date
+  lockedThrough     DateTime?            @map("locked_through") @db.Date
   /// Next JournalEntry.no to assign. Incremented in the posting transaction (no gaps).
-  nextEntryNo      Int                  @default(1) @map("next_entry_no")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  nextEntryNo       Int                  @default(1) @map("next_entry_no")
+  /// Year-end checklist confirmations: { balances?: { at, actor }, accruals?: { at, actor } }
+  yearEndChecks     Json?                @map("year_end_checks")
+  /// 決算書の設定 (17-financial-statements §3.1): words and dates of the statements, never numbers
+  statementSettings Json?                @map("statement_settings")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   company        Company        @relation(fields: [companyId], references: [id])
   journalEntries JournalEntry[]
@@ -683,7 +689,8 @@ model JournalEntry {
   walletTransactions WalletTransaction[]
   documentLinks      DocumentLink[]
   invoices           Invoice[]
-  disposedAssets     FixedAsset[]
+  disposedAssets     FixedAsset[]        @relation("FixedAssetDisposal")
+  acquiredAssets     FixedAsset[]        @relation("FixedAssetAcquisition")
 
   @@unique([fiscalYearId, no])
   @@index([fiscalYearId, entryDate])
@@ -891,14 +898,21 @@ model FixedAsset {
   segmentId               String?            @map("segment_id")
   disposedAt              DateTime?          @map("disposed_at") @db.Date
   disposalEntryId         String?            @map("disposal_entry_id")
+  /// The journal entry the asset was bought with (登録の「取得の仕訳から」 or 「仕訳も一緒に登録」)
+  acquisitionEntryId      String?            @map("acquisition_entry_id")
   note                    String?
+  /// Logical delete of the registration (登録の取消); the acquisition entry stays as it is
+  voidedAt                DateTime?          @map("voided_at") @db.Timestamptz(6)
+  voidReason              String?            @map("void_reason")
   createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  account       Account       @relation(fields: [accountId], references: [id])
-  segment       Segment?      @relation(fields: [segmentId], references: [id])
-  disposalEntry JournalEntry? @relation(fields: [disposalEntryId], references: [id])
+  account          Account       @relation(fields: [accountId], references: [id])
+  segment          Segment?      @relation(fields: [segmentId], references: [id])
+  disposalEntry    JournalEntry? @relation("FixedAssetDisposal", fields: [disposalEntryId], references: [id])
+  acquisitionEntry JournalEntry? @relation("FixedAssetAcquisition", fields: [acquisitionEntryId], references: [id])
 
+  @@index([acquisitionEntryId])
   @@map("fixed_asset")
 }
 
@@ -938,18 +952,20 @@ model RecurringItem {
 
 /// Tax and legal deadlines generated from the fiscal year by rule.
 model CalendarItem {
-  id           String           @id
-  fiscalYearId String?          @map("fiscal_year_id")
-  kind         CalendarItemKind
-  title        String
-  dueDate      DateTime         @map("due_date") @db.Date
+  id             String           @id
+  fiscalYearId   String?          @map("fiscal_year_id")
+  kind           CalendarItemKind
+  title          String
+  dueDate        DateTime         @map("due_date") @db.Date
   /// Identifier of the generating rule (unique per fiscal year)
-  ruleKey      String?          @map("rule_key")
-  completedAt  DateTime?        @map("completed_at") @db.Timestamptz(6)
-  completedBy  String?          @map("completed_by")
-  note         String?
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ruleKey        String?          @map("rule_key")
+  completedAt    DateTime?        @map("completed_at") @db.Timestamptz(6)
+  completedBy    String?          @map("completed_by")
+  note           String?
+  /// Last day a reminder mail went out (7 days before and on/after the due date)
+  lastNotifiedOn DateTime?        @map("last_notified_on") @db.Date
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   fiscalYear FiscalYear? @relation(fields: [fiscalYearId], references: [id])
 

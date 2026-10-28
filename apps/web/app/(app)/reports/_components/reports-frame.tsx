@@ -21,6 +21,8 @@ export function ReportsFrame({
   controls,
   exportParams = {},
   exportable,
+  conditions = true,
+  meta,
   children,
 }: {
   tab: ReportTab;
@@ -35,6 +37,10 @@ export function ReportsFrame({
   exportParams?: ExtraParams;
   /** `false` when there is nothing to write (empty report, no account chosen). */
   exportable: boolean;
+  /** `false`: the tab takes no conditions (資金繰り, 21 §6) and the form is left out. */
+  conditions?: boolean;
+  /** Replaces 「第 n 期 …」 next to the title (資金繰り shows its 90 days). */
+  meta?: ReactNode;
   children: ReactNode;
 }) {
   // Plain links (not next/link): a download must not be prefetched or fetched as a page, or the
@@ -51,17 +57,19 @@ export function ReportsFrame({
     <>
       <PageHeader
         title="報告"
-        meta={fiscalYearLabel(period)}
+        meta={meta ?? fiscalYearLabel(period)}
         actions={
           <>
-            <ConditionForm
-              tab={tab}
-              source={source}
-              period={period}
-              hidden={hidden}
-              linkParams={linkParams}
-              controls={controls}
-            />
+            {conditions ? (
+              <ConditionForm
+                tab={tab}
+                source={source}
+                period={period}
+                hidden={hidden}
+                linkParams={linkParams}
+                controls={controls}
+              />
+            ) : null}
             {exportable ? (
               <span className="flex items-center gap-2">
                 {exportLink("csv", "CSV")}

@@ -24,7 +24,8 @@
     "db:migrate": "npm -C packages/db run migrate:deploy --",
     "db:migrate:dev": "npm -C packages/db run migrate:dev --",
     "db:seed": "npm -C packages/db run seed --",
-    "db:reset": "npm -C packages/db run migrate:reset --"
+    "db:reset": "npm -C packages/db run migrate:reset --",
+    "db:restore": "npm -C packages/db run restore --"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

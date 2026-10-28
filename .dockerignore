@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/coverage
+.env
+.env.*
+!.env.example
+docs
+*.md
+!packages/db/README.md
+scripts/deploy.env
+.wrangler
+tmp

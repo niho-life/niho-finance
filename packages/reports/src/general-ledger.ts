@@ -50,7 +50,10 @@ export interface GeneralLedgerReport {
   rows: LedgerRow[];
   debitTotal: Money;
   creditTotal: Money;
-  /** opening + debit − credit on the normal side (= the trial balance's balance). */
+  /**
+   * opening + debit − credit on the normal side (= the trial balance's balance; for a P&L account
+   * of a closed year the ledger also shows the 決算振替, which the trial balance leaves out).
+   */
   closing: Money;
   empty: boolean;
 }

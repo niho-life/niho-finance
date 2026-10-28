@@ -56,6 +56,10 @@ describe("labels of entries and the audit log", () => {
     expect(auditActionLabel("payroll_run.confirm")).toBe("支給の確定");
     expect(auditActionLabel("payroll_payment.post")).toBe("納付の登録");
     expect(auditActionLabel("calendar_item.complete")).toBe("完了にする");
+    expect(auditActionLabel("calendar_item.reopen")).toBe("未完了に戻す");
+    expect(auditActionLabel("calendar_item.notify")).toBe("期限の通知");
+    expect(auditActionLabel("calendar_item.delete")).toBe("期限の削除");
+    expect(auditActionLabel("calendar_item.update")).toBe("変更");
     expect(auditActionLabel("seed.apply")).toBeNull();
     expect(auditActionLabel("create")).toBeNull();
   });

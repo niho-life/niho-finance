@@ -4,7 +4,7 @@ import { applyDocumentReading, getPrismaClient, type ReadingProposalField } from
 import { revalidatePath } from "next/cache";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { readDocumentForActor } from "@/lib/reader/read-document";
 
 /*
@@ -23,7 +23,7 @@ export interface ReadDocumentOutcome {
 }
 
 export async function readDocumentAction(id: string): Promise<ActionResult<ReadDocumentOutcome>> {
-  const result = await attempt(() => readDocumentForActor(parseId(id), actor()));
+  const result = await attempt(async () => readDocumentForActor(parseId(id), await actor()));
   if (!result.ok) return result;
   // The detail, the list's states and the inbox's unread count all read the proposal.
   revalidatePath("/", "layout");
@@ -41,12 +41,12 @@ export async function applyDocumentReadingAction(
   id: string,
   fields: readonly ReadingProposalField[],
 ): Promise<ActionResult> {
-  const result = await attempt(() =>
+  const result = await attempt(async () =>
     applyDocumentReading(
       getPrismaClient(),
       // The repository's schema checks the items: an unknown or repeated one is refused.
       { documentId: parseId(id), fields: [...fields] },
-      { actor: actor() },
+      { actor: await actor() },
     ),
   );
   if (!result.ok) return result;

@@ -16,7 +16,7 @@
 - **登録** `registerWalletTransaction(id, input)`: 未処理 → 登録済み。仕訳は `sourceKind = wallet_txn`・`sourceId = 明細の ID`・日付 = 明細の日付（`txnDate`）。出金（`amount < 0`）は 借方 科目の行（分割なら複数）／税抜経理なら 借方 仮払消費税／貸方 口座（科目と補助科目）|金額|。入金（`amount > 0`）は 借方 口座／貸方 科目の行（複数可）／税抜経理なら 貸方 仮受消費税。科目の行の金額は税込で受け、`splitTaxInclusive`（11 §1 と同じ分割・経過措置を含む）で税額を持つ。摘要は入力（既定は明細の摘要そのまま。200 字で切る）、取引先は科目の行に、口座の行は税区分 `na`・セグメントは口座の既定。科目は 口座に紐づく科目・現預金・仮受仮払 を選べない（`isReservedAccount`。口座どうしの移動は振替）。入金は 収益・資産・負債・純資産（資本金の払込や借入の入金）、出金は 費用・資産・負債（前払・固定資産・未払金や借入金の返済）の科目。収益・費用の行はセグメント必須（台帳の `SEGMENT_REQUIRED`）。
 - **振替** `transferWalletTransaction(id, input)`: 未処理 → 振替。相手の指定は 3 通り（§8）。(a) 相手口座の未処理の明細（同額・逆符号）: 1 仕訳（借方 入金側の口座／貸方 出金側の口座、金額 |金額|）を作り、両方の明細を `transfer` にして同じ仕訳を指す。(b) 相手口座だけ（明細はまだない）: 同じ形の仕訳を作り、この明細だけを結ぶ。手数料があれば 11 §4.3 の振替と同じ行（支払手数料 5400・出金側から引く）。(c) 登録済みの振替の仕訳: 新しい仕訳を作らず、この明細をその仕訳に結ぶだけ。
 - **無視** `ignoreWalletTransaction(id, { reason? })`: 未処理 → 無視。理由は任意（`ignoredReason`）。
-- **未処理に戻す** `reopenWalletTransaction(id, { reason? })`: 無視 → 未処理（理由は任意）。登録済み・振替で、仕訳がこの明細のために作ったもの（`sourceKind = wallet_txn` かつ `sourceId = この明細`）なら、仕訳を `voidJournalEntryWithOpenDate` で取り消し（反対仕訳。理由は必須。締め済みなら開いている最初の日付）、その仕訳を指す明細をすべて未処理に戻す（`journalEntryId = null`）。照合で結んだだけの明細（手入力の振替や、相手の明細のために作った仕訳に結んだもの）は、その明細だけを外して未処理に戻し、仕訳はそのまま残す（理由は任意）。仕訳が取引の画面で既に取消済み・訂正済みなら取消は飛ばして明細だけ戻す（訂正後の仕訳は残る。要るなら取引の画面で取り消す）。一覧の行は `entry.ownsEntry` でこの 2 つを見分け、確認の文を変える。
+- **未処理に戻す** `reopenWalletTransaction(id, { reason? })`: 無視 → 未処理（理由は任意）。登録済み・振替で、仕訳がこの明細のために作ったもの（`sourceKind = wallet_txn` かつ `sourceId = この明細`）なら、仕訳を `voidJournalEntryWithOpenDate` で取り消し（反対仕訳。理由は必須。締め済みなら開いている最初の日付）、その仕訳を指す明細をすべて未処理に戻す（`journalEntryId = null`）。照合で結んだだけの明細（手入力の振替や、相手の明細のために作った仕訳に結んだもの）は、その明細だけを外して未処理に戻し、仕訳はそのまま残す（理由は任意）。仕訳が取引の画面で既に取消済み・訂正済みなら取消は飛ばして明細だけ戻す（訂正後の仕訳は残る。要るなら取引の画面で取り消す）。一覧の行は `entry.ownsEntry` でこの 2 つを見分け、確認の文を変える。請求書の入金に充てた明細（仕訳の `sourceKind = invoice`）は未処理に戻せない。「…」は「未処理に戻す」の代わりに「請求書を開く」を出し、入金の取消は請求の画面で行う（[決定](../decisions/2026-10-29-invoice-entries-locked.md)）。
 - **5 秒の取消**（§7）は `reopenWalletTransaction` を理由「登録直後の取消」で呼ぶ。内部は反対仕訳で、連番は消費する（帳簿の不変性）。
 - **メモ** `updateWalletTransactionNote(id, { note })`: どの状態でも。仕訳には書かない。
 - 仕訳の日付は明細の日付で固定する（会計上の日付を変えない）。日付が締め済み（`lockedThrough` 以前）なら登録・振替は台帳が `PERIOD_LOCKED` で拒否し、行に「2026/12/31 までは締めています。登録するには 設定 › 会計期間 で締めを戻してください」と出す。日付がどの会計期間にも入らないときも同様（`OUT_OF_FISCAL_YEAR`）。
@@ -42,7 +42,7 @@
 - 口座チップ: 「すべて n」と口座ごと（名前と未処理の件数。0 件でも出す。無効な口座は未処理があるときだけ）。リンクで `wallet` を切り替え、`status` と `q` は保つ。
 - 状態タブ: 未処理（件数つき）/ 登録済み / 振替 / 無視。右に検索（GET フォーム。摘要・振込人の部分一致。数字と区切りだけなら金額の完全一致 |金額|）。処理済みのタブでは「ルールで自動登録」のチェック（`by=rule`）。検索欄は `/` でフォーカスする。
 - 表（PC の列）: 選択 ・ 日付 ・ 摘要（取込のまま。長いときは折返し。下に口座名、振込人があれば「振込人: …」を小さく）・ 金額（右揃え。入金はそのまま「12,340」、出金は「−12,340」。色は変えない）・ 推定（§4 のチップ）・ 操作。行の高さは最低 40px で、摘要の折返しとチップで伸びる。
-- 未処理の行の推定: 科目 ・ 税区分 ・ 取引先 ・ セグメント のチップ。ルール一致と手で選び直した値は実線、それ以外の推定は点線、空は「科目を選ぶ」のような点線の薄いチップ。振替の推定は「振替 → 架空銀行 12/26 +10,604」の実線（ルール）または点線（候補）のチップ 1 つ。出金で証憑の紐づけ（`DocumentLink.walletTransactionId`）がない行には warn 色の小さな「証憑なし」チップ（S6 までは常に出る）。
+- 未処理の行の推定: 科目 ・ 税区分 ・ 取引先 ・ セグメント のチップ。ルール一致と手で選び直した値は実線、それ以外の推定は点線、空は「科目を選ぶ」のような点線の薄いチップ。振替の推定は「振替 → 架空銀行 12/26 +10,604」の実線（ルール）または点線（候補）のチップ 1 つ。出金で証憑の紐づけ（`DocumentLink.walletTransactionId`）がない行には warn 色の小さな「証憑なし」チップ（押すと §5 の証憑の Sheet。登録済みの出金の行にも出す）。
 - 未処理の行の操作: 主操作のボタン（primary・sm。既定「登録」、推定が振替なら「振替」、ルールの動作が無視なら「無視」）、「無視」（ghost・sm。主操作が無視のときは「登録」）、「…」（§5）。
 - 処理済みの行: 推定の代わりに結果。登録済み → 「No. 12 · 地代家賃」（仕訳の詳細 `/entries/[id]` へのリンク。科目は口座以外の最初の行、2 行以上なら「ほか n 行」）。振替 → 「No. 14 · 振替 → 架空銀行」。無視 → 「無視」と理由。自動登録なら「ルールで自動登録」を muted で添える。仕訳が取消済み・訂正済みならその旨（「取消済み」「→ No. 20 に訂正」）。操作は「…」だけ（取引を開く / 未処理に戻す / メモ）。
 - 1024px 未満（スマホと、サイドナビで幅が足りないタブレット）: 2 段。1 段目 日付・摘要（口座）／金額、2 段目 チップ（横にはみ出すときは横スクロール）と 主操作・無視・「…」。選択のチェックは 1 段目の左。
@@ -71,7 +71,7 @@
 - **振替**（T・推定が振替のときの主操作）: §8 のポップオーバー。推定が振替で候補が決まっているとき、主操作（Enter）はポップオーバーを開かずに最も近い候補で振替する。
 - **編集**（E・チップのクリック）: ポップオーバーに 科目（select。出金は 費用 → 現預金以外の資産 → 負債、入金は 収益 → 資産 → 負債 → 純資産 の順。口座の科目・現預金・仮受仮払は出さない）、税区分（方向のグループを先に）、取引先、セグメント、摘要（既定は明細の摘要）。科目を変えたら未編集の税区分・セグメントを科目の既定で埋める（11 §4 と同じ規則）。「登録」（primary。Enter）と「キャンセル」（Esc）。下に「分割」「ルールにする」へのリンク。
 - **ルールにする**（R）: §10 の Sheet を、口座 = この明細の口座、「摘要に含む」= 摘要のキーに近い文字列（数字を除いた摘要。編集できる）、符号 = この明細の符号、動作 = 行のチップの値（振替の推定なら振替）で開く。「次回から: 候補として表示 / 自動で登録」の選択（既定は候補）と、自動のときは「一致する未処理 n 件も今すぐ登録する」のチェック。保存すると行のチップは実線になり、今すぐ登録を選んだ行は片付く。
-- **「…」**: 証憑を紐づける（S6 まで「準備中」の非活性）、メモ（dialog の textarea。`note` に保存。メモがある行は摘要の下に小さく出す）、分割（§9）、理由をつけて無視（dialog。理由の text）。処理済みの行では 取引を開く（リンク）、未処理に戻す（登録済み・振替は理由必須の ConfirmDialog。反対仕訳の日付を文で出す。無視は確認だけ）、メモ。
+- **「…」**: 証憑を紐づける（Sheet: 紐づいた証憑と「外す」、「証憑を追加」（アップロード・撮影。保存と同時にこの明細に紐づく、[13 §9](13-documents.md)）、「受信箱から選ぶ」（同じ金額を先に、次に日付の近い順。「紐づける」）。Sheet は開いたまま続けて紐づけられる）、メモ（dialog の textarea。`note` に保存。メモがある行は摘要の下に小さく出す）、分割（§9）、理由をつけて無視（dialog。理由の text）。処理済みの行では 取引を開く（リンク）、証憑を紐づける、未処理に戻す（登録済み・振替は理由必須の ConfirmDialog。反対仕訳の日付を文で出す。無視は確認だけ）、メモ。
 - **複数選択**: 行の左のチェック（Space）。1 件以上で表の上に帯「選択 n 件 · 登録 · 無視 · 解除」。一括登録は ConfirmDialog に「n 件を登録します。入金 x 円 / 出金 y 円」。科目のない行は登録せず「科目のない m 件は登録しませんでした」と残す。一括無視は件数を確認。処理は 1 件ずつ順に行い（同時実行で採番を争わない）、失敗した行はその理由を行に残す。
 
 ## 6. キーボード
@@ -145,7 +145,7 @@
   - `src/master-data.ts`（追記）: `AUDIT_ACTION_LABELS` に `wallet_transaction.*` / `rule.*`、`AUDIT_ENTITIES` と `AUDIT_ENTITY_LABELS` に `wallet_transaction`（明細）と `rule`（ルール）。
   - テスト: 推定の順序（ルール → 候補 → 履歴 → 取引先 → 既定）、摘要のキー、正規表現・金額・符号・振込人の一致、分割の貸借一致と合計、税込 / 税抜 の行、入金と出金の行の向き、予約された科目の拒否。
 - `packages/db`
-  - `src/statements.ts`: `listWalletTransactions(db, filters, page)`（件数つき。推定と候補を行に添える）、`countPendingWalletTransactions(db)`、`countPendingByWallet(db)`、`getWalletTransaction(db, id)`、`registerWalletTransaction`、`transferWalletTransaction`、`ignoreWalletTransaction`、`reopenWalletTransaction`、`updateWalletTransactionNote`、`findTransferCandidates`、`settleImportedWalletTransactions`、`loadStatementOptions(db)`（`loadEntryFormOptions` に口座の既定などを足す）。書き込みは `(db, id, input, { actor })` で 1 トランザクション・監査ログつき。
+  - `src/statements.ts`: `listWalletTransactions(db, filters, page)`（件数つき。推定と候補を行に添える）、`countPendingWalletTransactions(db)`、`countPendingByWallet(db)`、`getWalletTransaction(db, id)`、`registerWalletTransaction`、`transferWalletTransaction`、`ignoreWalletTransaction`、`reopenWalletTransaction`、`updateWalletTransactionNote`、`findTransferCandidates`、`settleImportedWalletTransactions`、`settleAfterImport`、`loadStatementDocuments(db, id)`（紐づいた証憑と受信箱。紐づけ・外すは S6 の `linkDocument` / `unlinkDocument`）。書き込みは `(db, id, input, { actor })` で 1 トランザクション・監査ログつき。
   - `src/rules.ts`: `listRules`、`getRule`、`createRule`、`updateRule`、`setRuleActive`、`countRuleMatches(db, match, walletId)`、`applyRuleToPending(db, ruleId, { actor })`、`loadActiveRules(db)`。
   - `src/schemas.ts`（追記）: `statementsFilterSchema`、`registerStatementSchema`（1 行 / `lines` の分割）、`transferStatementSchema`（`counterpart`: `txn:<id>` / `entry:<id>` / `wallet:<id>` と手数料）、`ignoreStatementSchema`、`reopenStatementSchema`、`statementNoteSchema`、`ruleMatchSchema`、`ruleActionSchema`、`ruleCreateSchema`、`ruleUpdateSchema`。
   - `src/audit-query.ts`（追記）: 対象の表示名に 明細（日付と金額）とルール（名前）。

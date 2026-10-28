@@ -251,9 +251,9 @@ interface ProviderResult {
 
 ## 11. 月次の再照合ジョブ `POST /api/jobs/registry-check`
 
-- [06](06-architecture.md) の `invoice-registry-verify`。認証は S4 の `verifyJobRequest`（Cloud Scheduler の OIDC。ローカルは `NIHO_FINANCE_JOB_TOKEN`）。Cloud Scheduler は毎月 1 日 06:30 JST（S8 が作る）。
-- `checkPartnerRegistrations`（全件）を actor = ジョブの principal で回し、200 で `{ ok: true, checked, registered, notRegistered, ended, failed, errors }`。アプリケーション ID がなければ 200 で `{ ok: false, error: "国税庁の照合が設定されていません" }`。照合の失敗も 200（再試行の嵐を避ける。12 §5 と同じ）。認証の失敗は 401 / 403 / 503。`GET` は 405。
-- ハンドラ本体は `apps/web/lib/registry/job.ts`（依存を注入してテストする。`lib/jobs/stripe-sync.ts` と同じ形）。
+- [06](06-architecture.md) の `invoice-registry-verify`。S8 のジョブの作法（[`docs/ops/deploy.md`](../ops/deploy.md) §6、`apps/web/lib/jobs/run.ts` の `runJob`）に従う: ジョブ用サービス（`NIHO_FINANCE_SERVICE=jobs`）だけで動き、画面側では 404。認証は Cloud Run の IAM と S4 の `verifyJobRequest`（Scheduler の OIDC。ローカルは `NIHO_FINANCE_JOB_TOKEN`）。書き込みの actor は `system`。
+- `checkPartnerRegistrations`（全件）を回し、200 で `{ ok: true, job: "registry-check", checked, registered, notRegistered, ended }`。アプリケーション ID がない・照合できなかった番号がある（照合できた取引先の結果は保存したまま）ときは 500 と `job.finished`（`ok=false`）の 1 行ログで、S8 の通知が拾う。Scheduler は再試行しない（翌月にまた回る。手で回すなら設定 › 取引先 の「照合する」）。認証の失敗は 401 / 403 / 503。
+- ハンドラは `apps/web/lib/registry/job.ts` の `createRegistryCheckJob`（照合のクライアントを注入してテストする）。
 
 ## 12. テスト
 
@@ -267,7 +267,7 @@ interface ProviderResult {
 
 ## 13. 他レーンに渡すもの
 
-- S8（#9）: Secret Manager に `ANTHROPIC_API_KEY` と `NIHO_FINANCE_NTA_APPLICATION_ID` を作り Cloud Run に結ぶ。Cloud Scheduler `registry-check`（毎月 1 日 06:30 JST、OIDC、`POST /api/jobs/registry-check`）。
+- S8（#9）: Secret Manager に `ANTHROPIC_API_KEY` と `NIHO_FINANCE_NTA_APPLICATION_ID` を作り、画面用サービス（読み取り・照合する）とジョブ用サービス（照合のジョブ）の Cloud Run に結ぶ（`docs/ops/deploy.md` の環境変数の表）。Cloud Scheduler `niho-finance-registry-check`（毎月 1 日 06:30 JST、OIDC、ジョブ用サービスの `/api/jobs/registry-check`）は、アプリケーション ID が入ってから作る。Scheduler は 4 件目になり月 15 円ほど増える（無料枠 3 件は使い切っている）ので、増やさない場合は既存の日次ジョブに「毎月 1 日だけ照合も回す」を足す案もある。`scripts/run-job.sh` に `registry-check` を足すと手でも回せる。
 - S5（#6）の推定: 取引先の既定の税区分が `purchase_10` / `purchase_8r` で、`partnerRegistrationAt(partner, 取引日)` が `not_registered` なら `_ni` に置き換えると経過措置の税区分になる。`suggest.ts` は S5 の所有なので、#6 にコメントで頼む。
 - S3（#4）の取引の登録: 「この証憑から取引を登録」に推定の税区分を渡す引数（`tax=`）を足す場合は S3 のフォームへの追記として頼む。
 

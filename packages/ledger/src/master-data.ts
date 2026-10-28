@@ -1,4 +1,5 @@
 import { SEGMENT_CODES, type SegmentCode } from "./chart-template";
+import type { DepreciationMethod } from "./depreciation";
 import type { TaxDirection } from "./tax-categories";
 import type {
   AccountGroup,
@@ -169,6 +170,7 @@ export const SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
   recurring: "定期取引",
   import: "取込",
   payroll: "給与",
+  year_end: "決算",
 };
 
 export const ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {
@@ -183,6 +185,13 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "journal_entry.correct": "仕訳の訂正",
   "fiscal_year.close": "締め",
   "fiscal_year.reopen": "締めを戻す",
+  "fiscal_year.start_adjusting": "決算整理を始める",
+  "fiscal_year.cancel_adjusting": "決算整理をやめる",
+  "fiscal_year.close_year": "期末の締め",
+  "fiscal_year.reopen_year": "期末の締めを戻す",
+  "fiscal_year.check": "決算の確認",
+  "fixed_asset.void": "固定資産の登録の取消",
+  "fixed_asset.dispose": "固定資産の除却・売却",
   "setup.skip": "初期設定を後回し",
   "standard_data.bootstrap": "標準データの投入",
   "document.create": "証憑の保存",
@@ -219,6 +228,11 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "payroll_run.confirm": "支給の確定",
   "payroll_payment.post": "納付の登録",
   "calendar_item.complete": "完了にする",
+  // 期限 (24-calendar §2)
+  "calendar_item.reopen": "未完了に戻す",
+  "calendar_item.notify": "期限の通知",
+  "calendar_item.delete": "期限の削除",
+  // 読み取りと照合 (20-reader §1)
   "document.read": "証憑の読み取り",
   "partner.registry_check": "登録番号の照合",
 };
@@ -248,6 +262,7 @@ export function auditActionLabel(action: string): string | null {
 export const AUDIT_ENTITIES = [
   "journal_entry",
   "fiscal_year",
+  "fixed_asset",
   "company",
   "account",
   "sub_account",
@@ -257,6 +272,7 @@ export const AUDIT_ENTITIES = [
   "document",
   "segment",
   "memo_tag",
+  "recurring_item",
   "standard_data",
   "setup",
   "invoice",
@@ -273,6 +289,7 @@ export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   journal_entry: "仕訳",
   fiscal_year: "会計期間",
+  fixed_asset: "固定資産",
   company: "事業所",
   account: "勘定科目",
   sub_account: "補助科目",
@@ -282,6 +299,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   document: "証憑",
   segment: "セグメント",
   memo_tag: "タグ",
+  recurring_item: "定期取引",
   standard_data: "標準データ",
   setup: "初期設定",
   invoice: "請求",
@@ -297,3 +315,14 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
 export function isAuditEntity(value: unknown): value is AuditEntity {
   return typeof value === "string" && (AUDIT_ENTITIES as readonly string[]).includes(value);
 }
+
+// ---------------------------------------------------------------------------
+// 決算 (16-year-end §4.1)
+// ---------------------------------------------------------------------------
+
+export const DEPRECIATION_METHOD_LABELS: Readonly<Record<DepreciationMethod, string>> = {
+  straight_line: "定額法",
+  declining_balance: "定率法",
+  immediate: "即時償却",
+  lump_sum_3y: "一括償却（3 年）",
+};

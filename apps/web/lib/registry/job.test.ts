@@ -1,18 +1,17 @@
-import type { RegistryCheckResult } from "@niho-finance/db";
+import type { PrismaClient, RegistryCheckResult } from "@niho-finance/db";
+import type { NtaLookup } from "@niho-finance/importers";
 import { describe, expect, it, vi } from "vitest";
-import type { JobAuthResult } from "@/lib/jobs/auth";
-import { handleRegistryCheckJob, type RegistryCheckJobBody } from "./job";
+import type { JobContext } from "@/lib/jobs/run";
+import { createRegistryCheckJob, REGISTRY_NOT_CONFIGURED } from "./job";
 
-const PRINCIPAL = "scheduler@example-project.iam.gserviceaccount.com";
-/** A fictional application ID (13 digits). */
-const APPLICATION_ID = "1234567890123";
-
-function request(): Request {
-  return new Request("https://jobs.example.test/api/jobs/registry-check", {
-    method: "POST",
-    headers: { authorization: "Bearer test-token" },
-  });
-}
+const lookup: NtaLookup = {
+  lookup: () => Promise.resolve({ registrations: new Map(), requestCount: 0, failures: [] }),
+};
+const context: JobContext = {
+  prisma: {} as PrismaClient,
+  today: "2026-11-01",
+  startedAt: new Date("2026-10-31T21:30:00Z"),
+};
 
 function result(overrides: Partial<RegistryCheckResult> = {}): RegistryCheckResult {
   return {
@@ -26,104 +25,42 @@ function result(overrides: Partial<RegistryCheckResult> = {}): RegistryCheckResu
   };
 }
 
-const accepted = (): Promise<JobAuthResult> => Promise.resolve({ ok: true, principal: PRINCIPAL });
-const configured = () => true;
-
-async function bodyOf(response: Response): Promise<RegistryCheckJobBody> {
-  return (await response.json()) as RegistryCheckJobBody;
-}
-
-describe("handleRegistryCheckJob", () => {
-  it.each([
-    [401, "認証のトークンがありません"],
-    [403, "認証のトークンの宛先が一致しません"],
-    [503, "ジョブの認証が設定されていません"],
-  ] as const)(
-    "passes an authentication failure through (%i) without checking",
-    async (status, reason) => {
-      const check = vi.fn(() => Promise.resolve(result()));
-      const response = await handleRegistryCheckJob(request(), {
-        verify: () => Promise.resolve({ ok: false, status, reason }),
-        configured,
-        check,
-      });
-      expect(response.status).toBe(status);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await bodyOf(response)).toEqual({ ok: false, error: reason });
-      expect(check).not.toHaveBeenCalled();
-    },
-  );
-
-  it("answers 200 ok:false without the application ID, checking nothing", async () => {
+describe("registry-check job", () => {
+  it("checks every partner as the system actor and reports the counts", async () => {
     const check = vi.fn(() => Promise.resolve(result()));
-    const response = await handleRegistryCheckJob(request(), {
-      verify: accepted,
-      configured: () => false,
-      check,
+    const job = createRegistryCheckJob({ lookup: () => lookup, check });
+    await expect(job(context)).resolves.toEqual({
+      checked: 12,
+      registered: 10,
+      notRegistered: 1,
+      ended: 1,
     });
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(await bodyOf(response)).toEqual({
-      ok: false,
-      error: "国税庁の照合が設定されていません",
+    expect(check).toHaveBeenCalledWith(context.prisma, lookup, {
+      actor: "system",
+      now: context.startedAt,
     });
+  });
+
+  it("fails without the application ID, without checking", async () => {
+    const check = vi.fn(() => Promise.resolve(result()));
+    const job = createRegistryCheckJob({ lookup: () => null, check });
+    await expect(job(context)).rejects.toThrow(REGISTRY_NOT_CONFIGURED);
     expect(check).not.toHaveBeenCalled();
   });
 
-  it("checks as the job's principal and answers 200 with the counts", async () => {
+  it("fails when numbers could not be looked up, with the owner-facing reason", async () => {
     const check = vi.fn(() =>
       Promise.resolve(
         result({
-          checked: 11,
-          registered: 9,
-          failed: 1,
+          checked: 10,
+          failed: 2,
           errors: ["国税庁の公表サイトに接続できませんでした（HTTP 503）"],
         }),
       ),
     );
-    const response = await handleRegistryCheckJob(request(), {
-      verify: accepted,
-      configured,
-      check,
-    });
-    expect(check).toHaveBeenCalledWith(PRINCIPAL);
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(await bodyOf(response)).toEqual({
-      ok: true,
-      checked: 11,
-      registered: 9,
-      notRegistered: 1,
-      ended: 1,
-      failed: 1,
-      errors: ["国税庁の公表サイトに接続できませんでした（HTTP 503）"],
-    });
-  });
-
-  it("never answers 5xx: an exception is 200 ok:false, logged without the URL or the ID", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const response = await handleRegistryCheckJob(request(), {
-        verify: accepted,
-        configured,
-        check: () =>
-          Promise.reject(
-            new Error(
-              `fetch failed: https://web-api.example.test/1/num?id=${APPLICATION_ID}&number=T1111111111111 (id=${APPLICATION_ID})`,
-            ),
-          ),
-      });
-      expect(response.status).toBe(200);
-      const text = await response.text();
-      expect(JSON.parse(text)).toEqual({ ok: false, error: "照合できませんでした" });
-      expect(text).not.toContain(APPLICATION_ID);
-      expect(log).toHaveBeenCalledTimes(1);
-      const line = String(log.mock.calls[0]?.[0]);
-      expect(line).toContain("registry-check job failed");
-      expect(line).not.toContain(APPLICATION_ID);
-      expect(line).not.toContain("web-api.example.test");
-    } finally {
-      log.mockRestore();
-    }
+    const job = createRegistryCheckJob({ lookup: () => lookup, check });
+    await expect(job(context)).rejects.toThrow(
+      "照合できなかった番号があります（2 件。国税庁の公表サイトに接続できませんでした（HTTP 503））",
+    );
   });
 });

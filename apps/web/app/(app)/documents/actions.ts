@@ -12,7 +12,7 @@ import { formatYenInput, type DocumentLinkKind } from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
 import { attempt, inlinePatch, parseId } from "@/lib/action-result";
 import type { ActionResult, RowValues } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /*
  * Server Actions of /documents (13-documents §4): the items, 無効にする, 紐づける / 外す. The
@@ -21,7 +21,7 @@ import { actor } from "@/lib/env";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 async function write<T, R>(
   run: () => Promise<T>,
@@ -65,13 +65,16 @@ export async function updateDocumentAction(
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
   return write(
-    () => updateDocument(prisma(), inlinePatch(id, patch, DOCUMENT_FIELDS), by()),
+    async () => updateDocument(prisma(), inlinePatch(id, patch, DOCUMENT_FIELDS), await by()),
     documentValues,
   );
 }
 
 export async function voidDocumentAction(id: string, reason: string): Promise<ActionResult> {
-  return write(() => voidDocument(prisma(), { id: parseId(id), reason }, by()), nothing);
+  return write(
+    async () => voidDocument(prisma(), { id: parseId(id), reason }, await by()),
+    nothing,
+  );
 }
 
 export interface DocumentLinkValues {
@@ -82,9 +85,9 @@ export interface DocumentLinkValues {
 }
 
 export async function linkDocumentAction(values: DocumentLinkValues): Promise<ActionResult> {
-  return write(() => linkDocument(prisma(), values, by()), nothing);
+  return write(async () => linkDocument(prisma(), values, await by()), nothing);
 }
 
 export async function unlinkDocumentAction(values: DocumentLinkValues): Promise<ActionResult> {
-  return write(() => unlinkDocument(prisma(), values, by()), nothing);
+  return write(async () => unlinkDocument(prisma(), values, await by()), nothing);
 }
