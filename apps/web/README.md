@@ -36,8 +36,11 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/reports/trial-balance` ・ `monthly` ・ `segments` ・ `cash` ・ `journal` ・ `ledger` | 試算表・月次推移・セグメント損益・現預金・仕訳帳・総勘定元帳。条件は検索パラメータ（`fy` `period` `from` `to` `segment`、仕訳帳は `status` `page`、総勘定元帳は `account` `sub`） |
 | `/reports/export` | 報告の CSV / PDF（GET の route handler。`report` `format` と上の条件） |
 | `/api/documents/*` | 証憑の API（`prepare` / `complete` / `upload`〔ローカル保存の受け口〕/ `[id]/file` / `index.csv`。13 §7） |
-| `/api/health` | 死活と DB の疎通 |
-| `/api/jobs/stripe-sync` | Stripe の同期のジョブ（`POST` だけ。Cloud Scheduler の OIDC トークンで認証。12-imports §4.4） |
+| `/api/health` | 死活と DB の疎通、`service`（`web` / `jobs`）、`gitSha`、`iap`（IAP の署名ヘッダーの検証結果: `verified` / `missing` / `invalid` / `not-configured`。誰かは返さない） |
+| `/api/jobs/backup` | POST。日次エクスポート（`backup-export`）。`NIHO_FINANCE_SERVICE=jobs` のときだけ動き、画面のサービスでは 404 |
+| `/api/jobs/calendar` | POST。期限の暦の生成と通知メール（`calendar-notify`）。同上 |
+| `/api/jobs/mail-check` | POST。「送信の確認」を 1 通送る（手動。`scripts/run-job.sh mail-check`）。同上 |
+| `/api/jobs/stripe-sync` | Stripe の同期のジョブ（`POST` だけ。12-imports §4.4）。同上。同期の失敗でも 200 を返し、結果は `job.finished` のログに残る |
 
 会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/entries`・`/documents`・`/settings` 配下は `/setup` へ redirect します。
 
@@ -51,11 +54,14 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 - `components/settings/inline.tsx`: 一覧の中の直接編集（TextCell / SelectCell / CheckboxCell と `useRowSave`）。blur・Enter・変更で保存し、行の右端に「保存中 / 保存済み / エラー（理由）」を出す。Escape で保存済みの値に戻す。
 - `components/app-shell/`: 左ナビ（PC）と下タブ（スマホ）。準備中の項目は muted の非リンク。
 - 色と字は `app/globals.css` のトークン（`bg-surface`、`text-muted`、`border-border` など）。
+- `lib/mail/`: メール送信（`sendMail`。件名に `[NIHO finance] ` を前置、本文はプレーンテキスト）。`NIHO_FINANCE_MAIL=log` はログに出すだけ、`smtp` は送る。失敗は throw せず `{ ok: false, error }`。
+- `lib/jobs/run.ts`: ジョブの共通入口（`runJob`）。`NIHO_FINANCE_SERVICE=jobs` 以外は 404、結果は `job.finished` の 1 行のログと 200 / 500（throw しない）。ジョブの書き込みの actor は `system`。
 
 ## Server Action の約束
 
 - 読みは Server Components（`lib/data.ts` の `db()` は `connection()` で毎回描画にする）、書きは Server Actions（`app/(app)/settings/actions.ts`、`app/setup/actions.ts`）。
-- 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに `NIHO_FINANCE_ACTOR`（既定 `owner`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
+- 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに actor（`lib/actor.ts` の `actor()`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
+- actor は IAP が付ける署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証した email。`NIHO_FINANCE_ENV=prod` でヘッダーがない・検証に失敗したときは `ActorError` で書き込みを拒み、`{ ok: false, error }`（「ログイン情報を確認できませんでした…」）を返す。ローカル（IAP なし）は `NIHO_FINANCE_ACTOR`（既定 `owner`）。
 - 結果は `{ ok: true, data } | { ok: false, error, fieldErrors }`（`lib/action-types.ts`）。想定内の失敗（入力・規則）は throw せず返す。`error` は「状態と戻り方」を書いた利用者向けの文。
 - 書いたら `revalidatePath("/", "layout")`。ウィザードは保存してから次のステップへ redirect する。
 - 金額は画面では文字列（`50,000` も `50000` も可）、サーバーで `bigint` にする。

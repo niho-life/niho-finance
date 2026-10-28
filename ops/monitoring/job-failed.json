@@ -1,0 +1,22 @@
+{
+  "displayName": "niho-finance: job failed",
+  "documentation": {
+    "content": "A scheduled job of NIHO finance finished with ok=false. Open the jobs service's logs and docs/ops/deploy.md §6.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "job.finished with ok=false",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"__JOBS_SERVICE__\" AND jsonPayload.event=\"job.finished\" AND jsonPayload.ok=false"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "3600s" },
+    "autoClose": "86400s"
+  },
+  "notificationChannels": ["__CHANNEL__"],
+  "enabled": true
+}

@@ -930,18 +930,20 @@ model RecurringItem {
 
 /// Tax and legal deadlines generated from the fiscal year by rule.
 model CalendarItem {
-  id           String           @id
-  fiscalYearId String?          @map("fiscal_year_id")
-  kind         CalendarItemKind
-  title        String
-  dueDate      DateTime         @map("due_date") @db.Date
+  id             String           @id
+  fiscalYearId   String?          @map("fiscal_year_id")
+  kind           CalendarItemKind
+  title          String
+  dueDate        DateTime         @map("due_date") @db.Date
   /// Identifier of the generating rule (unique per fiscal year)
-  ruleKey      String?          @map("rule_key")
-  completedAt  DateTime?        @map("completed_at") @db.Timestamptz(6)
-  completedBy  String?          @map("completed_by")
-  note         String?
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ruleKey        String?          @map("rule_key")
+  completedAt    DateTime?        @map("completed_at") @db.Timestamptz(6)
+  completedBy    String?          @map("completed_by")
+  note           String?
+  /// Last day a reminder mail went out (7 days before and on/after the due date)
+  lastNotifiedOn DateTime?        @map("last_notified_on") @db.Date
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   fiscalYear FiscalYear? @relation(fields: [fiscalYearId], references: [id])
 

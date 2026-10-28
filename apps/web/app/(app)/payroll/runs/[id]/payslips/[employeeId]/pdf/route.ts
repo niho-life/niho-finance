@@ -1,7 +1,7 @@
 import { getPrismaClient, getSetupProgress, loadPayslip, recordExport } from "@niho-finance/db";
 import { redirect } from "next/navigation";
 import { createElement } from "react";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { pdfResponse } from "@/lib/pdf/download";
 import { PayslipDocument } from "@/lib/pdf/payslip";
 import { renderPdf } from "@/lib/pdf/render";
@@ -37,7 +37,7 @@ export async function GET(
   await recordExport(
     prisma,
     { kind: "payslip", format: "pdf", from: payslip.paymentDate, to: payslip.paymentDate },
-    { actor: actor() },
+    { actor: await actor() },
   );
   const names = payslipFileNames(payslip);
   return pdfResponse(bytes, names.ascii, names.utf8);
