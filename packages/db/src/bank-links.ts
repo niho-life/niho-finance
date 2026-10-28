@@ -11,6 +11,7 @@ import {
   convertGmoTransaction,
   createGmoAozoraApi,
   fetchAllTransactions,
+  GMO_AOZORA_ENV_VARIABLES,
   GMO_AOZORA_ENVIRONMENT_LABELS,
   GMO_AOZORA_ENVIRONMENTS,
   GmoApiError,
@@ -588,6 +589,66 @@ export async function saveBankAuthorization(
       after: linkSnapshot(updated),
     });
   });
+}
+
+/**
+ * 「接続する」/「再接続する」 of the token method (sunabar, 19-bank-api §1.1, §2.1): the token in
+ * the environment is tried on the bank first (its account list must come back), and only then
+ * saved as the wallet's authorization (`saveBankAuthorization` without tokens). A token the bank
+ * refuses, or a bank that cannot be reached, is refused with the reason; nothing is saved.
+ */
+export async function authorizeBankToken(
+  db: Db,
+  input: BankWalletInput,
+  options: WriteOptions & Pick<BankApiOptions, "api" | "config" | "fetch">,
+): Promise<void> {
+  const { walletId } = bankWalletInputSchema.parse(input);
+  let config = options.config;
+  if (!config) {
+    const resolved = resolveBankApiConfig();
+    if (!resolved.ok) {
+      throw new SettingsError(
+        `${resolved.message}（環境変数 ${resolved.variables.join("・")}）。設定してから接続してください`,
+      );
+    }
+    config = resolved.config;
+  }
+  const token = config.accessToken;
+  if (config.mode !== "token" || token === null) {
+    throw new SettingsError(
+      "この環境は銀行の認可画面から接続します。画面を読み込み直して「接続する」を押してください",
+    );
+  }
+  await loadBankWallet(db, walletId);
+  const api =
+    options.api ??
+    createGmoAozoraApi({
+      apiBase: config.apiBase,
+      accessToken: () => Promise.resolve(token),
+      fetch: options.fetch,
+    });
+  try {
+    await api.listAccounts();
+  } catch (error) {
+    if (error instanceof GmoApiError && error.kind === "unauthorized") {
+      throw new SettingsError(
+        storedMessage(
+          `${error.message}。sunabar にログインしてトークンを確かめ、環境変数 ${GMO_AOZORA_ENV_VARIABLES.accessToken} を差し替えてから、もう一度接続してください`,
+          [token],
+        ),
+        { field: "walletId" },
+      );
+    }
+    if (error instanceof GmoApiError) {
+      throw new SettingsError(storedMessage(error.message, [token]), { field: "walletId" });
+    }
+    throw error;
+  }
+  await saveBankAuthorization(
+    db,
+    { walletId, env: config.env, tokens: null },
+    { actor: options.actor },
+  );
 }
 
 /** An authorized wallet with the bank API to ask; 再接続が必要 or not connected is refused. */

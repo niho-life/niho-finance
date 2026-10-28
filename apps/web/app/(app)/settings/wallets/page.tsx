@@ -2,6 +2,7 @@ import {
   getCompany,
   getStripeAccountLink,
   listAccountOptions,
+  listBankLinkStatuses,
   listImportableWallets,
   listSegmentOptions,
   listWallets,
@@ -58,6 +59,10 @@ export default async function WalletsPage() {
   const segments = await listSegmentOptions(prisma);
   const company = await getCompany(prisma);
   const importers = await importerLabels(prisma, wallets);
+  // 銀行 API の接続 of bank wallets (19-bank-api §1.2): shown instead of the CSV format.
+  const bankLinks = new Map(
+    (await listBankLinkStatuses(prisma)).map((link) => [link.walletId, link.status]),
+  );
   return (
     <>
       <PageHeader title="口座" back={{ href: "/settings", label: "設定" }} />
@@ -66,6 +71,7 @@ export default async function WalletsPage() {
           ...wallet,
           openingBalance: wallet.openingBalance === null ? null : String(wallet.openingBalance),
           importerLabel: importers.get(wallet.id) ?? null,
+          bankApiStatus: wallet.kind === "bank" ? (bankLinks.get(wallet.id) ?? null) : null,
         }))}
         accounts={accounts}
         segments={segments}

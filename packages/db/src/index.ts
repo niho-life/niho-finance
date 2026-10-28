@@ -289,6 +289,7 @@ export {
   type StatementWalletChip,
 } from "./statements";
 export {
+  authorizeBankToken,
   BANK_API_STATUSES,
   BANK_TOKEN_KEY_VARIABLE,
   connectBankAccount,

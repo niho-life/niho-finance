@@ -10,6 +10,7 @@ import type { CalendarDate } from "@niho-finance/ledger";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  authorizeBankToken,
   bankReconnectTodo,
   connectBankAccount,
   createWallet,
@@ -1076,6 +1077,80 @@ describe.skipIf(!hasTestDatabase)("bank API connections and sync", () => {
     await expect(
       saveBankAuthorization(prisma, { walletId: cash.id, env: "sunabar", tokens: null }, { actor }),
     ).rejects.toThrow("銀行の口座ではありません。種類が 銀行 の口座を選んでください");
+  });
+
+  it("authorizes the sunabar token only when the bank accepts it", async () => {
+    const walletId = await bankWallet("架空銀行 API トークン");
+    const refused = bankFetch(() =>
+      jsonResponse(401, { errorCode: "WG_ERR_101", errorMessage: "認証エラー" }),
+    );
+    const rejected = await rejectionOf(
+      authorizeBankToken(
+        prisma,
+        { walletId },
+        { actor, config: TOKEN_CONFIG, fetch: refused.fetch },
+      ),
+    );
+    expect(rejected).toBeInstanceOf(SettingsError);
+    expect(rejected).toMatchObject({
+      field: "walletId",
+      message:
+        "銀行 API がトークンを受け付けませんでした（401 WG_ERR_101 認証エラー）。sunabar にログインしてトークンを確かめ、環境変数 NIHO_FINANCE_GMO_AOZORA_ACCESS_TOKEN を差し替えてから、もう一度接続してください",
+    });
+    expect(refused.requests).toMatchObject([{ path: "/accounts", token: "fake-sunabar-token" }]);
+    expect(await getBankLink(prisma, walletId)).toMatchObject({ env: null, status: null });
+
+    // A rate limit is refused too, with the bank's reason.
+    const limited = bankFetch(() =>
+      jsonResponse(429, { errorCode: "WG_ERR_154", errorMessage: "利用上限" }),
+    );
+    await expect(
+      authorizeBankToken(
+        prisma,
+        { walletId },
+        { actor, config: TOKEN_CONFIG, fetch: limited.fetch },
+      ),
+    ).rejects.toBeInstanceOf(SettingsError);
+    expect((await walletRow(walletId)).bankApiStatus).toBeNull();
+
+    // The authorization code flow's environment is connected from the bank's screen, not here.
+    await expect(
+      authorizeBankToken(prisma, { walletId }, { actor, config: OAUTH_CONFIG }),
+    ).rejects.toThrow("この環境は銀行の認可画面から接続します");
+    // Only bank wallets, and without calling the bank.
+    const cash = await prisma.wallet.findFirstOrThrow({ where: { kind: "cash" } });
+    const unused = bankFetch(() => jsonResponse(500, undefined));
+    await expect(
+      authorizeBankToken(
+        prisma,
+        { walletId: cash.id },
+        { actor, config: TOKEN_CONFIG, fetch: unused.fetch },
+      ),
+    ).rejects.toThrow("銀行の口座ではありません。種類が 銀行 の口座を選んでください");
+    expect(unused.requests).toHaveLength(0);
+
+    const accepted = bankFetch((request) =>
+      request.path === "/accounts"
+        ? jsonResponse(200, { accounts: FICTIONAL_ACCOUNTS })
+        : jsonResponse(404, { errorCode: "WG_ERR_404", errorMessage: "not found" }),
+    );
+    await authorizeBankToken(
+      prisma,
+      { walletId },
+      { actor, config: TOKEN_CONFIG, fetch: accepted.fetch },
+    );
+    expect(accepted.requests.map((request) => request.path)).toEqual(["/accounts"]);
+    expect(await getBankLink(prisma, walletId)).toMatchObject({
+      env: "sunabar",
+      status: "authorized",
+      accountLabel: null,
+    });
+    expect((await walletRow(walletId)).bankApiTokens).toBeNull();
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: walletId, action: "wallet.authorize_bank" },
+      }),
+    ).toBe(1);
   });
 
   it("keeps the tokens and the account ID out of the audit log and the backup", async () => {
