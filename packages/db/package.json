@@ -21,6 +21,7 @@
     "@niho-finance/importers": "*",
     "@niho-finance/ledger": "*",
     "@niho-finance/payroll": "*",
+    "@niho-finance/reader": "*",
     "@niho-finance/reports": "*",
     "@prisma/client": "6.19.3",
     "ulid": "^3.0.2",

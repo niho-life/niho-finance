@@ -1750,3 +1750,45 @@ export const payrollPaymentSchema = z.object({
 });
 export type PayrollPaymentInput = z.input<typeof payrollPaymentSchema>;
 export type ParsedPayrollPayment = z.output<typeof payrollPaymentSchema>;
+
+// ---------------------------------------------------------------------------
+// Reading of documents and the registry lookup (20-reader §5・§7)
+// ---------------------------------------------------------------------------
+
+/** The items of the proposal (20-reader §10.1), in the order of the screen. */
+export const READING_PROPOSAL_FIELDS = [
+  "kind",
+  "txnDate",
+  "amount",
+  "partner",
+  "invoiceRegistrationNumber",
+  "note",
+] as const;
+export type ReadingProposalField = (typeof READING_PROPOSAL_FIELDS)[number];
+
+/** 読み取る (20-reader §5.1). */
+export const documentReadingSchema = z.object({ documentId: idField("証憑") });
+export type DocumentReadingInput = z.input<typeof documentReadingSchema>;
+
+/** 提案を保存 (§5.4): the chosen items; their values come from the stored reading, not the client. */
+export const documentReadingApplySchema = z.object({
+  documentId: idField("証憑"),
+  fields: z
+    .array(enumField("項目", READING_PROPOSAL_FIELDS), {
+      error: "保存する項目の形式が正しくありません",
+    })
+    .min(1, { error: "保存する項目を選んでください" })
+    .refine((fields) => new Set(fields).size === fields.length, {
+      error: "同じ項目が重複しています",
+    }),
+});
+export type DocumentReadingApplyInput = z.input<typeof documentReadingApplySchema>;
+
+/** 照合する (§7.3): every checkable partner, or only `partnerIds`. */
+export const partnerRegistryCheckSchema = z.object({
+  partnerIds: z
+    .array(idField("取引先"), { error: "取引先の形式が正しくありません" })
+    .max(10_000, { error: "取引先が多すぎます" })
+    .optional(),
+});
+export type PartnerRegistryCheckInput = z.input<typeof partnerRegistryCheckSchema>;

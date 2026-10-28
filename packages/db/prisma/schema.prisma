@@ -451,6 +451,11 @@ model Partner {
   invoiceRegistrationNumber    String?                   @map("invoice_registration_number")
   invoiceRegistrationStatus    InvoiceRegistrationStatus @default(unknown) @map("invoice_registration_status")
   invoiceRegistrationCheckedAt DateTime?                 @map("invoice_registration_checked_at") @db.Timestamptz(6)
+  /// The registry's published name, registration date and end (失効・取消, the earlier); read only
+  /// while the status is not `unknown` (20-reader §7.1)
+  invoiceRegistrationName      String?                   @map("invoice_registration_name")
+  invoiceRegisteredOn          DateTime?                 @map("invoice_registered_on") @db.Date
+  invoiceRegistrationEndedOn   DateTime?                 @map("invoice_registration_ended_on") @db.Date
   defaultAccountId             String?                   @map("default_account_id")
   defaultSegmentId             String?                   @map("default_segment_id")
   defaultTaxCategoryCode       String?                   @map("default_tax_category_code")
@@ -772,6 +777,9 @@ model Document {
   importBatches ImportBatch[]
   invoicePdfs   Invoice[]
 
+  /// Readings of this document (20-reader §9)
+  apiUsages ExternalApiUsage[]
+
   @@index([txnDate, amount, partnerId])
   @@index([sha256])
   @@index([status])
@@ -1077,4 +1085,36 @@ model PayrollRun {
   confirmedBy           String        @map("confirmed_by")
 
   @@map("payroll_run")
+}
+
+// ---------------------------------------------------------------------------
+// External API usage (docs/design/20-reader-and-registry.md §7.1・§9)
+// ---------------------------------------------------------------------------
+
+/// One row per call of an external API (a reading, a registry lookup). Append-only (DB triggers).
+model ExternalApiUsage {
+  id           String   @id
+  at           DateTime @default(now()) @db.Timestamptz(6)
+  /// `reader` | `registry`
+  service      String
+  /// `anthropic` / `recorded` / `nta` / `fixture`
+  provider     String
+  model        String?
+  documentId   String?  @map("document_id")
+  /// `ok` | `failed`
+  outcome      String
+  error        String?
+  requestCount Int      @default(1) @map("request_count")
+  /// Numbers looked up (registry)
+  itemCount    Int      @default(0) @map("item_count")
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  /// 10⁻⁹ USD
+  costNanoUsd  BigInt   @default(0) @map("cost_nano_usd")
+  actor        String
+
+  document Document? @relation(fields: [documentId], references: [id])
+
+  @@index([service, at])
+  @@map("external_api_usage")
 }
