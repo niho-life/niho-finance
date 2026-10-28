@@ -11,6 +11,8 @@ import {
   AUDIT_ENTITIES,
   CONSUMPTION_TAX_METHODS,
   corporateNumberProblem,
+  DEFERRED_AMORTIZATION_MODES,
+  DEPRECIATION_METHODS,
   defaultAccountingMethod,
   invoiceRegistrationNumberProblem,
   isAccountGroupOf,
@@ -20,6 +22,7 @@ import {
   normalizeInvoiceRegistrationNumber,
   parseYenInput,
   PARTNER_KINDS,
+  ACCRUAL_TYPES,
   SIDES,
   WALLET_KINDS,
   type CalendarDate,
@@ -725,3 +728,158 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 決算 (16-year-end)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, negative allowed (a refund), required. */
+export function requiredSignedYen(label: string) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") return problem(`${label}を入力してください`);
+    const amount = parseYenInput(text, { allowNegative: true });
+    if (amount === null) return problem(`${label}は円の整数で入力してください`);
+    return ok(amount);
+  });
+}
+
+/**
+ * 決算整理を始める / やめる、締める / 締めを戻す (§1.1). The reason is required to cancel and to reopen
+ * (checked by the transition, which names the field `reason`).
+ */
+export const yearEndTransitionSchema = z.object({ reason: optionalText("理由", 500) });
+export type YearEndTransitionInput = z.input<typeof yearEndTransitionSchema>;
+
+/** 「照合した」「確認した」 of the checklist (§3). */
+export const YEAR_END_CHECK_KEYS = ["balances", "accruals"] as const;
+export type YearEndCheckKey = (typeof YEAR_END_CHECK_KEYS)[number];
+
+export const yearEndCheckSchema = z.object({
+  key: enumField("確認の項目", YEAR_END_CHECK_KEYS),
+  checked: booleanField("確認"),
+});
+export type YearEndCheckInput = z.input<typeof yearEndCheckSchema>;
+
+/** 減価償却の計上: every asset with an amount for the year, or the given ones. */
+export const postDepreciationSchema = z.object({
+  assetIds: z
+    .preprocess(
+      (value): unknown =>
+        value === undefined || value === null || value === "" ? undefined : value,
+      z
+        .array(z.string({ error: "固定資産が正しくありません" }).min(1).max(64), {
+          error: "固定資産が正しくありません",
+        })
+        .max(500),
+    )
+    .optional(),
+});
+export type PostDepreciationInput = z.input<typeof postDepreciationSchema>;
+
+/** 繰延資産の償却 (§6): 5 年 (default) or 全額. */
+export const deferredAmortizationSchema = z.object({
+  accountId: idField("科目"),
+  mode: enumField("償却の額", DEFERRED_AMORTIZATION_MODES),
+});
+export type DeferredAmortizationInput = z.input<typeof deferredAmortizationSchema>;
+
+/** 決算整理仕訳の登録 (§7). The reversal into the next year defaults to on. */
+export const accrualEntrySchema = z.object({
+  type: enumField("種類", ACCRUAL_TYPES),
+  plAccountId: idField("科目"),
+  amount: positiveYen("金額"),
+  segmentId: optionalIdField("セグメント"),
+  description: optionalText("摘要", 200),
+  reverse: z
+    .preprocess((value) => (value === undefined ? true : value), booleanField("翌期首に振り戻す"))
+    .optional()
+    .transform((value) => value ?? true),
+});
+export type AccrualEntryInput = z.input<typeof accrualEntrySchema>;
+
+/** 消費税の精算 (§8): 納付税額, negative for a refund. */
+export const consumptionTaxSettlementSchema = z.object({
+  payable: requiredSignedYen("納付税額"),
+});
+export type ConsumptionTaxSettlementInput = z.input<typeof consumptionTaxSettlementSchema>;
+
+/** 法人税等の計上 (§9). */
+export const corporateTaxEntrySchema = z.object({ amount: positiveYen("計上額") });
+export type CorporateTaxEntryInput = z.input<typeof corporateTaxEntrySchema>;
+
+/** 決算整理仕訳の取消 (§1.2). */
+export const yearEndVoidSchema = z.object({ reason: requiredText("理由", 500) });
+export type YearEndVoidInput = z.input<typeof yearEndVoidSchema>;
+
+const fixedAssetFields = {
+  name: requiredText("名称", 100),
+  method: enumField("償却方法", DEPRECIATION_METHODS),
+  /** Checked against the method by `checkDepreciationChoice` (2–50 for 定額・定率). */
+  usefulLifeYears: optionalIntegerInRange("耐用年数", 0, 999),
+  segmentId: optionalIdField("セグメント"),
+  note: optionalText("メモ", 500),
+};
+
+/** 取得の仕訳から (§5.1): a debit line of a posted entry on a depreciable account. */
+export const fixedAssetFromEntrySchema = z.object({
+  source: z.literal("entry"),
+  entryId: idField("取得の仕訳"),
+  accountId: idField("科目"),
+  cost: positiveYen("取得価額"),
+  ...fixedAssetFields,
+});
+
+/** 仕訳も一緒に登録 (§5.1): a 支出 (S3) on the asset's account, posted in the same transaction. */
+export const fixedAssetPurchaseSchema = z.object({
+  source: z.literal("purchase"),
+  counterpart: counterpartField("支払元"),
+  entryDate: requiredDate("日付"),
+  amount: positiveYen("金額"),
+  taxCategoryCode: taxCategoryCodeField(),
+  accountId: idField("科目"),
+  partnerId: optionalIdField("取引先"),
+  ...fixedAssetFields,
+});
+
+export const fixedAssetRegisterSchema = z.discriminatedUnion(
+  "source",
+  [fixedAssetFromEntrySchema, fixedAssetPurchaseSchema],
+  { error: "登録の方法が正しくありません。画面を読み込み直してください" },
+);
+export type FixedAssetRegisterInput = z.input<typeof fixedAssetRegisterSchema>;
+export type ParsedFixedAssetRegister = z.output<typeof fixedAssetRegisterSchema>;
+
+/**
+ * 編集 (§5.2). Omitted keys are left as they are. 取得価額・取得日・科目・償却方法・耐用年数 change only
+ * while the asset has no depreciation or disposal entry (checked by `updateFixedAsset`).
+ */
+export const fixedAssetUpdateSchema = z.object({
+  name: fixedAssetFields.name.optional(),
+  segmentId: fixedAssetFields.segmentId.optional(),
+  note: fixedAssetFields.note.optional(),
+  accountId: idField("科目").optional(),
+  acquisitionDate: requiredDate("取得日").optional(),
+  cost: positiveYen("取得価額").optional(),
+  method: fixedAssetFields.method.optional(),
+  usefulLifeYears: fixedAssetFields.usefulLifeYears.optional(),
+});
+export type FixedAssetUpdateInput = z.input<typeof fixedAssetUpdateSchema>;
+
+/** 登録の取消 (§5.2). */
+export const fixedAssetVoidSchema = z.object({ reason: requiredText("理由", 500) });
+export type FixedAssetVoidInput = z.input<typeof fixedAssetVoidSchema>;
+
+/** 除却・売却 (§5.3): 売却額 0 or empty is a 除却; a sale needs the wallet paid into. */
+export const fixedAssetDisposeSchema = z.object({
+  date: requiredDate("日付"),
+  proceeds: optionalPositiveYen("売却額"),
+  walletId: optionalIdField("入金先の口座"),
+  description: optionalText("摘要", 200),
+});
+export type FixedAssetDisposeInput = z.input<typeof fixedAssetDisposeSchema>;
+
+/** `/closing?year=n`: 第 n 期, or `null` for the default year. */
+export const closingQuerySchema = z.object({
+  year: lenient<number | null>(z.coerce.number().int().min(1).max(100_000), null),
+});
+export type ClosingQuery = z.output<typeof closingQuerySchema>;

@@ -153,6 +153,10 @@ export async function describeAuditTargets(
     for (const row of await db.memoTag.findMany({ where: { id: of("memo_tag") }, select }))
       label("memo_tag", row.id, row.name);
   }
+  if (ids.has("fixed_asset")) {
+    for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
+      label("fixed_asset", row.id, row.name);
+  }
   return names;
 }
 

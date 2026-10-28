@@ -15,3 +15,6 @@ export * from "./identifiers";
 export * from "./yen-input";
 export * from "./master-data";
 export * from "./simple-entry";
+export * from "./depreciation";
+export * from "./corporate-tax";
+export * from "./year-end";
