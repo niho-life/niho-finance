@@ -1,5 +1,5 @@
 import type { CalendarDate } from "@niho-finance/ledger";
-import type { Prisma, PrismaClient, Wallet } from "@prisma/client";
+import type { InvoiceStatus, Prisma, PrismaClient, Wallet } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
@@ -293,7 +293,7 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
   describe("loadCashflowInputs", () => {
     const window = { start: "2026-12-01", days: 90 } as const;
 
-    it("passes every recurring item and leaves the invoices unconnected", async () => {
+    it("passes every recurring item and leaves the received invoices unconnected", async () => {
       const item = await createRecurringItem(
         prisma,
         rent({ name: "入力の確認", frequency: "yearly", monthOfYear: "2", dayOfMonth: "29" }),
@@ -314,8 +314,45 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
         accountId: refs.account("5300"),
         isActive: false,
       });
-      expect(inputs.receivables).toBeNull();
+      expect(inputs.receivables).not.toBeNull();
       expect(inputs.payables).toBeNull();
+    });
+
+    it("gives what issued invoices still wait for, by their due date", async () => {
+      const receivables = await rolledBack(prisma, async (tx) => {
+        const partner = await tx.partner.create({
+          data: { id: newId(), name: "架空商店", kind: "customer" },
+        });
+        const invoice = (number: string, status: InvoiceStatus, dueDate: string | null) =>
+          tx.invoice.create({
+            data: {
+              id: newId(),
+              docType: "invoice",
+              number,
+              partnerId: partner.id,
+              issueDate: toDbDate("2026-11-30"),
+              dueDate: dueDate === null ? null : toDbDate(dueDate as CalendarDate),
+              lines: [],
+              subtotalByRate: [],
+              taxByRate: [],
+              total: 330_000n,
+              status,
+            },
+          });
+        await invoice("INV-T-0001", "issued", "2026-12-31");
+        await invoice("INV-T-0002", "sent", null);
+        await invoice("INV-T-0003", "paid", "2026-12-31");
+        await invoice("INV-T-0004", "draft", "2026-12-31");
+        await invoice("INV-T-0005", "void", "2026-12-31");
+        return (await loadCashflowInputs(tx, window)).receivables;
+      });
+      expect(receivables).toEqual(
+        expect.arrayContaining([
+          { date: "2026-12-31", amount: 330_000n, label: "INV-T-0001 架空商店" },
+          { date: null, amount: 330_000n, label: "INV-T-0002 架空商店" },
+        ]),
+      );
+      expect(receivables?.filter((row) => row.label.startsWith("INV-T-"))).toHaveLength(2);
     });
 
     it("gives no deadlines (not connected) while the calendar has no row", async () => {

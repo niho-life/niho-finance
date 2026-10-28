@@ -6,11 +6,14 @@ export const metadata: Metadata = { title: "その他" };
 
 /** The sections the phone's bottom tabs leave out (11 §2). More rows join as they are built. */
 const SECTIONS = [
+  { label: "証憑", href: "/documents", summary: "受信箱・検索・索引簿" },
   { label: "取引", href: "/entries", summary: "仕訳の一覧・登録・訂正" },
+  { label: "明細の取込", href: "/imports", summary: "銀行・カードの CSV と Stripe の同期" },
+  { label: "請求", href: "/invoices", summary: "見積・納品・請求と入金の消込" },
   { label: "設定", href: "/settings", summary: "事業所・会計期間・勘定科目・口座 …" },
 ] as const;
 
-/** その他 (11 §2): the way to 取引 and 設定 on phones. */
+/** その他 (11 §2, 18 §6): the way to 取引, 請求 and 設定 on phones. */
 export default function MorePage() {
   return (
     <>

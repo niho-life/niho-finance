@@ -1,0 +1,97 @@
+{
+  "format": "generic",
+  "rows": [
+    {
+      "externalId": "2892610b08cbdb2477318455cec757f7948de8690ec3e7dfab3c13a8e9f409b0",
+      "txnDate": "2026-11-02",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "150000",
+      "descriptionRaw": "振込入金",
+      "counterpartyRaw": "テスト商事",
+      "balanceAfter": "450000",
+      "category": null,
+      "raw": ["R8.11.2", "振込入金", "150,000", "450,000", "テスト商事"]
+    },
+    {
+      "externalId": "80b8e17025adbd1c94793a5f9af7576369f7ca0ce608ff8145b982c88e7fea67",
+      "txnDate": "2026-11-05",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-440",
+      "descriptionRaw": "振込手数料",
+      "counterpartyRaw": null,
+      "balanceAfter": "449560",
+      "category": null,
+      "raw": ["R8.11.5", "振込手数料", "▲440", "449,560", ""]
+    },
+    {
+      "externalId": "d3e36cb17e9668851bedd025317f66b34e75f4ab1fe6ed031bd562aad4af8887",
+      "txnDate": "2026-11-05",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-22000",
+      "descriptionRaw": "口座振替 テスト,リース",
+      "counterpartyRaw": null,
+      "balanceAfter": "427560",
+      "category": null,
+      "raw": ["R8.11.5", "口座振替 テスト,リース", "▲22,000", "427,560", ""]
+    },
+    {
+      "externalId": "e5ac72cbfce1ee3d8b1a759955952ad3548ec4120b21dd4dfb5e9b12aed8e52d",
+      "txnDate": "2026-11-10",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-35000",
+      "descriptionRaw": "カード引落",
+      "counterpartyRaw": null,
+      "balanceAfter": "392560",
+      "category": null,
+      "raw": ["R8.11.10", "カード引落", "▲35,000", "392,560", ""]
+    },
+    {
+      "externalId": "09cf6343403f971703642e048ef4a0b1158e8e4b50b4028625abd18957aa37b1",
+      "txnDate": "2026-11-10",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-35000",
+      "descriptionRaw": "カード引落",
+      "counterpartyRaw": null,
+      "balanceAfter": "357560",
+      "category": null,
+      "raw": ["R8.11.10", "カード引落", "▲35,000", "357,560", ""]
+    },
+    {
+      "externalId": "7d759aba836201c33a0fa9025d9dfbbb0cfdc87b2da32d563b22a29195175f8f",
+      "txnDate": "2026-11-20",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "80000",
+      "descriptionRaw": "振込入金",
+      "counterpartyRaw": "サンプル工業",
+      "balanceAfter": "437560",
+      "category": null,
+      "raw": ["R8.11.20", "振込入金", "+80,000", "437,560", "サンプル工業"]
+    },
+    {
+      "externalId": "3b86a79af39156941b368f1e8eef82b6adcea0d979cbffa6b8f12d90a27108d7",
+      "txnDate": "2026-11-30",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "3",
+      "descriptionRaw": "利息",
+      "counterpartyRaw": null,
+      "balanceAfter": "437563",
+      "category": null,
+      "raw": ["R8.11.30", "利息", "3", "437,563", ""]
+    }
+  ],
+  "failures": [],
+  "warnings": [],
+  "openingBalance": null,
+  "closingBalance": null,
+  "period": {
+    "from": "2026-11-02",
+    "to": "2026-11-30"
+  }
+}

@@ -23,5 +23,5 @@ Issue #19 で、定期取引と税金の予定から 90 日の残高の線をホ
 ## 影響
 
 - カード払いのサブスクを多く持つ間は、カードの引落しを定期取引に登録しないと線が楽観的になる。カードに未払があって引落しの定期取引がなければ注記で知らせる。
-- 税金・社会保険の金額と請求は、#14・#16・#20 が main に入ってから `loadCashflowInputs`（`packages/db/src/recurring.ts`）で繋ぐ。予測の関数（`packages/reports/src/cashflow-forecast.ts`）は変えない。
+- 未入金の請求は請求（#16）の残高から繋いだ。税金・社会保険の金額は #14・#20 が main に入ってから、未払の請求は受け取る請求書の支払期日ができてから `loadCashflowInputs`（`packages/db/src/recurring.ts`）で繋ぐ。予測の関数（`packages/reports/src/cashflow-forecast.ts`）は変えない。
 - 明細の推定（S5 #6）は同じ `RecurringItem` を読む。定期取引の列は S1 の schema のまま足していない。

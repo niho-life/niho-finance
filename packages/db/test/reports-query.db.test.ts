@@ -7,6 +7,7 @@ import {
 import type { PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  countInboxDocuments,
   listRecentExports,
   loadBackupSource,
   loadCashPosition,
@@ -16,6 +17,7 @@ import {
   loadTrialBalance,
   loadWalletStatus,
   recordExport,
+  toDbDate,
 } from "../src";
 import { SEED_FISCAL_YEAR } from "../src/seed";
 import { hasTestDatabase } from "./support/database";
@@ -69,9 +71,14 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
         where: { walletId: row.walletId, status: "pending" },
       });
       expect(row.pendingCount).toBe(pending);
+      // Through the same date as the status (other test files add lines in later years).
       const last = await prisma.walletTransaction.findFirst({
-        where: { walletId: row.walletId, balanceAfter: { not: null } },
-        orderBy: { txnDate: "desc" },
+        where: {
+          walletId: row.walletId,
+          balanceAfter: { not: null },
+          txnDate: { lte: toDbDate("2027-03-31") },
+        },
+        orderBy: [{ txnDate: "desc" }, { createdAt: "desc" }],
       });
       expect(row.lastStatement?.balanceAfter ?? null).toBe(last?.balanceAfter ?? null);
     }
@@ -79,7 +86,7 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
 
   it("lists pending statements, inbox documents and the deadlines within 7 days", async () => {
     const pending = await prisma.walletTransaction.count({ where: { status: "pending" } });
-    const inbox = await prisma.document.count({ where: { status: "inbox" } });
+    const inbox = await countInboxDocuments(prisma);
     const far = await loadHomeTodos(prisma, "2026-12-15");
     expect(far.filter((row) => row.tone === "date")).toEqual([]);
     expect(far.find((row) => row.key === "pending-statements")?.badge).toBe(

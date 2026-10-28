@@ -1,6 +1,8 @@
 import {
   countActiveRecurringItems,
+  countActiveRules,
   countAuditLog,
+  getRecordsPolicy,
   getSettingsSummary,
   todayInJapan,
 } from "@niho-finance/db";
@@ -9,7 +11,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatPeriod } from "@/lib/format";
+import { formatDate, formatPeriod } from "@/lib/format";
 
 export const metadata: Metadata = { title: "設定" };
 
@@ -25,6 +27,8 @@ export default async function SettingsPage() {
   const prisma = await db();
   const summary = await getSettingsSummary(prisma, { today: todayInJapan() });
   const auditRows = await countAuditLog(prisma);
+  const activeRules = await countActiveRules(prisma);
+  const policy = await getRecordsPolicy(prisma);
   const recurringCount = await countActiveRecurringItems(prisma);
   const { counts, fiscalYear } = summary;
   const sections: Section[] = [
@@ -42,13 +46,17 @@ export default async function SettingsPage() {
     { label: "取引先", href: "/settings/partners", summary: String(counts.partners) },
     { label: "セグメント", href: "/settings/segments", summary: String(counts.segments) },
     { label: "タグ", href: "/settings/memo-tags", summary: String(counts.memoTags) },
-    { label: "ルール", href: null, summary: "準備中" },
+    { label: "ルール", href: "/settings/rules", summary: `有効 ${activeRules} 件` },
     {
       label: "定期取引",
       href: "/settings/recurring",
       summary: recurringCount > 0 ? `有効 ${recurringCount.toLocaleString("ja-JP")} 件` : "0",
     },
-    { label: "証憑の規程", href: null, summary: "準備中" },
+    {
+      label: "証憑の規程",
+      href: "/settings/documents-policy",
+      summary: policy.effectiveOn ? `施行日 ${formatDate(policy.effectiveOn)}` : "未制定",
+    },
     {
       label: "監査ログ",
       href: "/settings/audit-log",

@@ -3,28 +3,48 @@
  * them; Server Actions pass form values (strings) or typed values straight through, and turn a
  * `ZodError` into field errors. Messages are owner-facing Japanese.
  */
+import { CSV_FORMAT_KEYS, type GenericCsvConfig } from "@niho-finance/importers";
 import {
   ACCOUNT_CODE_PATTERN,
   ACCOUNT_GROUPS,
   ACCOUNT_KINDS,
   ACCOUNTING_METHODS,
   AUDIT_ENTITIES,
+  BANK_ACCOUNT_TYPES,
   CONSUMPTION_TAX_METHODS,
   corporateNumberProblem,
   defaultAccountingMethod,
+  DOCUMENT_KINDS,
+  DOCUMENT_LINK_KINDS,
+  DOCUMENT_MAX_BYTES,
+  DOCUMENT_SOURCES,
+  DOCUMENT_TABS,
+  INVOICE_DOC_TYPES,
   invoiceRegistrationNumberProblem,
+  isAcceptedDocumentMime,
   isAccountGroupOf,
   isCalendarDate,
+  isSalesTaxCategoryCode,
   isTaxCategoryCode,
+  isValidRuleRegex,
   normalizeCorporateNumber,
   normalizeInvoiceRegistrationNumber,
+  parseQuantity,
   parseYenInput,
   PARTNER_KINDS,
+  RULE_MODES,
+  RULE_REGEX_MAX_LENGTH,
   SIDES,
   WALLET_KINDS,
+  type BankAccountType,
   type CalendarDate,
+  type DocumentMime,
   type EntryCounterpart,
   type Money,
+  type RuleAction,
+  type RuleMatch,
+  type RuleSign,
+  type SalesTaxCategoryCode,
 } from "@niho-finance/ledger";
 import { z } from "zod";
 
@@ -725,6 +745,823 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 請求 (18-invoicing §3, §8–§10, §12)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, negative allowed (a discount), 0 allowed; required. */
+function signedYen(label: string) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") return problem(`${label}を入力してください`);
+    const amount = parseYenInput(text, { allowNegative: true });
+    if (amount === null) return problem(`${label}は円の整数で入力してください`);
+    return ok(amount);
+  });
+}
+
+/** 数量: above 0 with at most 2 decimals → hundredths (`1.5` → `150n`), never floating point. */
+const invoiceQuantityField = fromText("数量", (text): Conversion<bigint> => {
+  const value = parseQuantity(text);
+  return value === null
+    ? problem("数量は 0 より大きい数（小数 2 桁まで）にしてください")
+    : ok(value);
+});
+
+/** 税区分 of a line: one of the sales categories (課税売上 10% / 8% 軽減 / 非課税 / 不課税 / 輸出免税). */
+const salesTaxCategoryField = fromText("税区分", (text): Conversion<SalesTaxCategoryCode> =>
+  isSalesTaxCategoryCode(text) ? ok(text) : problem("税区分は売上の税区分から選んでください"),
+);
+
+/** A line of a document (18 §3.1). The amount is computed by the repository, never sent. */
+export const invoiceLineSchema = z.object({
+  /** 取引年月日; empty → the issue date. */
+  date: optionalDate("日付"),
+  name: requiredText("品名", 200),
+  quantity: invoiceQuantityField,
+  unit: optionalText("単位", 20),
+  /** Negative for a discount. */
+  unitPrice: signedYen("単価"),
+  taxCategoryCode: salesTaxCategoryField,
+});
+export type InvoiceLineFormInput = z.input<typeof invoiceLineSchema>;
+export type ParsedInvoiceLine = z.output<typeof invoiceLineSchema>;
+
+/** The body of a draft, shared by the new and the edit forms (18 §8). */
+const invoiceDraftFields = {
+  partnerId: idField("取引先"),
+  title: optionalText("件名", 200),
+  issueDate: requiredDate("発行日"),
+  /** 支払期限 (請求書) / 有効期限 (見積書); a delivery note has none. */
+  dueDate: optionalDate("期限"),
+  /** Unit prices include the tax (税込) instead of excluding it (税抜). */
+  pricesIncludeTax: booleanField("単価の税"),
+  note: optionalText("備考", 1000),
+  /** 請求書 only; empty → the default (4040 売上高 受託開発). */
+  revenueAccountId: optionalIdField("売上の科目"),
+  /** 請求書 only; empty → the account's, then the partner's default, then 受託. */
+  segmentId: optionalIdField("セグメント"),
+  lines: z
+    .array(invoiceLineSchema, { error: "行の形式が正しくありません" })
+    .min(1, { error: "行は 1 行以上にしてください" })
+    .max(100, { error: "行は 100 行までにしてください" }),
+};
+
+function checkDueDate(
+  value: { issueDate: CalendarDate; dueDate: CalendarDate | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.dueDate !== null && value.dueDate < value.issueDate) {
+    ctx.addIssue({ code: "custom", path: ["dueDate"], message: "期限は発行日以後にしてください" });
+  }
+}
+
+/** 新規 / 変換 / 複製 (18 §8). `sourceInvoiceId` is set by a conversion (`from`) only. */
+export const invoiceDraftSchema = z
+  .object({
+    docType: enumField("種別", INVOICE_DOC_TYPES),
+    ...invoiceDraftFields,
+    sourceInvoiceId: optionalIdField("変換元"),
+  })
+  .superRefine(checkDueDate);
+export type InvoiceDraftInput = z.input<typeof invoiceDraftSchema>;
+export type ParsedInvoiceDraft = z.output<typeof invoiceDraftSchema>;
+
+/** 編集 of a draft: the type and the conversion source never change (extra keys are ignored). */
+export const invoiceDraftUpdateSchema = z.object(invoiceDraftFields).superRefine(checkDueDate);
+export type InvoiceDraftUpdateInput = z.input<typeof invoiceDraftUpdateSchema>;
+export type ParsedInvoiceDraftUpdate = z.output<typeof invoiceDraftUpdateSchema>;
+
+/** 送付済みにする (18 §9.3): where it was sent (an email address or a note), optional. */
+export const invoiceSendSchema = z.object({ sentTo: optionalText("宛先", 200) });
+export type InvoiceSendInput = z.input<typeof invoiceSendSchema>;
+
+/** 無効にする (18 §9.3): the reason is stored on the document and on the reversal. */
+export const invoiceVoidSchema = z.object({ reason: requiredText("理由", 500) });
+export type InvoiceVoidInput = z.input<typeof invoiceVoidSchema>;
+
+/**
+ * 入金の登録 (18 §5.2, §9.4). With a statement line (`walletTransactionId`) the date, the wallet and
+ * the amount are the line's. `fee` is the transfer fee the customer deducted (empty or 0 → 0).
+ */
+export const invoicePaymentSchema = z.object({
+  paidOn: requiredDate("入金日"),
+  walletId: idField("口座"),
+  amount: positiveYen("入金額"),
+  fee: optionalPositiveYen("振込手数料").transform((fee): Money => fee ?? 0n),
+  walletTransactionId: optionalIdField("明細"),
+});
+export type InvoicePaymentInput = z.input<typeof invoicePaymentSchema>;
+export type ParsedInvoicePayment = z.output<typeof invoicePaymentSchema>;
+
+/** 入金の取消 (18 §9.4). */
+export const cancelInvoicePaymentSchema = z.object({
+  paymentId: idField("入金"),
+  reason: requiredText("理由", 500),
+});
+export type CancelInvoicePaymentInput = z.input<typeof cancelInvoicePaymentSchema>;
+
+const bankAccountTypeField = orNull(
+  z.preprocess(
+    (value) => (value === "" || value === undefined || value === null ? null : asText(value)),
+    z.enum(BANK_ACCOUNT_TYPES, { error: "種別を選んでください" }).nullable(),
+  ),
+);
+
+/** 口座番号: digits only after full-width digits are made half-width; empty → `null`. */
+const bankAccountNumberField = orNull(
+  fromText("口座番号", (text): Conversion<string | null> => {
+    const digits = toHalfWidthDigits(text);
+    if (digits === "") return ok(null);
+    return /^\d{1,20}$/.test(digits) ? ok(digits) : problem("口座番号は数字にしてください");
+  }),
+);
+
+/** 振込先 printed on invoices (`Company.bankAccountForInvoice`, 18 §10). Every item is optional. */
+export interface InvoiceBankAccount {
+  bankName: string | null;
+  branchName: string | null;
+  accountType: BankAccountType | null;
+  accountNumber: string | null;
+  /** 口座名義 (カナ) */
+  accountHolder: string | null;
+  /** 補足, e.g. 振込手数料は貴社にてご負担ください */
+  note: string | null;
+}
+
+/** 請求の設定 (18 §10). All items empty → no bank account (`null`). */
+export const invoiceSettingsSchema = z
+  .object({
+    bankName: optionalText("銀行名", 100),
+    branchName: optionalText("支店名", 100),
+    accountType: bankAccountTypeField,
+    accountNumber: bankAccountNumberField,
+    accountHolder: optionalText("口座名義", 100),
+    note: optionalText("補足", 200),
+  })
+  .transform((value): InvoiceBankAccount | null =>
+    Object.values(value).every((item) => item === null) ? null : value,
+  );
+export type InvoiceSettingsInput = z.input<typeof invoiceSettingsSchema>;
+
+/** 種別 of the list: 請求書 (default) / 見積書 / 納品書 / すべて. */
+export const INVOICE_TYPE_FILTERS = ["invoice", "quote", "delivery", "all"] as const;
+export type InvoiceTypeFilter = (typeof INVOICE_TYPE_FILTERS)[number];
+
+/**
+ * 状態 of the list: 未完了 (default: 下書き・発行済み・送付済み) / 下書き / 発行済み (送付済みを含む) /
+ * 入金済み / 無効 / すべて.
+ */
+export const INVOICE_STATUS_FILTERS = ["open", "draft", "issued", "paid", "void", "all"] as const;
+export type InvoiceStatusFilter = (typeof INVOICE_STATUS_FILTERS)[number];
+
+/** `/invoices?type&status&partner&q&page` (18 §7). */
+export const invoicesFilterSchema = z.object({
+  type: lenient<InvoiceTypeFilter>(z.enum(INVOICE_TYPE_FILTERS), "invoice"),
+  status: lenient<InvoiceStatusFilter>(z.enum(INVOICE_STATUS_FILTERS), "open"),
+  partner: filterId,
+  /** 番号 and 件名, partial match. */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  page: filterPage,
+});
+export type InvoicesFilter = z.output<typeof invoicesFilterSchema>;
+// Imports (取込, 12-imports)
+// ---------------------------------------------------------------------------
+
+/** Largest CSV file accepted (12-imports §1.2). The Server Actions' body limit matches it. */
+export const MAX_CSV_FILE_BYTES = 10 * 1024 * 1024;
+
+/** Highest 0-based column a mapping may name (statement CSVs have a handful of columns). */
+const MAX_CSV_COLUMN = 199;
+
+const CSV_ORDERS = ["asc", "desc", "auto"] as const;
+
+const OPTIONAL_CSV_COLUMNS = [
+  "amount",
+  "deposit",
+  "withdrawal",
+  "balance",
+  "counterparty",
+] as const;
+
+/** A 0-based column chosen in a select: a number, or its text (form values). */
+function csvColumnField(label: string) {
+  return fromText(label, (text) => {
+    if (text === "") return problem(`${label}を選んでください`);
+    return convertInteger(label, text, 0, MAX_CSV_COLUMN);
+  });
+}
+
+/** Empty (「なし」) or `null` → `null`: the column is not mapped. */
+function optionalCsvColumnField(label: string) {
+  return orNull(
+    fromText(label, (text): Conversion<number | null> =>
+      text === "" ? ok(null) : convertInteger(label, text, 0, MAX_CSV_COLUMN),
+    ),
+  );
+}
+
+/** A CSV format key from a select; empty or `null` → `null` (自動判別). */
+function optionalCsvFormatField(label: string) {
+  return orNull(
+    z.preprocess(
+      (value) => (value === "" || value === null || value === undefined ? null : asText(value)),
+      z.enum(CSV_FORMAT_KEYS, { error: `${label}を選んでください` }).nullable(),
+    ),
+  );
+}
+
+/**
+ * Column mapping of the generic format (`GenericCsvConfig`, 12-imports §1.2): the date and the
+ * description, and either the signed amount or the withdrawal / deposit columns. The output is a
+ * `GenericCsvConfig` without the columns that are not mapped, so it can be saved on the wallet.
+ */
+export const genericCsvConfigSchema = z
+  .object(
+    {
+      headerRows: fromText("ヘッダ行の数", (text) =>
+        text === "" ? ok(1) : convertInteger("ヘッダ行の数", text, 0, 50),
+      ).default(1),
+      columns: z.object(
+        {
+          date: csvColumnField("日付の列"),
+          description: csvColumnField("摘要の列"),
+          amount: optionalCsvColumnField("金額（符号付き）の列"),
+          deposit: optionalCsvColumnField("入金の列"),
+          withdrawal: optionalCsvColumnField("出金の列"),
+          balance: optionalCsvColumnField("残高の列"),
+          counterparty: optionalCsvColumnField("相手の列"),
+        },
+        { error: "列の対応を指定してください" },
+      ),
+      /** 「金額の正を出金として扱う」 (a card's 利用金額). */
+      invertSign: booleanField("金額の正を出金として扱う").default(false),
+      order: z
+        .preprocess(
+          (value) => (value === "" || value === null ? "auto" : asText(value)),
+          z.enum(CSV_ORDERS, { error: "並びは 自動・古い順・新しい順 のどれかを選んでください" }),
+        )
+        .default("auto"),
+    },
+    { error: "列の対応を指定してください" },
+  )
+  .superRefine((value, ctx) => {
+    const { amount, deposit, withdrawal } = value.columns;
+    const split = deposit !== null || withdrawal !== null;
+    if (amount !== null && split) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["columns", "amount"],
+        message: "金額（符号付き）と出金・入金は、どちらか一方だけを選んでください",
+      });
+    } else if (amount === null && !split) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["columns", "amount"],
+        message: "金額（符号付き）か、出金・入金の列を選んでください",
+      });
+    }
+    const seen = new Set<number>();
+    for (const [key, column] of Object.entries(value.columns)) {
+      if (column === null) continue;
+      if (seen.has(column)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["columns", key],
+          message: "同じ列を 2 つの項目に選んでいます。列の対応を確かめてください",
+        });
+      }
+      seen.add(column);
+    }
+  })
+  .transform((value): GenericCsvConfig => {
+    const columns: GenericCsvConfig["columns"] = {
+      date: value.columns.date,
+      description: value.columns.description,
+    };
+    for (const key of OPTIONAL_CSV_COLUMNS) {
+      const column = value.columns[key];
+      if (column !== null) columns[key] = column;
+    }
+    return {
+      headerRows: value.headerRows,
+      columns,
+      invertSign: value.invertSign,
+      order: value.order,
+    };
+  });
+export type GenericCsvConfigInput = z.input<typeof genericCsvConfigSchema>;
+
+/** 取込の設定 of a bank / card / other wallet: the format (`null` = 自動判別) and, for 汎用, the mapping. */
+export const walletImporterInputSchema = z.object({
+  walletId: idField("口座"),
+  importer: optionalCsvFormatField("取込形式"),
+  importerConfig: orNull(genericCsvConfigSchema.nullable()),
+});
+export type WalletImporterInput = z.input<typeof walletImporterInputSchema>;
+export type ParsedWalletImporterInput = z.output<typeof walletImporterInputSchema>;
+
+const STRIPE_ACCOUNT_ID_PATTERN = /^acct_[A-Za-z0-9]{8,64}$/;
+/**
+ * The environment variables a Stripe key may be read from (12-imports §4.1): only names under
+ * `NIHO_FINANCE_STRIPE_`, so a connection can never send another secret (`DATABASE_URL`, …) to
+ * Stripe as its API key.
+ */
+export const STRIPE_KEY_NAME_PATTERN = /^NIHO_FINANCE_STRIPE_[A-Z0-9_]{1,44}$/;
+const STRIPE_KEY_PATTERN = /^(?:rk|sk)_/i;
+
+/** Stripe の接続: the account ID and the name of the environment variable holding its key (§4.1). */
+export const stripeAccountLinkInputSchema = z.object({
+  walletId: idField("口座"),
+  stripeAccountId: fromText("アカウント ID", (text) => {
+    if (text === "") return problem("アカウント ID を入力してください");
+    if (!STRIPE_ACCOUNT_ID_PATTERN.test(text)) {
+      return problem("アカウント ID は acct_ で始まる Stripe のアカウント ID です");
+    }
+    return ok(text);
+  }),
+  secretName: fromText("鍵の名前", (text) => {
+    if (text === "") return problem("鍵の名前を入力してください");
+    if (STRIPE_KEY_PATTERN.test(text)) {
+      return problem("鍵そのものは入力しません。鍵を置いた環境変数の名前を入力してください");
+    }
+    if (!STRIPE_KEY_NAME_PATTERN.test(text)) {
+      return problem(
+        "鍵の名前は NIHO_FINANCE_STRIPE_ で始まる環境変数の名前にします（大文字の英数字と _。例 NIHO_FINANCE_STRIPE_KEY_PLATFORM）",
+      );
+    }
+    return ok(text);
+  }),
+});
+export type StripeAccountLinkInput = z.input<typeof stripeAccountLinkInputSchema>;
+
+/**
+ * A CSV file to preview or import (12-imports §1.2). `format` and `config` override what the wallet
+ * has saved; `rememberFormat` (「この形式と列対応を口座に保存し、次回から使う」) only matters to the import.
+ */
+export const csvImportInputSchema = z.object({
+  walletId: idField("口座"),
+  fileName: requiredText("ファイル名", 255),
+  /** Any `Uint8Array` (a Node `Buffer` too), whatever buffer backs it. */
+  bytes: z
+    .custom<Uint8Array>((value) => value instanceof Uint8Array, {
+      error: "ファイルを選んでください",
+    })
+    .refine((bytes) => bytes.byteLength > 0, { error: "ファイルが空です" })
+    .refine((bytes) => bytes.byteLength <= MAX_CSV_FILE_BYTES, {
+      error: "ファイルが大きすぎます（10 MB まで）",
+    }),
+  format: optionalCsvFormatField("取込形式"),
+  config: orNull(genericCsvConfigSchema.nullable()),
+  rememberFormat: booleanField("取込形式の保存").default(true),
+});
+export type CsvImportInput = z.input<typeof csvImportInputSchema>;
+export type ParsedCsvImportInput = z.output<typeof csvImportInputSchema>;
+
+// ---------------------------------------------------------------------------
+// 明細 (15-statements)
+// ---------------------------------------------------------------------------
+
+/** 状態 of the statement list (15 §3): 未処理 (default) / 登録済み / 振替 / 無視. */
+export const STATEMENT_STATUS_FILTERS = ["pending", "registered", "transfer", "ignored"] as const;
+export type StatementStatusFilter = (typeof STATEMENT_STATUS_FILTERS)[number];
+
+/** `/statements?wallet&status&q&by&page` (15 §3). */
+export const statementsFilterSchema = z.object({
+  wallet: filterId,
+  status: lenient<StatementStatusFilter>(z.enum(STATEMENT_STATUS_FILTERS), "pending"),
+  /** 摘要・振込人, partial match; digits and separators only → the amount (|金額|). */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  /** `rule`: settled by a rule without the owner (the settled tabs only). */
+  by: lenient<"rule" | null>(z.literal("rule"), null),
+  page: filterPage,
+});
+export type StatementsFilter = z.output<typeof statementsFilterSchema>;
+
+/** A line of 登録 (one, or several for 分割, 15 §9). The amount is tax-inclusive. */
+export const statementLineSchema = z.object({
+  accountId: idField("科目"),
+  /** Empty → the whole amount of the statement line (only with one line). */
+  amount: optionalPositiveYen("金額"),
+  taxCategoryCode: taxCategoryCodeField(),
+  segmentId: optionalIdField("セグメント"),
+  /** Empty → the entry's partner. */
+  partnerId: optionalIdField("取引先"),
+  description: optionalText("摘要", 200),
+});
+export type StatementLineFormInput = z.input<typeof statementLineSchema>;
+
+/** 登録 of a statement line (15 §1, §5, §9). */
+export const registerStatementSchema = z.object({
+  /** Empty → the line's own description (cut to 200 characters). */
+  description: optionalText("摘要", 200),
+  partnerId: optionalIdField("取引先"),
+  /** The rule whose suggestion is being registered (its hit count goes up). */
+  ruleId: optionalIdField("ルール"),
+  lines: z
+    .array(statementLineSchema, { error: "行の形式が正しくありません" })
+    .min(1, { error: "行を 1 行以上入れてください" })
+    .max(30, { error: "行は 30 行までにしてください" }),
+});
+export type RegisterStatementInput = z.input<typeof registerStatementSchema>;
+export type ParsedRegisterStatement = z.output<typeof registerStatementSchema>;
+
+/** The other side of a 振替 (15 §8): a pending line, a posted transfer entry, or just a wallet. */
+export interface StatementCounterpart {
+  kind: "txn" | "entry" | "wallet";
+  id: string;
+}
+
+/** 振替 of a statement line: `txn:<id>` / `entry:<id>` / `wallet:<id>` (15 §1, §8). */
+export const transferStatementSchema = z.object({
+  counterpart: fromText("相手", (text): Conversion<StatementCounterpart> => {
+    if (text === "") return problem("相手を選んでください");
+    const match = /^(txn|entry|wallet):(\S{1,64})$/.exec(text);
+    const kind = match?.[1];
+    const id = match?.[2];
+    if (!id || (kind !== "txn" && kind !== "entry" && kind !== "wallet")) {
+      return problem("相手が正しくありません");
+    }
+    return ok({ kind, id });
+  }),
+  /** Only with `wallet:` (paid by the paying wallet, 11 §4.3). */
+  fee: optionalPositiveYen("手数料"),
+  /** Empty → 「振替 <出金側> → <入金側>」. */
+  description: optionalText("摘要", 200),
+  ruleId: optionalIdField("ルール"),
+});
+export type TransferStatementInput = z.input<typeof transferStatementSchema>;
+export type ParsedTransferStatement = z.output<typeof transferStatementSchema>;
+
+/** 無視 (15 §1): the reason is optional. */
+export const ignoreStatementSchema = z.object({
+  reason: optionalText("理由", 200),
+  ruleId: optionalIdField("ルール"),
+});
+export type IgnoreStatementInput = z.input<typeof ignoreStatementSchema>;
+
+/** 未処理に戻す: the reason is required when an entry is voided (checked by the repository). */
+export const reopenStatementSchema = z.object({ reason: optionalText("理由", 500) });
+export type ReopenStatementInput = z.input<typeof reopenStatementSchema>;
+
+/** メモ of a statement line (any state; never written to the entry). */
+export const statementNoteSchema = z.object({ note: optionalText("メモ", 500) });
+export type StatementNoteInput = z.input<typeof statementNoteSchema>;
+
+// ---------------------------------------------------------------------------
+// ルール (15 §10)
+// ---------------------------------------------------------------------------
+
+const ruleSignField = orNull(
+  fromText("符号", (text): Conversion<RuleSign | null> => {
+    if (text === "" || text === "both") return ok(null);
+    if (text === "in" || text === "out") return ok(text);
+    return problem("符号が正しくありません");
+  }),
+);
+
+const ruleRegexField = orNull(
+  fromText("正規表現", (text): Conversion<string | null> => {
+    if (text === "") return ok(null);
+    if (text.length > RULE_REGEX_MAX_LENGTH) {
+      return problem(`正規表現は ${RULE_REGEX_MAX_LENGTH} 文字以内にしてください`);
+    }
+    if (!isValidRuleRegex(text)) return problem("正規表現が正しくありません");
+    return ok(text);
+  }),
+);
+
+/** 条件 of a rule: at least one, all AND. Amounts are |金額| in whole yen. */
+export const ruleMatchSchema = z
+  .object({
+    descriptionContains: optionalText("摘要に含む", 100),
+    descriptionRegex: ruleRegexField,
+    counterpartyContains: optionalText("振込人に含む", 100),
+    amountMin: optionalPositiveYen("金額の下限"),
+    amountMax: optionalPositiveYen("金額の上限"),
+    sign: ruleSignField,
+  })
+  .superRefine((match, ctx) => {
+    if (match.amountMin !== null && match.amountMax !== null && match.amountMin > match.amountMax) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountMax"],
+        message: "金額の上限は下限以上にしてください",
+      });
+    }
+    const conditions = [
+      match.descriptionContains,
+      match.descriptionRegex,
+      match.counterpartyContains,
+      match.amountMin,
+      match.amountMax,
+      match.sign,
+    ];
+    if (conditions.every((value) => value === null)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["descriptionContains"],
+        message: "条件を 1 つ以上入れてください",
+      });
+    }
+  })
+  .transform((match): RuleMatch => match);
+export type RuleMatchInput = z.input<typeof ruleMatchSchema>;
+
+/** 動作 of a rule; the fields another mode does not use are dropped. */
+export const ruleActionSchema = z
+  .object({
+    mode: enumField("動作", RULE_MODES),
+    accountId: optionalIdField("科目"),
+    taxCategoryCode: optionalTaxCategoryCodeField(),
+    partnerId: optionalIdField("取引先"),
+    segmentId: optionalIdField("セグメント"),
+    descriptionTemplate: optionalText("摘要の雛形", 200),
+    transferToWalletId: optionalIdField("相手口座"),
+    ignoredReason: optionalText("理由", 200),
+  })
+  .superRefine((action, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    switch (action.mode) {
+      case "register":
+        if (!action.accountId) issue("accountId", "科目を選んでください");
+        if (!action.taxCategoryCode) issue("taxCategoryCode", "税区分を選んでください");
+        return;
+      case "suggest":
+        if (
+          !action.accountId &&
+          !action.taxCategoryCode &&
+          !action.partnerId &&
+          !action.segmentId
+        ) {
+          issue("accountId", "科目・税区分・取引先・セグメントのどれかを入れてください");
+        }
+        return;
+      case "transfer":
+        if (!action.transferToWalletId) issue("transferToWalletId", "相手口座を選んでください");
+        return;
+      case "ignore":
+        return;
+    }
+  })
+  .transform((action): RuleAction => {
+    const fields = action.mode === "register" || action.mode === "suggest";
+    return {
+      mode: action.mode,
+      accountId: fields ? action.accountId : null,
+      taxCategoryCode: fields ? action.taxCategoryCode : null,
+      partnerId: fields ? action.partnerId : null,
+      segmentId: fields ? action.segmentId : null,
+      descriptionTemplate: fields ? action.descriptionTemplate : null,
+      transferToWalletId: action.mode === "transfer" ? action.transferToWalletId : null,
+      ignoredReason: action.mode === "ignore" ? action.ignoredReason : null,
+    };
+  });
+export type RuleActionInput = z.input<typeof ruleActionSchema>;
+
+/** 優先度: an integer from −100 to 100; empty → 0. */
+const rulePriorityField = fromText("優先度", (text): Conversion<number> => {
+  if (text === "") return ok(0);
+  const normalized = toHalfWidthDigits(text).replace(/^[−－]/, "-");
+  if (!/^[-+]?\d+$/.test(normalized)) return problem("優先度は整数で入力してください");
+  const value = Number(normalized);
+  if (value < -100 || value > 100) return problem("優先度は -100〜100 にしてください");
+  return ok(value);
+});
+
+const ruleFields = {
+  /** Empty → the match summary is the display name. */
+  name: optionalText("名前", 50),
+  /** Empty → every wallet. */
+  walletId: optionalIdField("口座"),
+  match: ruleMatchSchema,
+  action: ruleActionSchema,
+  /** Left out → off. */
+  autoPost: booleanField("自動登録").optional(),
+  /** Left out → 0. */
+  priority: rulePriorityField.optional(),
+};
+
+/** ルールを追加 (15 §10). A 候補 rule never posts by itself (`autoPost` is forced off). */
+export const ruleCreateSchema = z.object(ruleFields).transform((rule) => ({
+  ...rule,
+  autoPost: rule.action.mode === "suggest" ? false : rule.autoPost === true,
+  priority: rule.priority ?? 0,
+}));
+export type RuleCreateInput = z.input<typeof ruleCreateSchema>;
+export type ParsedRuleCreate = z.output<typeof ruleCreateSchema>;
+
+/** ルールの編集: only the given keys change (`match` / `action` are replaced as a whole). */
+export const ruleUpdateSchema = z.object({
+  name: ruleFields.name.optional(),
+  walletId: ruleFields.walletId.optional(),
+  match: ruleMatchSchema.optional(),
+  action: ruleActionSchema.optional(),
+  autoPost: ruleFields.autoPost,
+  priority: ruleFields.priority,
+});
+export type RuleUpdateInput = z.input<typeof ruleUpdateSchema>;
+export type ParsedRuleUpdate = z.output<typeof ruleUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Documents (証憑, 13-documents §8.3)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, 0 or more; empty → `null`. Accepts `3980`, `3,980`, full-width digits and bigint. */
+export function optionalNonNegativeYen(label: string) {
+  return orNull(
+    fromText(label, (text): Conversion<Money | null> => {
+      if (text === "") return ok(null);
+      const amount = parseYenInput(text);
+      if (amount === null) return problem(`${label}は 0 以上の円の整数で入力してください`);
+      return ok(amount);
+    }),
+  );
+}
+
+/** One of `values`; empty → `null` (e.g. 「すべて」 in a select). */
+export function optionalEnumField<const T extends readonly [string, ...string[]]>(
+  label: string,
+  values: T,
+) {
+  return orNull(
+    fromText(label, (text): Conversion<T[number] | null> => {
+      if (text === "") return ok(null);
+      if (!(values as readonly string[]).includes(text)) return problem(`${label}を選んでください`);
+      return ok(text as T[number]);
+    }),
+  );
+}
+
+/** One of `values`; a missing key, `null` or "" → `fallback`. */
+function enumWithDefault<const T extends readonly [string, ...string[]]>(
+  label: string,
+  values: T,
+  fallback: T[number],
+) {
+  return fromText(label, (text): Conversion<T[number]> => {
+    if (text === "") return ok(fallback);
+    if (!(values as readonly string[]).includes(text)) return problem(`${label}を選んでください`);
+    return ok(text as T[number]);
+  })
+    .optional()
+    .transform((value): T[number] => value ?? fallback);
+}
+
+/** SHA-256 of the file: 64 hex digits, normalized to lower case. */
+const sha256Field = fromText("SHA-256", (text) => {
+  const value = text.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    return problem("ファイルの SHA-256 が正しくありません。ファイルを選び直してください");
+  }
+  return ok(value);
+});
+
+/** An accepted MIME type (`normalizeDocumentMime` turns the browser's type into one). */
+const documentMimeField = fromText("形式", (text): Conversion<DocumentMime> => {
+  if (!isAcceptedDocumentMime(text)) {
+    return problem(
+      "この形式のファイルは保存できません。画像（JPEG・PNG・WebP・HEIC）・PDF・CSV を選んでください",
+    );
+  }
+  return ok(text);
+});
+
+const documentByteSizeField = fromText("大きさ", (text): Conversion<number> => {
+  if (!/^\d+$/.test(text)) {
+    return problem("ファイルの大きさが正しくありません。ファイルを選び直してください");
+  }
+  const size = Number(text);
+  if (size === 0)
+    return problem("空のファイルは保存できません。中身のあるファイルを選んでください");
+  if (size > DOCUMENT_MAX_BYTES) {
+    return problem("ファイルは 20 MB までです。小さくしてから選び直してください");
+  }
+  return ok(size);
+});
+
+/** The stored file as the browser describes it (checked again against the bytes on completion). */
+export const documentFileSchema = z.object({
+  sha256: sha256Field,
+  mime: documentMimeField,
+  byteSize: documentByteSizeField,
+  originalName: optionalText("ファイル名", 200),
+  source: enumField("保存の方法", DOCUMENT_SOURCES),
+});
+export type DocumentFileInput = z.input<typeof documentFileSchema>;
+
+/** Where the file is stored (`documents/<yyyy>/<mm>/<ulid>.<ext>`). */
+const storageKeyField = requiredText("保存先", 500);
+
+/** The search items required by 電子帳簿保存法 (date, amount, partner) and the rest of the form. */
+const documentItemFields = {
+  txnDate: optionalDate("取引年月日"),
+  amount: optionalNonNegativeYen("金額"),
+  /** A partner of the master; when set, the free-text name is cleared. */
+  partnerId: optionalIdField("取引先"),
+  /** Free-text name (「その他」) when the partner is not in the master. */
+  partnerName: optionalText("取引先名", 200),
+  invoiceRegistrationNumber: optionalInvoiceRegistrationNumber,
+  note: optionalText("メモ", 1000),
+};
+
+/** Omitted keys are left as they are (update) or inherited (replacement). */
+const documentItemPatchFields = {
+  kind: enumField("種別", DOCUMENT_KINDS).optional(),
+  txnDate: documentItemFields.txnDate.optional(),
+  amount: documentItemFields.amount.optional(),
+  partnerId: documentItemFields.partnerId.optional(),
+  partnerName: documentItemFields.partnerName.optional(),
+  invoiceRegistrationNumber: documentItemFields.invoiceRegistrationNumber.optional(),
+  note: documentItemFields.note.optional(),
+};
+
+export const documentRegisterSchema = documentFileSchema.extend({
+  storageKey: storageKeyField,
+  /** Defaults to 領収書. */
+  kind: enumWithDefault("種別", DOCUMENT_KINDS, "receipt"),
+  ...documentItemFields,
+});
+export type DocumentRegisterInput = z.input<typeof documentRegisterSchema>;
+
+/** The items edited on the detail screen (13 §4). Omitted keys are left as they are. */
+export const documentUpdateSchema = z.object({
+  id: idField("証憑"),
+  ...documentItemPatchFields,
+});
+export type DocumentUpdateInput = z.input<typeof documentUpdateSchema>;
+
+export const documentVoidSchema = z.object({
+  id: idField("証憑"),
+  reason: requiredText("理由", 200),
+});
+export type DocumentVoidInput = z.input<typeof documentVoidSchema>;
+
+/** A new file for a document; items given in `replacement` win over the inherited ones. */
+export const documentReplaceSchema = z.object({
+  id: idField("差し替える証憑"),
+  reason: requiredText("理由", 200),
+  replacement: documentFileSchema.extend({
+    storageKey: storageKeyField,
+    ...documentItemPatchFields,
+  }),
+});
+export type DocumentReplaceInput = z.input<typeof documentReplaceSchema>;
+
+export const documentLinkSchema = z.object({
+  kind: enumField("紐づける先", DOCUMENT_LINK_KINDS),
+  id: idField("紐づける先"),
+  documentId: idField("証憑"),
+});
+export type DocumentLinkInput = z.input<typeof documentLinkSchema>;
+
+/**
+ * The list's search form (13 §3.2; URL search parameters are the source). Conditions are ANDed.
+ * `tab` stays `null` when not given: the list defaults to the inbox, the index CSV to all.
+ */
+export const documentSearchSchema = z
+  .object({
+    tab: optionalEnumField("タブ", DOCUMENT_TABS),
+    from: optionalDate("取引年月日の始まり"),
+    to: optionalDate("取引年月日の終わり"),
+    amountMin: optionalNonNegativeYen("金額の下限"),
+    amountMax: optionalNonNegativeYen("金額の上限"),
+    /** Part of the partner's name (the master's or the free-text one). */
+    partner: optionalText("取引先", 200),
+    kind: optionalEnumField("種別", DOCUMENT_KINDS),
+    /** Part of the file name, the note or the partner's name. */
+    q: optionalText("キーワード", 200),
+    page: optionalIntegerInRange("ページ", 1, 100_000).transform((value) => value ?? 1),
+  })
+  .superRefine((value, ctx) => {
+    if (value.from !== null && value.to !== null && value.from > value.to) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["to"],
+        message: "取引年月日の終わりは始まりと同じ日か、それより後にしてください",
+      });
+    }
+    if (value.amountMin !== null && value.amountMax !== null && value.amountMin > value.amountMax) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountMax"],
+        message: "金額の上限は下限と同じか、それより大きくしてください",
+      });
+    }
+  });
+export type DocumentSearchInput = z.input<typeof documentSearchSchema>;
+export type DocumentSearchFilters = z.output<typeof documentSearchSchema>;
+
+/** 設定 › 証憑の規程 (13 §5). Empty 管理責任者 → 代表者, empty 処理責任者 → 管理責任者. */
+export const recordsPolicySchema = z.object({
+  effectiveOn: requiredDate("施行日"),
+  manager: optionalText("管理責任者", 100),
+  operator: optionalText("処理責任者", 100),
+  /** `POLICY_VERSION` of the text that is put in force. */
+  version: requiredText("版", 50),
+});
+export type RecordsPolicyInput = z.input<typeof recordsPolicySchema>;
 
 // ---------------------------------------------------------------------------
 // Recurring items (定期取引, 21-cashflow §2)

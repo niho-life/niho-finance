@@ -10,6 +10,7 @@ import {
   recurringCashEffect,
   type CashflowDeadline,
   type CashflowInputs,
+  type CashflowInvoice,
   type CashflowRecurringItem,
 } from "@niho-finance/reports";
 import type { Prisma, RecurrenceFrequency, RecurringItem, Wallet } from "@prisma/client";
@@ -17,6 +18,7 @@ import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { SettingsError } from "./errors";
 import { newId } from "./ids";
+import { INVOICE_LIST_LIMIT, listInvoices } from "./invoices";
 import {
   recurringItemCreateSchema,
   recurringItemUpdateSchema,
@@ -381,8 +383,8 @@ function toForecastItem(row: RecurringItem): CashflowRecurringItem {
 /**
  * What the forecast reads besides the book (21 §3.1): every recurring item (the forecast counts
  * the active ones), the open payment deadlines of `start < due ≤ start + days` (`null` while the
- * calendar has no row at all), and the invoices. Amounts of deadlines (#14, #20) and invoices
- * (#16) are not connected yet: `null`.
+ * calendar has no row at all), and what issued invoices still wait for (18-invoicing). Amounts of
+ * deadlines (#14, #20) and received invoices are not connected yet: `null`.
  */
 export async function loadCashflowInputs(
   db: Db,
@@ -419,5 +421,20 @@ export async function loadCashflowInputs(
     }));
   }
 
-  return { recurring, deadlines, receivables: null, payables: null };
+  // 未入金の請求: issued and sent invoices (not drafts, paid or void ones) with a balance left.
+  const invoices = await listInvoices(db, { type: "invoice", status: "issued" }, 1, {
+    today: options.start,
+    pageSize: INVOICE_LIST_LIMIT,
+  });
+  const receivables: CashflowInvoice[] = [];
+  for (const row of invoices.rows) {
+    if (row.balance === null || row.balance <= 0n) continue;
+    receivables.push({
+      date: row.dueDate,
+      amount: row.balance,
+      label: `${row.number} ${row.partnerName}`,
+    });
+  }
+
+  return { recurring, deadlines, receivables, payables: null };
 }
