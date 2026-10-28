@@ -2113,7 +2113,7 @@ export async function voidInvoice(
           tx,
           current.journalEntryId,
           { reason: data.reason },
-          options,
+          { ...options, owner: "invoice" },
         );
         reversalEntryId = reversal.id;
       }
@@ -2354,7 +2354,7 @@ export async function cancelInvoicePayment(
         tx,
         payment.journalEntryId,
         { reason: data.reason },
-        options,
+        { ...options, owner: "invoice" },
       );
       reversalEntryId = reversal.id;
     }

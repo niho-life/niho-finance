@@ -37,6 +37,7 @@ import {
 import type { FiscalYear, Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { SettingsError } from "./errors";
 import {
   JournalEntryNotFoundError,
   loadStoredEntry,
@@ -439,6 +440,36 @@ interface ReversalTarget {
 }
 
 /**
+ * The modules that own the entries they post (`sourceKind`): only they void them, so that the
+ * document and the ledger move together (docs/decisions/2026-10-29-invoice-entries-locked.md).
+ * Today: 請求 (`invoice`: the 売掛金 of an issued document and its payments).
+ */
+const OWNED_SOURCE_KINDS: ReadonlySet<SourceKind> = new Set(["invoice"]);
+
+export interface VoidOwnerOptions {
+  /** The module voiding its own entry (e.g. `invoice` from `invoices.ts`); screens leave it out. */
+  owner?: SourceKind;
+}
+
+/** Why an entry posted by the invoices cannot be voided or corrected on the transaction screen. */
+function invoiceEntryMessage(number: string | null): string {
+  const document = number && !number.includes("-draft-") ? `請求書 ${number}` : "請求書";
+  return `${document} から作った仕訳です。取消・訂正は 請求 の画面で、書類を無効にするか入金を取り消して行います`;
+}
+
+async function ownedEntryProblem(
+  db: Db,
+  entry: { sourceKind: SourceKind; sourceId: string | null },
+  owner: SourceKind | undefined,
+): Promise<string | null> {
+  if (!OWNED_SOURCE_KINDS.has(entry.sourceKind) || entry.sourceKind === owner) return null;
+  const invoice = entry.sourceId
+    ? await db.invoice.findUnique({ where: { id: entry.sourceId }, select: { number: true } })
+    : null;
+  return invoiceEntryMessage(invoice?.number ?? null);
+}
+
+/**
  * Locks the entry, then the fiscal years the void (and the correction) will write to: the
  * original's and the one containing `alsoDate` (the replacement's date), in `start_date` order, so
  * that corrections across two years in opposite directions cannot deadlock. The later locks of
@@ -448,14 +479,24 @@ async function lockForReversal(
   tx: Tx,
   entryId: string,
   alsoDate?: CalendarDate,
+  owner?: SourceKind,
 ): Promise<ReversalTarget> {
   const locked = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "journal_entry" WHERE "id" = ${entryId} FOR UPDATE`;
   if (locked.length === 0) throw new JournalEntryNotFoundError(entryId);
   const original = await tx.journalEntry.findUniqueOrThrow({
     where: { id: entryId },
-    select: { status: true, kind: true, entryDate: true, fiscalYearId: true },
+    select: {
+      status: true,
+      kind: true,
+      entryDate: true,
+      fiscalYearId: true,
+      sourceKind: true,
+      sourceId: true,
+    },
   });
+  const owned = await ownedEntryProblem(tx, original, owner);
+  if (owned) throw new SettingsError(owned);
   const yearIds = new Set([original.fiscalYearId]);
   if (alsoDate !== undefined) {
     const day = toDbDate(alsoDate);
@@ -495,11 +536,11 @@ export async function voidJournalEntryWithOpenDate(
   db: Db,
   entryId: string,
   input: VoidEntryInput,
-  options: ActorOptions,
+  options: ActorOptions & VoidOwnerOptions,
 ): Promise<VoidJournalEntryResult> {
   const data = voidEntrySchema.parse(input);
   return runInTransaction(db, async (tx) => {
-    const { date } = await lockForReversal(tx, entryId);
+    const { date } = await lockForReversal(tx, entryId, undefined, options.owner);
     return voidJournalEntryInTransaction(tx, entryId, {
       reason: data.reason,
       date,
@@ -854,6 +895,8 @@ export async function getJournalEntryDetail(
   const entryDate = fromDbDate(row.entryDate);
   const period = toFiscalYearContext(row.fiscalYear);
   const plan = reversalPlan({ status: row.status, kind: row.kind, entryDate }, row.fiscalYear);
+  // An entry the invoices posted is voided there (decision 2026-10-29), never on this screen.
+  const owned = await ownedEntryProblem(db, row, undefined);
   let debitTotal = 0n;
   let creditTotal = 0n;
   for (const line of row.lines) {
@@ -911,8 +954,8 @@ export async function getJournalEntryDetail(
     replaces: row.replaces.map(toEntryRef),
     isLocked: isLocked(entryDate, period),
     firstOpenDate: firstOpenDate(period),
-    reversalDate: plan.date,
-    blockedReason: plan.blocked?.message ?? null,
+    reversalDate: owned ? null : plan.date,
+    blockedReason: plan.blocked?.message ?? owned,
   };
 }
 

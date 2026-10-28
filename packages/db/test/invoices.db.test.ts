@@ -28,7 +28,11 @@ import {
   toDbDate,
   updateInvoiceDraft,
   updateInvoiceSettings,
+  correctJournalEntry,
+  getJournalEntryDetail,
+  reopenWalletTransaction,
   voidInvoice,
+  voidJournalEntry,
   voidJournalEntryWithOpenDate,
   type InvoiceDraftInput,
   type InvoiceLineFormInput,
@@ -851,12 +855,13 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
     );
   });
 
-  it("takes no payment once the 売掛金 entry was voided on the transaction screen, but voids", async () => {
+  it("takes no payment once the 売掛金 entry was voided outside the invoice (an internal path), but voids", async () => {
     const invoice = await issued({ issueDate: "2051-07-05" });
     const entry = await prisma.journalEntry.findUniqueOrThrow({
       where: { id: invoice.journalEntryId ?? "" },
     });
-    await voidJournalEntryWithOpenDate(prisma, entry.id, { reason: "取引画面で取消" }, options);
+    // The screens cannot void it any more (decision 2026-10-29); the ledger's own void still can.
+    await voidJournalEntry(prisma, entry.id, { reason: "内部の取消", actor });
     const message = `売掛金の仕訳 No. ${entry.no} が取消済みです。書類を無効にして、必要なら複製して発行し直してください`;
     expect(
       settingsError(
@@ -872,7 +877,7 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
       blocked: { pay: message },
     });
 
-    // Voiding the document keeps the reversal made on the transaction screen.
+    // Voiding the document keeps the reversal made outside it.
     const voided = await voidInvoice(
       prisma,
       invoice.id,
@@ -1389,5 +1394,84 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
       sentTo: "billing@example.com",
       mailSubject: "請求書（再送）",
     });
+  });
+
+  it("keeps the entries of an invoice out of the transaction and statement screens (decision 2026-10-29)", async () => {
+    const invoice = await issued({ issueDate: "2051-12-08" });
+    const deposit = await statementLine(138_622n, "2051-12-09");
+    await recordInvoicePayment(
+      prisma,
+      invoice.id,
+      payment({ paidOn: "2051-12-09", amount: "138,622", walletTransactionId: deposit.id }),
+      options,
+    );
+    const paymentEntryId = (await storedPayments(invoice.id))[0]?.journalEntryId ?? "";
+    const receivableId = invoice.journalEntryId ?? "";
+
+    for (const entryId of [receivableId, paymentEntryId]) {
+      const message = settingsError(
+        await rejectionOf(
+          voidJournalEntryWithOpenDate(prisma, entryId, { reason: "取引画面から" }, options),
+        ),
+      ).message;
+      expect(message).toContain(`請求書 ${invoice.number} から作った仕訳です`);
+      expect(message).toContain("請求 の画面");
+      const detail = await getJournalEntryDetail(prisma, entryId);
+      expect(detail).toMatchObject({ reversalDate: null, sourceKind: "invoice" });
+      expect(detail?.blockedReason).toContain(invoice.number);
+    }
+    const original = await getJournalEntryDetail(prisma, receivableId);
+    expect(
+      settingsError(
+        await rejectionOf(
+          correctJournalEntry(
+            prisma,
+            receivableId,
+            {
+              reason: "訂正",
+              replacement: {
+                kind: "normal",
+                entryDate: "2051-12-08",
+                description: "訂正",
+                partnerId: "",
+                memoTagIds: [],
+                lines: (original?.lines ?? []).map((line) => ({
+                  side: line.side,
+                  accountId: line.accountId,
+                  subAccountId: line.subAccountId ?? "",
+                  amount: line.amount.toString(),
+                  taxCategoryCode: line.taxCategoryCode,
+                  segmentId: line.segmentId ?? "",
+                  partnerId: line.partnerId ?? "",
+                  description: "",
+                })),
+              },
+            },
+            options,
+          ),
+        ),
+      ).message,
+    ).toContain("請求 の画面");
+
+    // 明細: the line that paid the invoice is not reopened there.
+    const reopened = await rejectionOf(
+      reopenWalletTransaction(prisma, deposit.id, { reason: "やり直し" }, options),
+    );
+    expect(settingsError(reopened).message).toContain(
+      `請求書 ${invoice.number} の入金に充てています`,
+    );
+    expect(
+      (await prisma.walletTransaction.findUniqueOrThrow({ where: { id: deposit.id } })).status,
+    ).toBe("registered");
+
+    // The invoice itself still cancels its payment and voids its document.
+    const paymentId = (await storedPayments(invoice.id))[0]?.id ?? "";
+    await cancelInvoicePayment(prisma, invoice.id, { paymentId, reason: "金額の確認" }, options);
+    expect(
+      (await prisma.walletTransaction.findUniqueOrThrow({ where: { id: deposit.id } })).status,
+    ).toBe("pending");
+    expect((await voidInvoice(prisma, invoice.id, { reason: "宛名の誤り" }, options)).status).toBe(
+      "void",
+    );
   });
 });
