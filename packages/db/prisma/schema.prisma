@@ -348,6 +348,7 @@ model Account {
   partnerDefaults    Partner[]
   fixedAssets        FixedAsset[]
   recurringItems     RecurringItem[]
+  invoices           Invoice[]
 
   @@map("account")
 }
@@ -428,6 +429,7 @@ model Segment {
   partnerDefaults Partner[]
   fixedAssets     FixedAsset[]
   recurringItems  RecurringItem[]
+  invoices        Invoice[]
 
   @@map("segment")
 }
@@ -780,6 +782,8 @@ model DocumentLink {
 // Invoices and fixed assets (v2: main columns only)
 // ---------------------------------------------------------------------------
 
+/// 見積書・納品書・請求書 (docs/design/18-invoicing.md). Only drafts change their body (DB trigger);
+/// deletion is logical (`void`).
 model Invoice {
   id                   String         @id
   docType              InvoiceDocType @map("doc_type")
@@ -794,7 +798,17 @@ model Invoice {
   subtotalByRate       Json           @map("subtotal_by_rate")
   taxByRate            Json           @map("tax_by_rate")
   total                BigInt
+  /// Unit prices include the tax (税込) instead of excluding it (税抜)
+  pricesIncludeTax     Boolean        @default(false) @map("prices_include_tax")
+  /// Revenue account of an invoice (default 4040 売上高 受託開発); null for quotes and delivery notes
+  revenueAccountId     String?        @map("revenue_account_id")
+  /// Segment of the revenue lines (default 受託); null for quotes and delivery notes
+  segmentId            String?        @map("segment_id")
+  /// 備考 printed on the document
+  note                 String?
   issuerSnapshot       Json?          @map("issuer_snapshot")
+  /// Recipient (name, address) copied on issue
+  recipientSnapshot    Json?          @map("recipient_snapshot")
   status               InvoiceStatus  @default(draft)
   /// Converted from (quote → delivery → invoice)
   sourceInvoiceId      String?        @map("source_invoice_id")
@@ -802,18 +816,30 @@ model Invoice {
   journalEntryId       String?        @map("journal_entry_id")
   payments             Json?
   stripePaymentLinkUrl String?        @map("stripe_payment_link_url")
+  /// When the number was given (発行)
+  issuedAt             DateTime?      @map("issued_at") @db.Timestamptz(6)
+  /// Last time it was marked sent (送付済み)
+  sentAt               DateTime?      @map("sent_at") @db.Timestamptz(6)
+  /// Where it was last sent (an email address or a note)
+  sentTo               String?        @map("sent_to")
+  /// When it was voided or its draft discarded
+  voidedAt             DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason           String?        @map("void_reason")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  partner       Partner        @relation(fields: [partnerId], references: [id])
-  sourceInvoice Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
-  convertedTo   Invoice[]      @relation("InvoiceConversion")
-  pdfDocument   Document?      @relation(fields: [pdfDocumentId], references: [id])
-  journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
-  documentLinks DocumentLink[]
+  partner        Partner        @relation(fields: [partnerId], references: [id])
+  revenueAccount Account?       @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
+  segment        Segment?       @relation(fields: [segmentId], references: [id])
+  sourceInvoice  Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
+  convertedTo    Invoice[]      @relation("InvoiceConversion")
+  pdfDocument    Document?      @relation(fields: [pdfDocumentId], references: [id])
+  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  documentLinks  DocumentLink[]
 
   @@unique([docType, number])
   @@index([partnerId])
+  @@index([status, dueDate])
   @@map("invoice")
 }
 

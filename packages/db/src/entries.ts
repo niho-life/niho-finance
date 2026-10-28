@@ -80,7 +80,8 @@ function toEntryRef(row: { id: string; no: number; entryDate: Date }): EntryRef 
   return { id: row.id, no: row.no, entryDate: fromDbDate(row.entryDate) };
 }
 
-async function loadTaxRules(db: Db): Promise<TaxRateRule[]> {
+/** Every tax rate rule (disabled ones too), as the ledger's `resolveTaxRule` reads them. */
+export async function loadTaxRules(db: Db): Promise<TaxRateRule[]> {
   const rows = await db.taxRateRule.findMany({
     orderBy: [{ taxCategoryCode: "asc" }, { effectiveFrom: "asc" }, { ratePercent: "desc" }],
   });
@@ -103,7 +104,7 @@ function noFiscalYearMessage(date: CalendarDate): string {
  * The fiscal year containing `date`, locked until the transaction ends (the lock
  * `postJournalEntry` takes too), so that its accounting method and close cannot change meanwhile.
  */
-async function lockFiscalYearOn(tx: Tx, date: CalendarDate): Promise<FiscalYear> {
+export async function lockFiscalYearOn(tx: Tx, date: CalendarDate): Promise<FiscalYear> {
   const day = toDbDate(date);
   const years = await tx.fiscalYear.findMany({
     where: { startDate: { lte: day }, endDate: { gte: day } },
@@ -294,7 +295,11 @@ function withFields(
 // Writes: 収入 / 支出 / 振替 / 伝票
 // ---------------------------------------------------------------------------
 
-async function loadSimpleEntryContext(tx: Tx, fiscalYear: FiscalYear): Promise<SimpleEntryContext> {
+/** The accounts, wallets and rules `buildSimpleEntry` (and the invoice entries) build from. */
+export async function loadSimpleEntryContext(
+  tx: Tx,
+  fiscalYear: FiscalYear,
+): Promise<SimpleEntryContext> {
   const accounts = await tx.account.findMany({
     select: {
       id: true,

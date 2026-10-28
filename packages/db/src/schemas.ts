@@ -10,22 +10,28 @@ import {
   ACCOUNT_KINDS,
   ACCOUNTING_METHODS,
   AUDIT_ENTITIES,
+  BANK_ACCOUNT_TYPES,
   CONSUMPTION_TAX_METHODS,
   corporateNumberProblem,
   defaultAccountingMethod,
+  INVOICE_DOC_TYPES,
   invoiceRegistrationNumberProblem,
   isAccountGroupOf,
   isCalendarDate,
+  isSalesTaxCategoryCode,
   isTaxCategoryCode,
   normalizeCorporateNumber,
   normalizeInvoiceRegistrationNumber,
+  parseQuantity,
   parseYenInput,
   PARTNER_KINDS,
   SIDES,
   WALLET_KINDS,
+  type BankAccountType,
   type CalendarDate,
   type EntryCounterpart,
   type Money,
+  type SalesTaxCategoryCode,
 } from "@niho-finance/ledger";
 import { z } from "zod";
 
@@ -728,6 +734,184 @@ export const auditLogFilterSchema = z.object({
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
 
 // ---------------------------------------------------------------------------
+// 請求 (18-invoicing §3, §8–§10, §12)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, negative allowed (a discount), 0 allowed; required. */
+function signedYen(label: string) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") return problem(`${label}を入力してください`);
+    const amount = parseYenInput(text, { allowNegative: true });
+    if (amount === null) return problem(`${label}は円の整数で入力してください`);
+    return ok(amount);
+  });
+}
+
+/** 数量: above 0 with at most 2 decimals → hundredths (`1.5` → `150n`), never floating point. */
+const invoiceQuantityField = fromText("数量", (text): Conversion<bigint> => {
+  const value = parseQuantity(text);
+  return value === null
+    ? problem("数量は 0 より大きい数（小数 2 桁まで）にしてください")
+    : ok(value);
+});
+
+/** 税区分 of a line: one of the sales categories (課税売上 10% / 8% 軽減 / 非課税 / 不課税 / 輸出免税). */
+const salesTaxCategoryField = fromText("税区分", (text): Conversion<SalesTaxCategoryCode> =>
+  isSalesTaxCategoryCode(text) ? ok(text) : problem("税区分は売上の税区分から選んでください"),
+);
+
+/** A line of a document (18 §3.1). The amount is computed by the repository, never sent. */
+export const invoiceLineSchema = z.object({
+  /** 取引年月日; empty → the issue date. */
+  date: optionalDate("日付"),
+  name: requiredText("品名", 200),
+  quantity: invoiceQuantityField,
+  unit: optionalText("単位", 20),
+  /** Negative for a discount. */
+  unitPrice: signedYen("単価"),
+  taxCategoryCode: salesTaxCategoryField,
+});
+export type InvoiceLineFormInput = z.input<typeof invoiceLineSchema>;
+export type ParsedInvoiceLine = z.output<typeof invoiceLineSchema>;
+
+/** The body of a draft, shared by the new and the edit forms (18 §8). */
+const invoiceDraftFields = {
+  partnerId: idField("取引先"),
+  title: optionalText("件名", 200),
+  issueDate: requiredDate("発行日"),
+  /** 支払期限 (請求書) / 有効期限 (見積書); a delivery note has none. */
+  dueDate: optionalDate("期限"),
+  /** Unit prices include the tax (税込) instead of excluding it (税抜). */
+  pricesIncludeTax: booleanField("単価の税"),
+  note: optionalText("備考", 1000),
+  /** 請求書 only; empty → the default (4040 売上高 受託開発). */
+  revenueAccountId: optionalIdField("売上の科目"),
+  /** 請求書 only; empty → the account's, then the partner's default, then 受託. */
+  segmentId: optionalIdField("セグメント"),
+  lines: z
+    .array(invoiceLineSchema, { error: "行の形式が正しくありません" })
+    .min(1, { error: "行は 1 行以上にしてください" })
+    .max(100, { error: "行は 100 行までにしてください" }),
+};
+
+function checkDueDate(
+  value: { issueDate: CalendarDate; dueDate: CalendarDate | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.dueDate !== null && value.dueDate < value.issueDate) {
+    ctx.addIssue({ code: "custom", path: ["dueDate"], message: "期限は発行日以後にしてください" });
+  }
+}
+
+/** 新規 / 変換 / 複製 (18 §8). `sourceInvoiceId` is set by a conversion (`from`) only. */
+export const invoiceDraftSchema = z
+  .object({
+    docType: enumField("種別", INVOICE_DOC_TYPES),
+    ...invoiceDraftFields,
+    sourceInvoiceId: optionalIdField("変換元"),
+  })
+  .superRefine(checkDueDate);
+export type InvoiceDraftInput = z.input<typeof invoiceDraftSchema>;
+export type ParsedInvoiceDraft = z.output<typeof invoiceDraftSchema>;
+
+/** 編集 of a draft: the type and the conversion source never change (extra keys are ignored). */
+export const invoiceDraftUpdateSchema = z.object(invoiceDraftFields).superRefine(checkDueDate);
+export type InvoiceDraftUpdateInput = z.input<typeof invoiceDraftUpdateSchema>;
+export type ParsedInvoiceDraftUpdate = z.output<typeof invoiceDraftUpdateSchema>;
+
+/** 送付済みにする (18 §9.3): where it was sent (an email address or a note), optional. */
+export const invoiceSendSchema = z.object({ sentTo: optionalText("宛先", 200) });
+export type InvoiceSendInput = z.input<typeof invoiceSendSchema>;
+
+/** 無効にする (18 §9.3): the reason is stored on the document and on the reversal. */
+export const invoiceVoidSchema = z.object({ reason: requiredText("理由", 500) });
+export type InvoiceVoidInput = z.input<typeof invoiceVoidSchema>;
+
+/**
+ * 入金の登録 (18 §5.2, §9.4). With a statement line (`walletTransactionId`) the date, the wallet and
+ * the amount are the line's. `fee` is the transfer fee the customer deducted (empty or 0 → 0).
+ */
+export const invoicePaymentSchema = z.object({
+  paidOn: requiredDate("入金日"),
+  walletId: idField("口座"),
+  amount: positiveYen("入金額"),
+  fee: optionalPositiveYen("振込手数料").transform((fee): Money => fee ?? 0n),
+  walletTransactionId: optionalIdField("明細"),
+});
+export type InvoicePaymentInput = z.input<typeof invoicePaymentSchema>;
+export type ParsedInvoicePayment = z.output<typeof invoicePaymentSchema>;
+
+/** 入金の取消 (18 §9.4). */
+export const cancelInvoicePaymentSchema = z.object({
+  paymentId: idField("入金"),
+  reason: requiredText("理由", 500),
+});
+export type CancelInvoicePaymentInput = z.input<typeof cancelInvoicePaymentSchema>;
+
+const bankAccountTypeField = orNull(
+  z.preprocess(
+    (value) => (value === "" || value === undefined || value === null ? null : asText(value)),
+    z.enum(BANK_ACCOUNT_TYPES, { error: "種別を選んでください" }).nullable(),
+  ),
+);
+
+/** 口座番号: digits only after full-width digits are made half-width; empty → `null`. */
+const bankAccountNumberField = orNull(
+  fromText("口座番号", (text): Conversion<string | null> => {
+    const digits = toHalfWidthDigits(text);
+    if (digits === "") return ok(null);
+    return /^\d{1,20}$/.test(digits) ? ok(digits) : problem("口座番号は数字にしてください");
+  }),
+);
+
+/** 振込先 printed on invoices (`Company.bankAccountForInvoice`, 18 §10). Every item is optional. */
+export interface InvoiceBankAccount {
+  bankName: string | null;
+  branchName: string | null;
+  accountType: BankAccountType | null;
+  accountNumber: string | null;
+  /** 口座名義 (カナ) */
+  accountHolder: string | null;
+  /** 補足, e.g. 振込手数料は貴社にてご負担ください */
+  note: string | null;
+}
+
+/** 請求の設定 (18 §10). All items empty → no bank account (`null`). */
+export const invoiceSettingsSchema = z
+  .object({
+    bankName: optionalText("銀行名", 100),
+    branchName: optionalText("支店名", 100),
+    accountType: bankAccountTypeField,
+    accountNumber: bankAccountNumberField,
+    accountHolder: optionalText("口座名義", 100),
+    note: optionalText("補足", 200),
+  })
+  .transform((value): InvoiceBankAccount | null =>
+    Object.values(value).every((item) => item === null) ? null : value,
+  );
+export type InvoiceSettingsInput = z.input<typeof invoiceSettingsSchema>;
+
+/** 種別 of the list: 請求書 (default) / 見積書 / 納品書 / すべて. */
+export const INVOICE_TYPE_FILTERS = ["invoice", "quote", "delivery", "all"] as const;
+export type InvoiceTypeFilter = (typeof INVOICE_TYPE_FILTERS)[number];
+
+/**
+ * 状態 of the list: 未完了 (default: 下書き・発行済み・送付済み) / 下書き / 発行済み (送付済みを含む) /
+ * 入金済み / 無効 / すべて.
+ */
+export const INVOICE_STATUS_FILTERS = ["open", "draft", "issued", "paid", "void", "all"] as const;
+export type InvoiceStatusFilter = (typeof INVOICE_STATUS_FILTERS)[number];
+
+/** `/invoices?type&status&partner&q&page` (18 §7). */
+export const invoicesFilterSchema = z.object({
+  type: lenient<InvoiceTypeFilter>(z.enum(INVOICE_TYPE_FILTERS), "invoice"),
+  status: lenient<InvoiceStatusFilter>(z.enum(INVOICE_STATUS_FILTERS), "open"),
+  partner: filterId,
+  /** 番号 and 件名, partial match. */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  page: filterPage,
+});
+export type InvoicesFilter = z.output<typeof invoicesFilterSchema>;
 // Imports (取込, 12-imports)
 // ---------------------------------------------------------------------------
 
