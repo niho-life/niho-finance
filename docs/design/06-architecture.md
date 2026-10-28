@@ -50,7 +50,7 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 
 ### 3.2 認証
 
-Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウント（会社のアカウント）だけを通す。アプリは IAP の署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証し、そのメールを actor として記録する（`apps/web/lib/actor.ts`）。ジョブ用サービスは IAP を通さず（IAP は呼び出し元の ID を置き換えるため）、Cloud Run の IAM で Scheduler のサービスアカウントだけを通す。IAP が使えない構成なら Auth.js の Google ログインで許可メールを固定する。v3 の複数ユーザーも IAP の許可リストと DB の役割で足りる。
+Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウント（会社のアカウント）だけを通す。アプリは IAP の署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証し、そのメールを actor として記録する（`apps/web/lib/actor.ts`）。ジョブ用サービスは IAP を通さず（IAP は呼び出し元の ID を置き換えるため）、Cloud Run の IAM で Scheduler のサービスアカウントだけを通す。IAP が使えない構成なら Auth.js の Google ログインで許可メールを固定する。v3 の複数ユーザーも IAP の許可リストと DB の役割で足りる。ホーム画面のアプリ（PWA）も同じ IAP を通る。manifest はクッキー付きで取り、iOS は Safari で開く（[10 §1.1](10-settings-and-setup.md)）。
 
 ### 3.3 ドメイン
 

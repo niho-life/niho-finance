@@ -1,0 +1,21 @@
+# ホーム画面のアプリは Chrome では standalone、iOS では Safari で開く。Service Worker は帳簿をキャッシュしない
+
+- 状況: #51 で、PWA としてホーム画面に追加できるようにする。画面は Cloud Run の IAP の内側にある。
+  - IAP は、クッキーのない要求をすべて Google のサインインへの 302 で返す。manifest と Service Worker のファイルも同じ。
+  - サインインは、最初の 302 で画面の origin に nonce のクッキーを置き、PKCE で Google と IAP を往復して戻る（本番で確認、2026-10-29）。
+  - iOS のホーム画面の Web アプリは、Safari とクッキーが別。範囲外への遷移（Google のサインイン）は Safari View Controller のシートで開き、戻り先がそのシートのままになる報告がある。その場合 nonce が見つからず、サインインが終わらない。逆に、シートが閉じて Web アプリの窓に戻るという報告もある。
+  - Chrome のインストールした窓（Android・PC）は、ブラウザとクッキーを共有する。
+- 決定（推奨で進める 2026-10-29。iOS の Web アプリの窓は実機の確認待ち）:
+  - manifest は `display: "browser"` と `display_override: ["standalone"]` にする。Chrome は standalone の窓で開き、iOS は Safari のタブで開く。
+  - `apple-mobile-web-app-capable` は出さない。iOS 26 以降の「Web アプリとして開く」は、オフにして追加する。
+  - manifest は `crossorigin="use-credentials"` で取る。
+  - Service Worker は帳簿をキャッシュしない。Cache Storage には「接続がありません」の画面 1 件だけを置き、ページ遷移は毎回ネットワークから取る。
+- 理由:
+  - 窓の見た目より、IAP のサインインが確実に通ることを優先する（Q）。
+  - Issue には「だめなら `display: minimal-ui` に落とす」とある。iOS は `minimal-ui` を扱わず、Web アプリの窓か Safari かのどちらかしかない。そこで iOS では `browser` に読み替えた。
+  - 帳簿を端末に残さないので、古い残高や明細が表示されることはない。
+- 影響:
+  - iOS では Safari のアドレスバーが残る。
+  - 実機で Web アプリの窓でもサインインが通るとわかったら、`apps/web/lib/pwa/manifest.ts` の `display` を `standalone` に替え、`apple-mobile-web-app-capable` も出す。
+  - 接続がない間は帳簿を見られない。
+  - 詳しくは [10 §1.1](../design/10-settings-and-setup.md) と [mobile.md](../ops/mobile.md)。

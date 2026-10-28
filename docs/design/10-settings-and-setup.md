@@ -10,6 +10,50 @@
 - 色と字は `app/globals.css` のトークン（モック `docs/design/mock/v1.html` の値）。Tailwind 4。数値は `tabular-nums` で右揃え。
 - UI 部品（`apps/web/components/ui/`）: Button（primary / secondary / ghost / danger、sm / md）、Input、Select（native `<select>`）、Textarea、Checkbox、Switch、FormField（label・help・error を近接）、Table（行高 40px）、Sheet（右から出る編集面。PC は幅 400px、スマホは全面）、ConfirmDialog（native `<dialog>`。`variant: "danger"` あり。ボタンは結果の動詞）、Toast（下中央・5 秒）、EmptyState（状態と次の行動）、PageHeader。外部の UI ライブラリは入れない。`window.confirm` / `alert` は使わない。
 
+### 1.1 ホーム画面のアプリ（PWA、#51）
+
+スマホのホーム画面から 1 回で開き、[05 §1](05-ui-ux.md) の 3 つの仕事（残高を見る・明細を片付ける・レシートを撮る）を手早く済ませるための作りです。帳簿は毎回サーバーから最新を読み、端末に残しません。追加の手順は [mobile.md](../ops/mobile.md) に書きます。
+
+- **マニフェスト** `GET /app.webmanifest`（`app/app.webmanifest/route.ts`。中身は `lib/pwa/manifest.ts`）
+  - 名前は「NIHO finance」、`lang: "ja"`。`id`・`start_url`・`scope` は `/`（ホーム）。
+  - 背景色とテーマ色は白 `#ffffff`（D14）。
+  - アイコンは `public/icons/` の 192px・512px と maskable の 512px。緑（primary）の地に白の印で、原本は `icon.svg`。
+- **表示**: `display: "browser"` と `display_override: ["standalone"]`
+  - Chrome（Android・PC）は `display_override` を読み、standalone の窓で開く。
+  - iOS の Safari は `display_override` を読まない。`browser` なので Safari のタブで開く。理由は下の IAP の項。
+- **manifest の読み込み**: ルートの layout に `<link rel="manifest" crossorigin="use-credentials">` で置く
+  - ブラウザは manifest を、既定ではクッキーなしで取る。
+  - IAP は、クッキーのない要求をすべて Google のサインインへの 302 で返す（本番で確認、2026-10-29）。クッキーなしでは manifest が読めず、インストールできない。
+  - Next の `app/manifest.ts` は、Vercel の preview でしか `use-credentials` を付けない。そのため使わない。
+- **iOS のメタ**
+  - 出すもの: `apple-touch-icon`（180px）、`apple-mobile-web-app-title`、status bar の `default`、`format-detection: telephone=no`（金額の数字を電話番号のリンクにしない）。
+  - 出さないもの: `apple-mobile-web-app-capable`。iOS 16.4〜18 ではこれがあると Web アプリの窓で開くため。
+- **Service Worker** `public/sw.js`（scope `/`）は帳簿をキャッシュしない
+  - Cache Storage に置くのは `/offline` の 1 件だけ。activate のときに他のキャッシュを消す。
+  - 扱うのは GET のページ遷移（`mode: "navigate"`）だけ。navigation preload を使ってネットワークから取り、通信に失敗したときだけ `/offline` を返す。
+  - HTTP のエラーと IAP の 302 は、そのままブラウザに渡す。
+  - fetch・Server Actions・RSC・API・静的ファイル・証憑のファイルには触れない。
+  - 登録はルートの layout の client 部品（`components/pwa/`）が行う。
+- **接続がない画面** `/offline`（`app/offline/route.ts`）
+  - 自己完結の HTML。CSS と文言を中に持ち、外の CSS・JS を読まない。
+  - 見出しは「接続がありません」。本文は「帳簿は最新の内容だけを表示するため、つながっていない間は開けません」。CTA は「開き直す」。
+  - オンラインに戻ると自動で開き直す。
+- **前面に戻ったときの読み直し**
+  - ホーム画面のアプリもブラウザのタブも、前の表示を残したまま前面に戻る。
+  - 画面が 60 秒以上隠れてから戻ったとき（`visibilitychange`）は、`router.refresh()` で読み直す。戻る操作で前の表示がそのまま戻ったとき（`pageshow` の `persisted`）も同じ。
+  - IAP の期限が切れていれば、Next の読み直しはページ遷移に切り替わり、その遷移で IAP のサインインに進む。
+- **下タブの「証憑」（中央のカメラ）**: 押すとカメラが開く
+  - 中身は、`<input type="file" accept="image/*" capture="environment">` を包む label。
+  - 撮った写真を保存し、その証憑の詳細を開く。詳細には、近い日付の未処理の明細が候補に出る（13 §4）。撮影 → 保存して詳細 → 紐づける、の 3 操作で終わる。
+  - 一覧へは、その他 › 証憑 か、ホームの「やること」から入る。`/documents` にいる間は「その他」が現在地になる。
+- **IAP**（[06 §3.2](06-architecture.md)）
+  - サインインの流れ: 最初の 302 で、画面の origin に nonce のクッキー（15 分）を置く。そのあと PKCE で Google と IAP を往復して戻る。
+  - Chrome: インストールした窓はブラウザとクッキーを共有するので、standalone でもサインインが完結する。
+  - iOS: ホーム画面の Web アプリは、Safari とクッキーが別。範囲外の Google のサインインは、Safari View Controller のシートで開く。戻り先がシートのままだと nonce が見つからず、サインインが終わらない。これには報告が割れているので、実機で確かめる。
+  - そこで iOS は Safari で開くのを既定にする。iOS 26 以降で出る「Web アプリとして開く」は、オフにして追加する。
+  - 実機で Web アプリの窓でもサインインが通るとわかったら、`display` を `standalone` に替える（[決定](../decisions/2026-10-29-pwa-display-and-cache.md)）。
+- **配備**: Next の standalone の出力は `public/` を含まない。Dockerfile の runtime で `apps/web/public` を写す。
+
 ## 2. 共通の決まり
 
 - 読みは Server Components、書きは Server Actions。入力は Zod で検証し、書き込みは `packages/db` の repository を通して監査ログを残す。actor は IAP の署名ヘッダーを検証したメール（`apps/web/lib/actor.ts`。ローカルは環境変数 `NIHO_FINANCE_ACTOR`、既定 `owner`）。
