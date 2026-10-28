@@ -1,0 +1,32 @@
+# Builds the runtime and migrate images from the Dockerfile in one build (shared layers).
+# Run by scripts/deploy.sh: gcloud builds submit --config cloudbuild.yaml --substitutions=_IMAGE=…,_TAG=…
+steps:
+  - id: runtime
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args:
+      - build
+      - --target=runtime
+      - --tag=${_IMAGE}:${_TAG}
+      - --tag=${_IMAGE}:latest
+      - .
+  - id: migrate
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args:
+      - build
+      - --target=migrate
+      - --tag=${_IMAGE}-migrate:${_TAG}
+      - --tag=${_IMAGE}-migrate:latest
+      - .
+images:
+  - ${_IMAGE}:${_TAG}
+  - ${_IMAGE}:latest
+  - ${_IMAGE}-migrate:${_TAG}
+  - ${_IMAGE}-migrate:latest
+substitutions:
+  _IMAGE: unset
+  _TAG: dev
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

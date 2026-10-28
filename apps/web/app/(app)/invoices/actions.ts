@@ -24,18 +24,19 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, formInput, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { keepInvoicePdfAsDocument } from "./_lib/evidence";
+import { sendInvoiceMail, type SentInvoiceMail } from "./_lib/mail";
 
 /*
  * Server Actions of /invoices (18 §8–§10). The repository validates every input with its Zod
- * schemas, locks the document and writes the audit log as `NIHO_FINANCE_ACTOR`. Expected failures
+ * schemas, locks the document and writes the audit log as the signed-in user (`lib/actor.ts`). Expected failures
  * come back as `{ ok: false }` with the field of each problem. Amounts go back as decimal text:
  * bigint stays on the server.
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -80,7 +81,8 @@ export async function createInvoiceDraftAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () => createInvoiceDraft(prisma(), valuesSchema.parse(values) as InvoiceDraftInput, by()),
+    async () =>
+      createInvoiceDraft(prisma(), valuesSchema.parse(values) as InvoiceDraftInput, await by()),
     saved,
   );
 }
@@ -91,12 +93,12 @@ export async function updateInvoiceDraftAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () =>
+    async () =>
       updateInvoiceDraft(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as InvoiceDraftInput,
-        by(),
+        await by(),
       ),
     saved,
   );
@@ -109,8 +111,8 @@ export async function updateInvoiceDraftAction(
 export async function issueInvoiceAction(id: string): Promise<ActionResult<IssuedInvoice>> {
   return write(
     async () => {
-      const record = await issueInvoice(prisma(), parseId(id), by());
-      const pdfDocumentId = await keepInvoicePdfAsDocument(prisma(), record.id, by());
+      const record = await issueInvoice(prisma(), parseId(id), await by());
+      const pdfDocumentId = await keepInvoicePdfAsDocument(prisma(), record.id, await by());
       return { record, pdfDocumentId };
     },
     ({ record, pdfDocumentId }) => ({ ...saved(record), pdfDocumentId }),
@@ -121,7 +123,7 @@ export async function issueInvoiceAction(id: string): Promise<ActionResult<Issue
 export async function saveInvoicePdfAction(id: string): Promise<ActionResult<string>> {
   return write(
     async () => {
-      const documentId = await keepInvoicePdfAsDocument(prisma(), parseId(id), by());
+      const documentId = await keepInvoicePdfAsDocument(prisma(), parseId(id), await by());
       if (!documentId) {
         throw new SettingsError(
           "PDF を証憑に保存できませんでした。もう一度試してください。続くときは 設定 › 証憑の規程 の保存先を確かめてください",
@@ -135,7 +137,7 @@ export async function saveInvoicePdfAction(id: string): Promise<ActionResult<str
 
 /** 破棄 of a draft (logical). */
 export async function discardInvoiceDraftAction(id: string): Promise<ActionResult<SavedInvoice>> {
-  return write(() => discardInvoiceDraft(prisma(), parseId(id), by()), saved);
+  return write(async () => discardInvoiceDraft(prisma(), parseId(id), await by()), saved);
 }
 
 /** 送付済みにする. */
@@ -144,9 +146,33 @@ export async function markInvoiceSentAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () =>
-      markInvoiceSent(prisma(), parseId(id), valuesSchema.parse(values) as InvoiceSendInput, by()),
+    async () =>
+      markInvoiceSent(
+        prisma(),
+        parseId(id),
+        valuesSchema.parse(values) as InvoiceSendInput,
+        await by(),
+      ),
     saved,
+  );
+}
+
+/**
+ * メールで送付: the PDF goes to the partner by mail; a mail that went out (SMTP) records 送付済み.
+ */
+export async function sendInvoiceMailAction(
+  id: string,
+  values: unknown,
+): Promise<ActionResult<SentInvoiceMail>> {
+  return write(
+    async () =>
+      sendInvoiceMail(
+        prisma(),
+        parseId(id),
+        valuesSchema.parse(values) as Parameters<typeof sendInvoiceMail>[2],
+        await by(),
+      ),
+    (sent) => sent,
   );
 }
 
@@ -156,7 +182,13 @@ export async function voidInvoiceAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () => voidInvoice(prisma(), parseId(id), valuesSchema.parse(values) as InvoiceVoidInput, by()),
+    async () =>
+      voidInvoice(
+        prisma(),
+        parseId(id),
+        valuesSchema.parse(values) as InvoiceVoidInput,
+        await by(),
+      ),
     saved,
   );
 }
@@ -167,12 +199,12 @@ export async function recordInvoicePaymentAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () =>
+    async () =>
       recordInvoicePayment(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as InvoicePaymentInput,
-        by(),
+        await by(),
       ),
     saved,
   );
@@ -184,12 +216,12 @@ export async function cancelInvoicePaymentAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
   return write(
-    () =>
+    async () =>
       cancelInvoicePayment(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as CancelInvoicePaymentInput,
-        by(),
+        await by(),
       ),
     saved,
   );
@@ -198,7 +230,7 @@ export async function cancelInvoicePaymentAction(
 /** 請求の設定: the 振込先 printed on invoices. */
 export async function saveInvoiceSettingsAction(formData: FormData): Promise<ActionResult> {
   return write(
-    () => updateInvoiceSettings(prisma(), formInput(formData), by()),
+    async () => updateInvoiceSettings(prisma(), formInput(formData), await by()),
     () => null,
   );
 }

@@ -2,7 +2,7 @@ import { listRecentExports, loadReportSource, todayInJapan } from "@niho-finance
 import { fiscalYearOn } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
@@ -157,6 +157,19 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
             今すぐ書き出す
           </Button>
         </form>
+      </Section>
+
+      <Section
+        id="export-statements"
+        title="決算書と申告用データ"
+        description="計算書類の PDF、e-Tax の財務諸表 CSV、勘定科目内訳の元データ、消費税の集計、決算公告の HTML は決算書の画面から書き出します。"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink href="/closing/statements" variant="primary">
+            決算書を開く
+          </ButtonLink>
+          <ButtonLink href="/closing/statements/consumption-tax">消費税の集計を開く</ButtonLink>
+        </div>
       </Section>
 
       <section aria-labelledby="export-recent" className="border-t border-border pt-5">

@@ -32,6 +32,13 @@ import {
   type TaxRateRule,
   type WalletKind,
 } from "@niho-finance/ledger";
+import {
+  ETAX_EDITIONS,
+  editionForFiscalYear,
+  normalizeEtaxCodeInput,
+  validateEtaxCodeOverride,
+  type EtaxEdition,
+} from "@niho-finance/reports";
 import type {
   Account,
   Company,
@@ -42,7 +49,7 @@ import type {
   TaxRateRule as TaxRateRuleRow,
 } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
-import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { fromDbDate, fromDbDateOrNull, todayInJapan, toDbDate } from "./dates";
 import { isUniqueViolation, SettingsError } from "./errors";
 import { newId } from "./ids";
 import { loadCurrentFiscalYear } from "./queries";
@@ -435,6 +442,8 @@ export interface AccountSettings {
   subAccountCount: number;
   /** Names of the active wallets that post to the account. */
   walletNames: string[];
+  /** 勘定科目コードの上書き (17-financial-statements §6.4); `null` = the standard code. */
+  eTaxCode: string | null;
 }
 
 const accountInclude = {
@@ -458,6 +467,7 @@ function toAccountSettings(row: AccountRow): AccountSettings {
     note: row.note,
     subAccountCount: row._count.subAccounts,
     walletNames: row.wallets.filter((wallet) => wallet.isActive).map((wallet) => wallet.name),
+    eTaxCode: row.eTaxCode,
   };
 }
 
@@ -530,7 +540,27 @@ export async function createAccount(
   });
 }
 
-/** Edits 名前・決算書の区分・既定の税区分・現預金 (the code and the kind stay). */
+/**
+ * The e-Tax code table edition of today's fiscal year (17-financial-statements §6.1, §6.4): the year
+ * containing today, the first before the books start, the latest after they end. Without any year,
+ * the newest edition.
+ */
+export async function loadCurrentEtaxEdition(
+  db: Db,
+  today: CalendarDate = todayInJapan(),
+): Promise<EtaxEdition> {
+  const fiscalYear = await loadCurrentFiscalYear(db, today);
+  if (fiscalYear) return editionForFiscalYear({ endDate: fiscalYear.endDate });
+  const newest = ETAX_EDITIONS[ETAX_EDITIONS.length - 1];
+  if (!newest) throw new Error("db: no e-Tax code table edition");
+  return newest;
+}
+
+/**
+ * Edits 名前・決算書の区分・既定の税区分・現預金・勘定科目コード (the code and the kind stay). A 勘定科目コード
+ * is checked against the code table of today's fiscal year (17 §6.3, §6.4) and stored normalized
+ * (half-width, upper case); empty puts the standard code back.
+ */
 export async function updateAccount(
   db: Db,
   input: AccountUpdateInput,
@@ -562,6 +592,19 @@ export async function updateAccount(
       patch.defaultTaxCategoryCode = data.defaultTaxCategoryCode;
     }
     if (data.isCashLike !== undefined) patch.isCashLike = data.isCashLike;
+    if (data.eTaxCode !== undefined) {
+      const code = data.eTaxCode === null ? "" : normalizeEtaxCodeInput(data.eTaxCode);
+      if (code !== "") {
+        const edition = await loadCurrentEtaxEdition(tx);
+        const reason = validateEtaxCodeOverride(
+          { group: data.group ?? current.group },
+          code,
+          edition,
+        );
+        if (reason) throw new SettingsError(reason, { field: "eTaxCode" });
+      }
+      patch.eTaxCode = code === "" ? null : code;
+    }
     if (!hasChanges(current, patch)) return toAccountSettings(current);
     const row = await tx.account.update({
       where: { id: current.id },

@@ -1410,6 +1410,117 @@ export async function loadDepositCandidates(
     .slice(0, CANDIDATE_LIMIT);
 }
 
+/** An invoice a statement line can pay (18 §9.4: 明細から「この請求に充てる」). */
+export interface InvoiceForDeposit {
+  id: string;
+  number: string;
+  partnerName: string;
+  title: string | null;
+  issueDate: CalendarDate;
+  dueDate: CalendarDate | null;
+  total: Money;
+  balance: Money;
+  /** 残高 − 入金額: the shortfall (a fee or a partial payment). */
+  difference: Money;
+  overdue: boolean;
+}
+
+/** A deposit of the statement and the invoices it can pay. */
+export interface DepositForInvoices {
+  line: {
+    id: string;
+    walletId: string;
+    walletName: string;
+    txnDate: CalendarDate;
+    description: string;
+    counterparty: string | null;
+    amount: Money;
+  };
+  /** Why the line cannot pay an invoice (owner-facing); `null` when it can. */
+  problem: string | null;
+  /** Nearest to the amount first (an exact match first), then the oldest due date. */
+  invoices: InvoiceForDeposit[];
+}
+
+/**
+ * 明細から「この請求に充てる」 (18 §9.4, S5's statement screen): a `pending` deposit on an active asset
+ * wallet and the issued (or sent) invoices it can pay: issued on or before the deposit, with a
+ * balance of at least its amount, and a 売掛金 entry still in force. `null` when the line is missing.
+ */
+export async function loadInvoicesForDeposit(
+  db: Db,
+  walletTransactionId: string,
+  options: { today: CalendarDate },
+): Promise<DepositForInvoices | null> {
+  const row = await db.walletTransaction.findUnique({
+    where: { id: walletTransactionId },
+    include: {
+      wallet: { select: { name: true, isActive: true, account: { select: { kind: true } } } },
+    },
+  });
+  if (!row) return null;
+  const line: DepositForInvoices["line"] = {
+    id: row.id,
+    walletId: row.walletId,
+    walletName: row.wallet.name,
+    txnDate: fromDbDate(row.txnDate),
+    description: row.descriptionRaw,
+    counterparty: row.counterpartyRaw,
+    amount: row.amount,
+  };
+  let problem: string | null = null;
+  if (row.status !== "pending") {
+    problem = "この明細は処理済みです。未処理の入金の明細から選んでください";
+  } else if (row.amount <= 0n) {
+    problem = "出金の明細は請求に充てられません。入金の明細から選んでください";
+  } else if (!row.wallet.isActive || row.wallet.account.kind !== "asset") {
+    problem = `口座「${row.wallet.name}」の明細は請求に充てられません。銀行などの有効な口座の入金から選んでください`;
+  }
+  if (problem) return { line, problem, invoices: [] };
+
+  const rows = await db.invoice.findMany({
+    where: {
+      docType: "invoice",
+      status: { in: ["issued", "sent"] },
+      issueDate: { lte: row.txnDate },
+    },
+    orderBy: [{ issueDate: "asc" }, { id: "asc" }],
+    take: INVOICE_LIST_LIMIT,
+    include: {
+      partner: { select: { name: true } },
+      journalEntry: { select: { status: true } },
+    },
+  });
+  const invoices = rows
+    .filter((invoice) => invoice.journalEntry?.status !== "voided")
+    .flatMap((invoice): InvoiceForDeposit[] => {
+      const balance = balanceOf(invoice) ?? 0n;
+      if (balance < row.amount) return [];
+      const recipient = readRecipientSnapshot(invoice.recipientSnapshot);
+      return [
+        {
+          id: invoice.id,
+          number: invoice.number,
+          partnerName: recipient?.name ?? invoice.partner.name,
+          title: invoice.title,
+          issueDate: fromDbDate(invoice.issueDate),
+          dueDate: fromDbDateOrNull(invoice.dueDate),
+          total: invoice.total,
+          balance,
+          difference: balance - row.amount,
+          overdue: overdueOf(invoice, options.today).overdue,
+        },
+      ];
+    })
+    .sort((a, b) => {
+      if (a.difference !== b.difference) return a.difference < b.difference ? -1 : 1;
+      const due = (value: CalendarDate | null) => value ?? "9999-12-31";
+      return due(a.dueDate) < due(b.dueDate) ? -1 : due(a.dueDate) > due(b.dueDate) ? 1 : 0;
+    })
+    .slice(0, CANDIDATE_LIMIT);
+  return { line, problem: null, invoices };
+}
+
 export interface InvoiceHistoryRow {
   id: string;
   at: Date;
@@ -1924,7 +2035,8 @@ export async function markInvoiceSent(
       case "void":
         throw new SettingsError("無効の書類は送付済みにできません");
       case "paid":
-        if (current.sentAt !== null) {
+        // A paid document is marked sent once by hand; a mail (re)sending is always recorded.
+        if (current.sentAt !== null && data.mailSubject === null) {
           throw new SettingsError("送付の記録があります。画面を読み込み直してください");
         }
         break;
@@ -1944,7 +2056,12 @@ export async function markInvoiceSent(
       entity: "invoice",
       entityId: id,
       before: { status: current.status, sentAt: current.sentAt, sentTo: current.sentTo },
-      after: { status: row.status, sentAt: row.sentAt, sentTo: row.sentTo },
+      after: {
+        status: row.status,
+        sentAt: row.sentAt,
+        sentTo: row.sentTo,
+        ...(data.mailSubject === null ? {} : { mailSubject: data.mailSubject }),
+      },
     });
     return toRecord(row);
   });

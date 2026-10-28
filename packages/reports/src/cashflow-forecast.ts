@@ -152,6 +152,7 @@ export type CashflowNote =
   | { kind: "payablesNotConnected" }
   | { kind: "cardUnpaid"; walletId: string; walletName: string; amount: Money }
   | { kind: "recurringWithoutCashEffect"; count: number }
+  | { kind: "recurringAlreadyBooked"; count: number }
   | { kind: "recurringWithoutWallet"; count: number };
 
 export interface CashflowForecast {
@@ -385,7 +386,7 @@ function sumOf(invoices: readonly CashflowInvoice[]): Money {
 /**
  * The forecast from `start` to `start + days` (§3, §4, §6). The start value is the book through the
  * start day; the start day's own recurring items are not counted (they belong to its entries and
- * statements), nor are those that fell due before it.
+ * statements), nor are those that fell due before it, nor those an entry of their day already books.
  */
 export function buildCashflowForecast(
   source: ReportSource,
@@ -417,6 +418,17 @@ export function buildCashflowForecast(
       cancelled.add(original.id);
     }
   }
+  // The accounts of each day's entries: an occurrence whose two accounts an entry of its day
+  // already has is booked (a pay run confirmed ahead, a rent registered ahead) and not counted twice.
+  const bookedAccounts = new Map<CalendarDate, Set<string>[]>();
+  for (const entry of periodEntries) {
+    if (cancelled.has(entry.id)) continue;
+    const day = bookedAccounts.get(entry.entryDate) ?? [];
+    day.push(new Set(entry.lines.map((line) => line.accountId)));
+    bookedAccounts.set(entry.entryDate, day);
+  }
+  const isBooked = (date: CalendarDate, a: string, b: string) =>
+    (bookedAccounts.get(date) ?? []).some((accounts) => accounts.has(a) && accounts.has(b));
   for (const entry of periodEntries) {
     if (cancelled.has(entry.id)) continue;
     let net: Money = 0n;
@@ -443,6 +455,7 @@ export function buildCashflowForecast(
   );
   let withoutWallet = 0;
   let withoutCashEffect = 0;
+  let alreadyBooked = 0;
   for (const item of active) {
     const dates = occurrencesById.get(item.id) ?? [];
     if (dates.length === 0) continue;
@@ -455,8 +468,13 @@ export function buildCashflowForecast(
       withoutCashEffect += 1;
       continue;
     }
-    const walletName = item.walletId ? (walletsById.get(item.walletId)?.name ?? null) : null;
+    const wallet = item.walletId ? walletsById.get(item.walletId) : undefined;
+    const walletName = wallet?.name ?? null;
     for (const date of dates) {
+      if (wallet && isBooked(date, wallet.accountId, item.accountId)) {
+        alreadyBooked += 1;
+        continue;
+      }
       events.push({
         key: `recurring:${item.id}:${date}`,
         date,
@@ -598,6 +616,7 @@ export function buildCashflowForecast(
     notes.push({ kind: "recurringWithoutCashEffect", count: withoutCashEffect });
   }
   if (withoutWallet > 0) notes.push({ kind: "recurringWithoutWallet", count: withoutWallet });
+  if (alreadyBooked > 0) notes.push({ kind: "recurringAlreadyBooked", count: alreadyBooked });
 
   return {
     start,

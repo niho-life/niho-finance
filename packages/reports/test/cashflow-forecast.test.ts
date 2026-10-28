@@ -22,6 +22,7 @@ import {
   CF_INPUTS,
   CF_RECURRING,
   CF_START,
+  cfEntry,
   expandSteps,
 } from "./fixtures/cashflow";
 
@@ -305,6 +306,26 @@ describe("buildCashflowForecast", () => {
     });
     expect(withoutWallet.notes).toContainEqual({ kind: "recurringWithoutWallet", count: 1 });
     expect(withoutWallet.final.balance).toBe(forecast.final.balance);
+  });
+
+  it("does not count an occurrence an entry of its day already books (a pay run confirmed ahead)", () => {
+    const payroll = cfEntry("cf-payroll", 11, "2026-12-25", "給与 2026 年 12 月支給", [
+      ["debit", "5200", 300_000n],
+      ["credit", "1100", 300_000n, "bank"],
+    ]);
+    const booked = buildCashflowForecast(
+      { ...CF_BOOK, entries: [...CF_BOOK.entries, payroll] },
+      CF_INPUTS,
+      { start: CF_START },
+    );
+    const onDay = booked.events.filter((event) => event.date === "2026-12-25");
+    expect(onDay.map((event) => [event.kind, event.label, event.amount])).toEqual([
+      ["entry", "給与 2026 年 12 月支給", -300_000n],
+    ]);
+    // The entry takes the occurrence's place: the same line as without it.
+    expect(booked.balances).toEqual(forecast.balances);
+    expect(booked.notes).toContainEqual({ kind: "recurringAlreadyBooked", count: 1 });
+    expect(forecast.notes.some((note) => note.kind === "recurringAlreadyBooked")).toBe(false);
   });
 
   it("notes inputs that are not connected and the lack of recurring items", () => {

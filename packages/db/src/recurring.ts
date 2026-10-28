@@ -5,7 +5,13 @@
  * validated with the schemas in `schemas.ts`, runs in one transaction and appends to the audit log.
  * Nothing is deleted: items are deactivated instead.
  */
-import { addDays, dateParts, type CalendarDate, type Money } from "@niho-finance/ledger";
+import {
+  addDays,
+  CORPORATE_TAX_PAYABLE_CODE,
+  dateParts,
+  type CalendarDate,
+  type Money,
+} from "@niho-finance/ledger";
 import {
   recurringCashEffect,
   type CashflowDeadline,
@@ -29,6 +35,7 @@ import {
 } from "./schemas";
 import type { WriteOptions } from "./settings";
 import { runInTransaction, type Tx } from "./transaction";
+import { loadCorporateTaxEstimate } from "./year-end";
 
 export interface RecurringItemSettings {
   id: string;
@@ -358,6 +365,29 @@ export async function updateRecurringItem(
 // The inputs of the forecast (21 §3)
 // ---------------------------------------------------------------------------
 
+/**
+ * 法人税等 to pay at a year's 申告と納付 (16-year-end §12): what is not booked yet (the estimate less
+ * what the year booked) plus 未払法人税等 still owed on the start day. Before the year-end entry that
+ * is the whole estimate; after it, the booked payable — never both.
+ */
+async function corporateTaxToPay(
+  db: Db,
+  fiscalYearId: string,
+  start: CalendarDate,
+): Promise<Money> {
+  const summary = await loadCorporateTaxEstimate(db, fiscalYearId);
+  const lines = await db.journalLine.findMany({
+    where: {
+      account: { code: CORPORATE_TAX_PAYABLE_CODE },
+      journalEntry: { entryDate: { lte: toDbDate(start) } },
+    },
+    select: { side: true, amount: true },
+  });
+  let owed: Money = 0n;
+  for (const line of lines) owed += line.side === "credit" ? line.amount : -line.amount;
+  return summary.suggested + (owed > 0n ? owed : 0n);
+}
+
 /** Rules of S8 whose deadline is a filing and a payment at once (their keys never change). */
 export const CASHFLOW_PAYMENT_RULE_KEYS = ["annual.tax-return", "annual.interim-return"] as const;
 
@@ -385,8 +415,8 @@ function toForecastItem(row: RecurringItem): CashflowRecurringItem {
  * What the forecast reads besides the book (21 §3.1): every recurring item (the forecast counts
  * the active ones), the open payment deadlines of `start < due ≤ start + days` (`null` while the
  * calendar has no row at all) with the amounts the pay runs give (22-payroll §7.2), and what
- * issued invoices still wait for (18-invoicing). 法人税等 (#14) has no amount yet, and received
- * invoices are not connected yet (`null`).
+ * issued invoices still wait for (18-invoicing). 申告と納付 carries 法人税等 (16-year-end §12); the
+ * interim return has no amount yet, and received invoices are not connected yet (`null`).
  */
 export async function loadCashflowInputs(
   db: Db,
@@ -409,6 +439,7 @@ export async function loadCashflowInputs(
       orderBy: [{ dueDate: "asc" }, { title: "asc" }, { id: "asc" }],
       select: {
         id: true,
+        fiscalYearId: true,
         kind: true,
         title: true,
         dueDate: true,
@@ -416,12 +447,15 @@ export async function loadCashflowInputs(
         completedAt: true,
       },
     });
-    // 源泉所得税・住民税・社会保険料 of the confirmed pay runs carry their derived amount
-    // (22-payroll §7.2); a payroll deadline with nothing left to pay is not a payment at all.
+    // 申告と納付 carries 法人税等, and 源泉所得税・住民税・社会保険料 the amount the confirmed pay
+    // runs give (22-payroll §7.2); a deadline with nothing left to pay is not a payment at all.
     const payroll = new Map((await listPayrollSchedule(db)).map((row) => [row.id, row.amount]));
     deadlines = [];
     for (const item of items) {
-      const amount = payroll.get(item.id);
+      const amount =
+        item.ruleKey === "annual.tax-return" && item.fiscalYearId
+          ? await corporateTaxToPay(db, item.fiscalYearId, options.start)
+          : payroll.get(item.id);
       if (amount !== undefined && amount <= 0n) continue;
       deadlines.push({ date: fromDbDate(item.dueDate), title: item.title, amount: amount ?? null });
     }

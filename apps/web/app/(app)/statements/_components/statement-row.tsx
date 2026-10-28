@@ -27,6 +27,8 @@ export interface RowHandlers {
   onSecondary: (row: ClientStatementRow) => void;
   onChip: (row: ClientStatementRow, field: ChipField) => void;
   onTransferChip: (row: ClientStatementRow) => void;
+  /** 証憑 of the line (「…」 and the 「証憑なし」 chip). */
+  onDocuments: (row: ClientStatementRow) => void;
   onToggle: (row: ClientStatementRow) => void;
   menuItems: (row: ClientStatementRow) => MenuItem[];
 }
@@ -74,6 +76,20 @@ function Chip({
 function toneOf(source: string | null | undefined, edited: boolean, sameAsSuggestion: boolean) {
   if (edited && !sameAsSuggestion) return "edited";
   return source === "rule" ? "rule" : "guess";
+}
+
+/** 「証憑なし」 (15 §3): an outflow without a document; it opens the line's 証憑. */
+function NoDocumentChip({ row, handlers }: { row: ClientStatementRow; handlers: RowHandlers }) {
+  return (
+    <button
+      type="button"
+      onClick={() => handlers.onDocuments(row)}
+      aria-label="証憑なし（証憑を紐づける）"
+      className="inline-flex min-h-6 shrink-0 items-center rounded-full bg-warn-soft px-2 text-[11px] font-bold whitespace-nowrap text-warn hover:brightness-95"
+    >
+      証憑なし
+    </button>
+  );
 }
 
 /** The chips of a pending row (15 §3–§4). */
@@ -168,14 +184,7 @@ function PendingChips({
     );
   }
   if (amountOf(row) < 0n && !row.hasDocument) {
-    chips.push(
-      <span
-        key="document"
-        className="inline-flex min-h-6 shrink-0 items-center rounded-full bg-warn-soft px-2 text-[11px] font-bold whitespace-nowrap text-warn"
-      >
-        証憑なし
-      </span>,
-    );
+    chips.push(<NoDocumentChip key="document" row={row} handlers={handlers} />);
   }
   return <>{chips}</>;
 }
@@ -204,7 +213,7 @@ function RowErrors({ error, stored }: { error: ActionError | null; stored: strin
 }
 
 /** The result of a settled row (15 §3): 「No. 12 · 地代家賃」 / 「無視（理由）」 and its notes. */
-function SettledResult({ row }: { row: ClientStatementRow }) {
+function SettledResult({ row, handlers }: { row: ClientStatementRow; handlers: RowHandlers }) {
   const entry = row.entry;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]">
@@ -227,6 +236,9 @@ function SettledResult({ row }: { row: ClientStatementRow }) {
         </span>
       ) : null}
       {row.autoPosted ? <span className="text-[12px] text-muted">ルールで自動登録</span> : null}
+      {row.status === "registered" && amountOf(row) < 0n && !row.hasDocument ? (
+        <NoDocumentChip row={row} handlers={handlers} />
+      ) : null}
     </span>
   );
 }
@@ -319,7 +331,7 @@ export function StatementRowView({
             </>
           ) : (
             <>
-              <SettledResult row={row} />
+              <SettledResult row={row} handlers={handlers} />
               <RowErrors error={error} stored={null} />
             </>
           )}

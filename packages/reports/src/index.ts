@@ -23,3 +23,4 @@ export * from "./exports/yayoi";
 export * from "./exports/beancount";
 export * from "./exports/backup";
 export * from "./exports/documents-archive";
+export * from "./financial-statements";

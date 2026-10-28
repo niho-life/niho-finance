@@ -2,6 +2,7 @@ import { isUniqueViolation, SettingsError } from "@niho-finance/db";
 import { LedgerValidationError } from "@niho-finance/ledger";
 import { z, ZodError } from "zod";
 import type { ActionError, ActionResult } from "./action-types";
+import { ActorError } from "./actor";
 
 /** A ZodError issue that is not one of our messages (a malformed request, not a typing mistake). */
 const SHAPE_ERROR =
@@ -31,6 +32,9 @@ export function toActionError(error: unknown): ActionError {
       fieldErrors,
       formError: null,
     };
+  }
+  if (error instanceof ActorError) {
+    return { ok: false, error: error.message, fieldErrors: {} };
   }
   if (error instanceof SettingsError) {
     return {

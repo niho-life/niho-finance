@@ -4,7 +4,7 @@
  */
 import { normalSide, type Money } from "@niho-finance/ledger";
 import { monthsBetween, type MonthRange, type ReportPeriod } from "./period";
-import { indexSource, type ReportAccount, type ReportSource } from "./source";
+import { indexSource, withoutClosingOf, type ReportAccount, type ReportSource } from "./source";
 import {
   layoutIncomeStatement,
   vectorOps,
@@ -31,7 +31,8 @@ export function monthlyColumns(period: ReportPeriod): MonthRange[] {
 }
 
 export function buildMonthlyTrend(source: ReportSource, period: ReportPeriod): MonthlyReport {
-  const index = indexSource(source);
+  // Without the year's 決算振替, which would zero the last month (14 §1).
+  const index = indexSource(withoutClosingOf(source, period.fiscalYear.id));
   const columns = monthlyColumns(period);
   const ops = vectorOps(columns.length + 1);
   const from = columns[0]?.from ?? period.from;

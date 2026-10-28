@@ -32,7 +32,7 @@ import {
 } from "@niho-finance/reports";
 import { redirect } from "next/navigation";
 import { createElement, type ReactElement } from "react";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { csvResponse, pdfResponse } from "@/lib/pdf/download";
 import { renderPdf } from "@/lib/pdf/render";
 import { CashPdf } from "../_pdf/cash";
@@ -208,7 +208,7 @@ export async function exportReport(request: Request): Promise<Response> {
       segment: range ? null : period.segmentId,
       encoding: format === "csv" ? "utf8" : null,
     },
-    { actor: actor() },
+    { actor: await actor() },
   );
   return response;
 }

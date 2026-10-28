@@ -9,6 +9,7 @@ import {
   compareAccounts,
   compareSegments,
   indexSource,
+  withoutClosingOf,
   type ReportAccount,
   type ReportSegment,
   type ReportSource,
@@ -87,7 +88,8 @@ export function segmentColumns(
 }
 
 export function buildSegmentReport(source: ReportSource, period: ReportPeriod): SegmentReport {
-  const index = indexSource(source);
+  // Without the year's 決算振替, which would zero every segment (14 §1).
+  const index = indexSource(withoutClosingOf(source, period.fiscalYear.id));
 
   // First pass: which segments are used and whether any P&L line lacks one.
   const used = new Set<string>();

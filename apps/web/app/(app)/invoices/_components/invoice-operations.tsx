@@ -15,10 +15,12 @@ import { Checkbox, FormField, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError, type ActionResult } from "@/lib/action-types";
 import { entryNo } from "@/lib/format";
+import type { SentInvoiceMail } from "../_lib/mail";
 import {
   discardInvoiceDraftAction,
   issueInvoiceAction,
   markInvoiceSentAction,
+  sendInvoiceMailAction,
   voidInvoiceAction,
   type IssuedInvoice,
 } from "../actions";
@@ -50,6 +52,8 @@ export interface InvoiceOperationsModel {
   canVoid: boolean;
   canCopy: boolean;
   convertTo: InvoiceDocType[];
+  /** メールで送付 (18 §11): the form's defaults and the attachment's name; `null` for drafts and void. */
+  mail: { to: string; subject: string; text: string; attachmentName: string } | null;
 }
 
 /** A dialog's state: open, its pending call and the last error. */
@@ -208,6 +212,105 @@ function SendButton({ model }: { model: InvoiceOperationsModel }) {
 }
 
 /**
+ * メールで送付 (18 §11): the partner's address, a subject and a plain-text body (both editable) with
+ * the PDF attached. A mail that went out records 送付済み; in development (`NIHO_FINANCE_MAIL=log`)
+ * it is only logged and nothing is recorded.
+ */
+function MailButton({
+  model,
+  mail,
+}: {
+  model: InvoiceOperationsModel;
+  mail: NonNullable<InvoiceOperationsModel["mail"]>;
+}) {
+  const id = useId();
+  const router = useRouter();
+  const toast = useToast();
+  const dialog = useDialog();
+  const [to, setTo] = useState(mail.to);
+  const [subject, setSubject] = useState(mail.subject);
+  const [text, setText] = useState(mail.text);
+  const fields = new Set(["to", "subject", "text"]);
+  return (
+    <>
+      <Button size="sm" onClick={dialog.show}>
+        メールで送付
+      </Button>
+      <ConfirmDialog
+        open={dialog.open}
+        title={`${model.name} をメールで送付します`}
+        confirmLabel="送付"
+        pending={dialog.pending}
+        error={formLevelErrors(dialog.error, (field) => fields.has(field)).join(" / ") || null}
+        onCancel={dialog.close}
+        onConfirm={() =>
+          dialog.run(
+            () => sendInvoiceMailAction(model.id, { to, subject, text }),
+            (sent: SentInvoiceMail) => {
+              toast(
+                sent.recorded
+                  ? `${model.name} を ${sent.to.join(", ")} にメールで送付しました`
+                  : "開発用の設定（NIHO_FINANCE_MAIL=log）のため、メールは送らずにログに出しました。送付の記録はしていません",
+              );
+              router.refresh();
+            },
+          )
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <FormField
+            label="宛先"
+            htmlFor={`${id}-to`}
+            required
+            help="複数はカンマで区切ります（5 件まで）"
+            error={dialog.error?.fieldErrors.to}
+          >
+            <Input
+              id={`${id}-to`}
+              type="email"
+              multiple
+              autoComplete="email"
+              value={to}
+              maxLength={600}
+              onChange={(event) => setTo(event.currentTarget.value)}
+            />
+          </FormField>
+          <FormField
+            label="件名"
+            htmlFor={`${id}-subject`}
+            required
+            error={dialog.error?.fieldErrors.subject}
+          >
+            <Input
+              id={`${id}-subject`}
+              value={subject}
+              maxLength={200}
+              onChange={(event) => setSubject(event.currentTarget.value)}
+            />
+          </FormField>
+          <FormField
+            label="本文"
+            htmlFor={`${id}-text`}
+            required
+            error={dialog.error?.fieldErrors.text}
+          >
+            <Textarea
+              id={`${id}-text`}
+              value={text}
+              rows={12}
+              maxLength={5000}
+              className="min-h-56 text-[14px]"
+              onChange={(event) => setText(event.currentTarget.value)}
+            />
+          </FormField>
+          <p className="text-[12px] break-all text-muted">添付: {mail.attachmentName}</p>
+        </div>
+      </ConfirmDialog>
+    </>
+  );
+}
+
+/**
  * 無効にする (18 §9.3): the reason is required; an invoice's 売掛金 entry is reversed. With 「複製して
  * 新しい下書きを作る」 the new form opens on a copy.
  */
@@ -359,6 +462,7 @@ export function InvoiceOperations({ model }: { model: InvoiceOperationsModel }) 
           {INVOICE_DOC_TYPE_LABELS[type]}を作る
         </ButtonLink>
       ))}
+      {model.mail ? <MailButton model={model} mail={model.mail} /> : null}
       {model.canSend ? <SendButton model={model} /> : null}
       {model.canCopy ? (
         <ButtonLink href={`/invoices/new?copy=${model.id}`} size="sm" variant="ghost">

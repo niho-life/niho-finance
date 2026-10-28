@@ -7,6 +7,7 @@ import {
   createRecurringItem,
   createWallet,
   describeAuditTargets,
+  loadCorporateTaxEstimate,
   listRecurringItems,
   loadCashflowInputs,
   setWalletActive,
@@ -363,19 +364,25 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
       expect(inputs.deadlines).toBeNull();
     });
 
-    it("gives the open payment deadlines in the period, with the pay runs' amounts", async () => {
+    it("gives the open payment deadlines in the period, with the amounts known", async () => {
+      let corporateTax = 0n;
       const deadlines = await rolledBack(prisma, async (tx) => {
         // Other files (payroll) leave deadlines behind: start from an empty calendar.
         await tx.calendarItem.deleteMany();
         const add = (
           title: string,
           dueDate: CalendarDate,
-          rest: { kind?: "payment" | "filing"; ruleKey?: string; completedAt?: Date } = {},
+          rest: {
+            kind?: "payment" | "filing";
+            ruleKey?: string;
+            completedAt?: Date;
+            fiscalYearId?: string;
+          } = {},
         ) =>
           tx.calendarItem.create({
             data: {
               id: newId(),
-              fiscalYearId: null,
+              fiscalYearId: rest.fiscalYearId ?? null,
               kind: rest.kind ?? "payment",
               title,
               dueDate: toDbDate(dueDate),
@@ -397,10 +404,29 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
         await add("源泉所得税の納付（支給なし）", "2027-01-10", {
           ruleKey: "payroll.withholding.2030-01",
         });
+        // 申告と納付 of 第 1 期 carries 法人税等: the estimate not booked yet + 未払法人税等 owed.
+        await add("法人税等の申告と納付", "2027-02-27", {
+          kind: "filing",
+          ruleKey: "annual.tax-return",
+          fiscalYearId: refs.fiscalYear1.id,
+        });
+        const estimate = await loadCorporateTaxEstimate(tx, refs.fiscalYear1.id);
+        let owed = 0n;
+        for (const line of await tx.journalLine.findMany({
+          where: {
+            account: { code: "2120" },
+            journalEntry: { entryDate: { lte: toDbDate(window.start) } },
+          },
+        }))
+          owed += line.side === "credit" ? line.amount : -line.amount;
+        corporateTax = estimate.suggested + (owed > 0n ? owed : 0n);
         return (await loadCashflowInputs(tx, window)).deadlines;
       });
+      // 均等割 alone makes it positive.
+      expect(corporateTax).toBeGreaterThan(0n);
       expect(deadlines).toEqual([
         { date: "2027-01-10", title: "源泉所得税の納付", amount: null },
+        { date: "2027-02-27", title: "法人税等の申告と納付", amount: corporateTax },
         { date: "2027-02-28", title: "法人税等の中間申告・納付", amount: null },
         { date: "2027-03-01", title: "90 日後の納付", amount: null },
       ]);

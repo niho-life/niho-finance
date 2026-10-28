@@ -19,6 +19,14 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 | --- | --- |
 | `src/reports-query.ts` | 報告の入力（`loadReportSource`: 設定と全仕訳）、口座の明細の状態（`loadWalletStatus`）、ホームの「やること」（`loadHomeTodos` と `HOME_TODO_SOURCES`。S5・S6・S8 が関数を足す）、書き出しの監査ログ（`recordExport` / `listRecentExports`）、証憑の索引とバックアップの入力（`loadDocumentsForArchive` / `loadBackupSource`）。集計そのものは `@niho-finance/reports` が行う |
 
+## 配備と運用（S8）
+
+| ファイル / コマンド | 内容 |
+| --- | --- |
+| `src/calendar.ts` | 期限の暦（07 §4）。規則 `CALENDAR_RULES` から会計期間ごとの `CalendarItem` を作る純粋関数 `buildCalendarItems`、冪等な同期 `syncCalendarItems`（未完了の項目だけ規則に合わせる。完了済みと規則から消えた項目は触らない）、通知の選択 `selectCalendarNotices`（7 日前・当日・超過を 1 回ずつ。`lastNotifiedOn` で抑止）と `markCalendarItemsNotified`。日付は名目（土日祝で動かさない）。期限の画面（24）の一覧 `listCalendarItems`（会計期間ごとに未完了と完了）、表示の状態 `calendarItemStatus`、完了の記録と取り消し `completeCalendarItem` / `reopenCalendarItem`（監査ログ `calendar_item.complete` / `.reopen`。給与の納付の期限は給与の画面で記録するので断る） |
+| `src/backup.ts` | 日次エクスポート。`exportBackupSnapshot`（全テーブルを表名・列名のキーで、主キー順。bigint は文字列、日付は ISO）、`trialBalancesForBackup`（会計期間ごとの試算表）、両方を 1 つの REPEATABLE READ で読む `exportBackup`、空の DB への `restoreBackupSnapshot`（台帳のガードを通す: 仕訳は posted で入れて同じトランザクションで行を足し、取消と差し替えのリンクは後から更新）。表の順は `BACKUP_TABLES`（外部キーの順）、列の名前と型は `Prisma.dmmf` から取る。モデルを足したら `BACKUP_TABLES` にも足す（足さないとエクスポートが失敗する） |
+| `npm run db:restore -- <フォルダ>`（ルートから） | `scripts/restore-snapshot.ts`。`snapshot.json`・`trial-balance.json`（・`manifest.json`）のあるフォルダを `DATABASE_URL` の空の DB に復元し、試算表を再計算して突き合わせる。一致すれば `restore: OK` で exit 0、違えば差分の要点を出して exit 1。`manifest.json` があれば SHA-256 を先に確かめる |
+
 書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
 
 ## 取引（S3）
@@ -77,10 +85,10 @@ npm run test:db     # DB のテスト（test/**/*.db.test.ts）
 `test:db` は次の順で動きます（`vitest.db.config.ts` と `test/support/global-setup.ts`）。
 
 1. `DATABASE_URL`（リポジトリ直下の `.env` か環境変数）から、テスト用の DB `<DB 名>_test`（例: `niho_finance_test`）を決める。`TEST_DATABASE_URL` で上書きできる。`DATABASE_URL` がなければ DB のテストはすべて skip。
-2. テスト用の DB を DROP して作り直し、`prisma migrate deploy` をする。migrate しただけの状態を `<DB 名>_test_empty` に複製してから、テスト用の DB に seed をする。
-3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式、設定の読み書きと監査ログ、取引の登録・訂正・一覧、締めと監査ログの一覧、明細の取込と Stripe の同期）。`setup.db.test.ts` だけは空の DB（`emptyTestPrisma()`）でウィザードを最初から最後まで進める。ファイルどうしは DB を共有するため、各テストは自分の会計期間（第 1 期から離れた年）で動かす。
+2. テスト用の DB を DROP して作り直し、`prisma migrate deploy` をする。migrate しただけの状態を `<DB 名>_test_empty` と `<DB 名>_test_restore` に複製してから、テスト用の DB に seed をする。
+3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式、設定の読み書きと監査ログ、取引の登録・訂正・一覧、締めと監査ログの一覧、明細の取込と Stripe の同期、暦の同期、バックアップ）。`setup.db.test.ts` だけは空の DB（`emptyTestPrisma()`）でウィザードを最初から最後まで進める。`backup.db.test.ts` はテスト用の DB をエクスポートして `<DB 名>_test_restore`（`restoreTestPrisma()`）に復元する。ファイルどうしは DB を共有するため、各テストは自分の会計期間（第 1 期から離れた年）で動かす。
 4. `DATABASE_URL` の DB は読むだけ。seed 済みなら、全会計期間で試算表の恒等式と連番を確かめる（未 seed なら skip）。
-5. 終わったら `<DB 名>_test_empty` を DROP する（`<DB 名>_test` は次の実行まで残る）。
+5. 終わったら `<DB 名>_test_empty` と `<DB 名>_test_restore` を DROP する（`<DB 名>_test` は次の実行まで残る）。
 
 テスト用の DB を作り直すため、接続ユーザーには CREATEDB の権限が要ります（docker compose と CI の PostgreSQL は満たしています）。
 

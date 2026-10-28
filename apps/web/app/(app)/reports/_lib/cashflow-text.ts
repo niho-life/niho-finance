@@ -75,6 +75,11 @@ export function cashflowNoteText(note: CashflowNote): CashflowNoteText {
         key: note.kind,
         text: `現預金を動かさない定期取引 ${count(note.count)}（カード払いなど）は線に入れていません`,
       };
+    case "recurringAlreadyBooked":
+      return {
+        key: note.kind,
+        text: `登録済みの取引と同じ日・同じ科目の定期取引 ${count(note.count)}は、二重に数えていません`,
+      };
     case "recurringWithoutWallet":
       return {
         key: note.kind,

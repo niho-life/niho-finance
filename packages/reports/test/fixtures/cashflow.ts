@@ -54,7 +54,7 @@ export const CF_WALLETS: ReportWallet[] = [
 
 type LineSpec = [side: Side, account: string, amount: Money, sub?: string];
 
-function cfEntry(
+export function cfEntry(
   id: string,
   no: number,
   date: CalendarDate,

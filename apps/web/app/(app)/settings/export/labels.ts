@@ -13,6 +13,15 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   documents: "証憑一式",
   backup: "バックアップ",
   payslip: "給与明細",
+  // 決算書と申告用データ (17-financial-statements §1)
+  "financial-statements": "計算書類",
+  "opening-balance-sheet": "開始貸借対照表",
+  "business-report": "事業報告",
+  "supplementary-schedules": "附属明細書",
+  "etax-csv": "財務諸表 CSV（e-Tax）",
+  "account-details": "勘定科目内訳の元データ",
+  "consumption-tax": "消費税の集計",
+  announcement: "決算公告",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {
@@ -20,6 +29,7 @@ export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {
   pdf: "PDF",
   zip: "zip",
   beancount: "beancount",
+  html: "HTML",
 };
 
 /** `?error=` of the page after a download that could not be made. */

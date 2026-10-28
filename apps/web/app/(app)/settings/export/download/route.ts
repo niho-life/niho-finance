@@ -25,7 +25,7 @@ import {
   type ReportSource,
 } from "@niho-finance/reports";
 import { redirect } from "next/navigation";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { csvResponse, textResponse, zipResponse } from "@/lib/pdf/download";
 import { getDocumentStorage, StoredFileNotFoundError } from "@/lib/storage";
 
@@ -116,7 +116,7 @@ export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const kind = params.get("kind");
   if (!isKind(kind)) redirect("/settings/export?error=kind");
-  const audit = { actor: actor() };
+  const audit = { actor: await actor() };
 
   if (kind === "backup") {
     const now = new Date();
