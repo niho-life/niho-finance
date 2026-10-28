@@ -98,6 +98,15 @@ function RequestState({ request }: { request: HandoverRequest }) {
 }
 
 /**
+ * The form's action: a form can only take a `void` action, and a refusal (an unregistered or
+ * unverified user, whom the proxy already keeps off this page) has nothing to show here.
+ */
+async function submitPackageRequest(formData: FormData): Promise<void> {
+  "use server";
+  await requestHandoverPackage(formData);
+}
+
+/**
  * 設定 › 書き出しとバックアップ › 受け渡しパッケージ (14-reports §15.1): the year and whether to include
  * the document files (a GET form), what the zip will hold, 「書き出す」 (direct, up to 20 MB) or
  * 「作成を依頼」 (a job), and the latest requests with their state and download.
@@ -105,7 +114,7 @@ function RequestState({ request }: { request: HandoverRequest }) {
 export default async function HandoverPackagePage({
   searchParams,
 }: PageProps<"/settings/export/package">) {
-  // Roles (#21): `authorizeRoute("viewer")` is checked here, before anything is read.
+  // 閲覧 may open it: `/settings/export/*` passes the proxy for viewers (23 §3.3).
   const params = await searchParams;
   const conditions = conditionsOfParams(params);
   const prisma = await db();
@@ -271,7 +280,7 @@ export default async function HandoverPackagePage({
             </div>
           </form>
         ) : (
-          <form action={requestHandoverPackage} className="flex flex-col gap-2">
+          <form action={submitPackageRequest} className="flex flex-col gap-2">
             {hidden}
             <p className="text-[13px] text-muted">
               20 MB

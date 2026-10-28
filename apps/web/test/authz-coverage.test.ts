@@ -39,12 +39,18 @@ const OWNER_ACTIONS: Readonly<Record<string, readonly string[] | "all">> = {
   "setup/actions.ts": "all",
 };
 
+/** Server Actions 閲覧 may run (23 §3.1): the 受け渡しパッケージ request (14 §15.1, #55). */
+const VIEWER_ACTIONS: Readonly<Record<string, readonly string[]>> = {
+  "(app)/settings/export/package/actions.ts": ["requestHandoverPackage"],
+};
+
 /** The argument of `authorizeRoute` per route (23 §3.2); `/api/health` and `/api/jobs/*` are not users'. */
 const ROUTE_GUARDS: Readonly<Record<string, string>> = {
   "(app)/closing/statements/export/route.ts": '"accountant"',
   "(app)/invoices/[id]/pdf/route.ts": '"accountant"',
   "(app)/payroll/runs/[id]/payslips/[employeeId]/pdf/route.ts": '"accountant"',
   "(app)/reports/export/route.ts": '"viewer"',
+  "(app)/settings/export/package/download/route.ts": '"viewer"',
   "(app)/settings/export/download/route.ts": "downloadMinimum(request)",
   "api/bank/gmo-aozora/authorize/route.ts": '"owner"',
   "api/bank/gmo-aozora/callback/route.ts": '"owner"',
@@ -146,7 +152,12 @@ describe("Server Actions authorize first (23 §3.1)", () => {
           const isAsync =
             fn.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
           expect(isAsync, label).toBe(true);
-          const expected = owners === "all" || owners?.includes(label) ? '"owner"' : '"accountant"';
+          const expected =
+            owners === "all" || owners?.includes(label)
+              ? '"owner"'
+              : VIEWER_ACTIONS[name]?.includes(label)
+                ? '"viewer"'
+                : '"accountant"';
           expect(guardArguments(fn, source, "authorizeAction"), label).toBe(expected);
         }
       });

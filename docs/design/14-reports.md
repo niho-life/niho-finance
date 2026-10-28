@@ -252,11 +252,11 @@ Issue #8 の条件に加えて:
 - 「書き出す」: 大きさの見積り（§15.4）が上限以下ならその場で zip をダウンロード。超えるときは「作成を依頼」になり、ジョブで作る。依頼すると下の「作成した受け渡しパッケージ」に「作成中」で出る。
 - 作成した受け渡しパッケージ: 監査ログ `export.package` の直近 10 件の依頼（日時 ・ 期 ・ 証憑を含むか ・ 状態〔作成中 / 作成済み / 失敗〕・ 大きさ ・ 依頼者）。作成済みの行に「ダウンロード」（`/settings/export/package/download?request=<id>`。署名付き URL への 302）。作成中が 30 分を超えたら「失敗した可能性があります。もう一度依頼してください」。
 - スマホ（768px 未満）でも操作できる（表は 期・状態・ダウンロード の 3 列に畳む）。320px で欠けない。
-- 閲覧（#21 の viewer）以上が取れる。#21 の merge 後は route と Server Action の入口で `authorizeRoute` / `authorizeAction` に閲覧を渡す。
+- 閲覧（#21 の viewer）以上が取れる（[決定](../decisions/2026-10-29-handover-package-viewer.md)）。画面は proxy が `/settings/export/*` を閲覧に通し、依頼の Server Action とダウンロードの route は入口で `authorizeAction("viewer")` / `authorizeRoute("viewer")`。
 
 ### 15.2 zip の中身
 
-ファイル名は ASCII（`<from>` `<to>` は `YYYYMMDD`）。zip の名前は `handover_fy<n>_<from>-<to>.zip`。
+ファイル名は ASCII（`<from>` `<to>` は `YYYYMMDD`）。zip の名前は `handover_fy<n>_<from>-<to>.zip`。zip の中の順は 帳簿・決算整理・決算書 → 証憑のファイル → `documents/index.csv` → `README.txt` → `manifest.json`（索引の「パッケージ内のファイル」と README の SHA-256 は、取れた証憑が決まってから書くため）。
 
 | パス | 内容 | 形式 | 入る条件 |
 | --- | --- | --- | --- |
@@ -266,9 +266,9 @@ Issue #8 の条件に加えて:
 | `books/general-ledger_<from>-<to>.csv` | 総勘定元帳（§8 の CSV を全科目分、科目コードの順に縦につなぐ。先頭の列に科目コード・科目） | UTF-8 BOM | いつも |
 | `books/trial-balance_<from>-<to>.pdf` / `.csv` | 試算表（§3。全社・期首〜期末） | PDF / UTF-8 BOM | いつも |
 | `books/monthly_<from>-<to>.csv` | 月次推移（§4。全社） | UTF-8 BOM | いつも |
-| `books/journal-freee_<from>-<to>.csv` | freee の仕訳インポート形式（§11.1） | UTF-8 | いつも |
+| `books/journal-freee_<from>-<to>.csv` | freee の仕訳インポート形式（§11.1） | UTF-8 BOM（既存の書き出しと同じ） | いつも |
 | `books/journal-yayoi_<from>-<to>.csv` | 弥生の仕訳形式（§11.2） | Shift_JIS | いつも |
-| `closing/fixed-assets_<from>-<to>.csv` | 固定資産台帳（#14 の `loadFixedAssetLedger` の行: 資産・科目・取得日・取得価額・償却方法・耐用年数・期首帳簿価額・当期増加・当期減少・当期償却額・期末帳簿価額・減価償却累計額・除却日・償却資産税・特例） | UTF-8 BOM | いつも（資産がなければ見出しだけ） |
+| `closing/fixed-assets_<from>-<to>.csv` | 固定資産台帳（#14 の `loadFixedAssetLedger` の行: 資産・科目・取得日・取得価額・償却方法・耐用年数・期首帳簿価額・当期増加・当期減少・当期償却額・期末帳簿価額・減価償却累計額・除却日・償却資産税〔対象 / 対象外〕・特例〔該当 / 空〕。科目は科目コードと科目の 2 列で計 16 列、合計行なし） | UTF-8 BOM | いつも（資産がなければ見出しだけ） |
 | `closing/consumption-tax_<from>-<to>.csv` | 消費税の集計（[17 §8](17-financial-statements.md)。免税の期は「参考」の行つき） | UTF-8 BOM | いつも |
 | `statements/financial-statements_<from>-<to>.pdf` | 計算書類一式（[17 §4](17-financial-statements.md)） | PDF | 締めた期（`closed`）だけ |
 | `statements/account-details_<from>-<to>.csv` | 勘定科目内訳の元データ（17 §7） | UTF-8 BOM | 締めた期だけ |
@@ -301,6 +301,7 @@ books/journal_20261102-20270331.csv
 - このパッケージは作成時点の帳簿から作りました。後から訂正した仕訳は入りません。
 ```
 
+- 「形式」の CSV の文は既存の `csvText` に合わせ「カンマ・ダブルクォート・改行を含む値だけダブルクォートで囲む」。索引簿の列と manifest の説明を 1 行ずつ足す。締めた期でも仕訳が 0 件なら決算書は入れず、その旨を注意に書く。
 - 「中身」は zip に入れたファイルと同じ順・同じ数（README と manifest.json 自身を除く）。件数は CSV のデータ行数（見出しを除く）・PDF のページ数は書かない・証憑ファイルは 1 行に「documents/files/（n 件）」とまとめず 1 件ずつ書く（1 対 1 を目で確かめられるように）。
 
 ### 15.4 その場で作るか、ジョブで作るか
@@ -308,7 +309,7 @@ books/journal_20261102-20270331.csv
 - 見積り = 証憑を含めるときの証憑の `byteSize` の合計 ＋ 帳簿の分（2 MB とみなす）。**20 MB 以下**ならその場で作ってダウンロード（画面のサービスの応答の上限 32 MiB・タイムアウト 60 秒に収める）。超えるときはジョブ。
 - ジョブ: 画面のサービスが Cloud Tasks のキュー（S8 の `niho-finance-manual`）に、ジョブ用サービスの `/api/jobs/handover-package` への POST を積む（OIDC は Scheduler と同じサービスアカウント、audience はジョブ用サービスの URL。本文は `{ requestId, fiscalYearId, includeDocuments, requestedBy }`）。ジョブは同じ関数で zip を作り、バックアップバケットの `packages/<作成日時>_fy<n>_<requestId>.zip` に置く（保持ポリシーの下で残る）。証憑は 1 件ずつ読み、zip はストリームで書いてメモリに全体を持たない。
 - ダウンロード: `/settings/export/package/download?request=<id>` が監査ログの「作成済み」の行のキーを確かめ、V4 の署名付き GET URL（10 分、`response-content-disposition` に zip の名前）へ 302。
-- ローカル（`NIHO_FINANCE_TASKS_QUEUE` がない）: 依頼はその場でジョブの関数を動かし、`NIHO_FINANCE_BACKUP_DIR` に置いて、ダウンロードは本体を返す。本番でキューがないときは「大きいパッケージを作る設定がありません。証憑のファイルを外して書き出します」。
+- ローカル（`NIHO_FINANCE_TASKS_QUEUE` がない）: 依頼はその場でジョブの関数を動かし、`NIHO_FINANCE_BACKUP_DIR` に置いて、ダウンロードは本体を返す。本番でキューがないときは証憑のファイルを外してその場で作り、README の注意にその旨を書く。その場のダウンロードは zip をメモリに組んでから返す（20 MB 以下なので）。証憑が保存先にない・大きすぎるときは「（取得できませんでした）」、それ以外の保存先のエラーはパッケージ全体を失敗にする（S7 の証憑一式と同じ）。
 - 配備（S8 の `scripts/` に追記）: 画面のサービスに `NIHO_FINANCE_TASKS_QUEUE`・`NIHO_FINANCE_JOB_URL`・`NIHO_FINANCE_JOB_SERVICE_ACCOUNT`・`NIHO_FINANCE_BACKUP_BUCKET` を渡す。実行用のサービスアカウントに、キューへの `roles/cloudtasks.enqueuer` と、Scheduler のサービスアカウントへの `roles/iam.serviceAccountUser`（タスクに OIDC を付けるため）。費用はタスク数件で 0 円。
 
 ### 15.5 監査ログ `export.package`

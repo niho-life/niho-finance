@@ -20,6 +20,7 @@ import {
   packagePageHref,
   type PackageConditions,
 } from "../_lib/query";
+import { authorizeRoute } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,8 @@ export const dynamic = "force-dynamic";
  *   production without a queue, where the files are left out.
  */
 export async function GET(request: Request): Promise<Response> {
-  // Roles (#21): `authorizeRoute("viewer")` is checked here, before anything is read.
+  const denied = await authorizeRoute("viewer");
+  if (denied) return denied;
   const prisma = getPrismaClient();
   if (!(await getSetupProgress(prisma)).ready) redirect("/setup");
   const params = new URL(request.url).searchParams;

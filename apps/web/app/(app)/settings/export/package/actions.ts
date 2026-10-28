@@ -7,7 +7,9 @@ import {
   todayInJapan,
 } from "@niho-finance/db";
 import { redirect } from "next/navigation";
+import type { ActionError } from "@/lib/action-types";
 import { actor, ActorError } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { enqueueJob, taskQueueConfig } from "@/lib/jobs/enqueue";
 import { HANDOVER_JOB_PATH, makeHandoverPackageInline } from "@/lib/jobs/handover-package";
 import { JOB_ACTOR } from "@/lib/jobs/run";
@@ -21,8 +23,10 @@ import { conditionsOfForm, largePackageMode, packagePageHref } from "./_lib/quer
  * through Cloud Tasks — or, locally without a queue, makes it in place. Back to the page with the
  * outcome; the request appears under 「作成した受け渡しパッケージ」.
  */
-export async function requestHandoverPackage(formData: FormData): Promise<void> {
-  // Roles (#21): `authorizeAction("viewer")` is checked here, before anything is read.
+export async function requestHandoverPackage(formData: FormData): Promise<ActionError | undefined> {
+  // 閲覧 (the tax accountant) may take the package too (#55; docs/decisions/2026-10-29-handover-package-viewer.md).
+  const denied = await authorizeAction("viewer");
+  if (denied) return denied;
   const conditions = conditionsOfForm(formData);
   const back: (extra: Record<string, string>) => never = (extra) =>
     redirect(`${packagePageHref(conditions, extra)}#packages`);
