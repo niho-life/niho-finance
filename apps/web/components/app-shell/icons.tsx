@@ -9,8 +9,10 @@ export type NavIconName =
   | "calendar"
   | "invoices"
   | "payroll"
+  | "expenses"
   | "closing"
-  | "settings";
+  | "settings"
+  | "export";
 
 /** Line icons of the mock (docs/design/mock/v1.html), 24px grid. */
 const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
@@ -48,6 +50,12 @@ const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
       <path d="M6.5 9.5v5M17.5 9.5v5" />
     </>
   ),
+  expenses: (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </>
+  ),
   closing: (
     <>
       <path d="M12 3a9 9 0 1 0 9 9" />
@@ -58,6 +66,12 @@ const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
     <>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </>
+  ),
+  export: (
+    <>
+      <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" />
+      <path d="M4 17v3h16v-3" />
     </>
   ),
   camera: (

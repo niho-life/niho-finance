@@ -8,6 +8,7 @@ import {
 } from "@/lib/documents/api";
 import { getDocumentStorage, StoredFileExistsError } from "@/lib/storage";
 import { isLocalDocumentStorage } from "@/lib/storage/local";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
  * never written again.
  */
 export async function PUT(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("accountant", { json: true });
+  if (denied) return denied;
   return handleApi(async () => {
     const storage = getDocumentStorage();
     if (!isLocalDocumentStorage(storage)) return jsonError(404, "見つかりません");

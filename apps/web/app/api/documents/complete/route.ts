@@ -17,6 +17,7 @@ import type { CompleteResponse } from "@/lib/documents/api-types";
 import { actor } from "@/lib/actor";
 import { getDocumentStorage } from "@/lib/storage";
 import { verifyUploadedFile } from "@/lib/storage/save";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export const dynamic = "force-dynamic";
  * and linked to `link` in the same transaction.
  */
 export async function POST(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("accountant", { json: true });
+  if (denied) return denied;
   return handleApi(async () => {
     assertSameOrigin(request);
     const body = await readJson(request, completeRequestSchema);
