@@ -361,9 +361,19 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
               ),
             };
       case "statements":
+        // 未処理 of S5: the statements screen is where the lines are registered, transferred or ignored.
+        return step.state === "done"
+          ? {}
+          : {
+              actions: (
+                <ButtonLink href="/statements" variant="secondary" size="sm">
+                  明細を片付ける
+                </ButtonLink>
+              ),
+            };
       case "statements_report":
       case "export":
-        // 準備中 (S5, #15): the summary says why; no entry point yet.
+        // 準備中 (#15): the summary says why; no entry point yet.
         return {};
     }
   }

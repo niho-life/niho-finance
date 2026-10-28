@@ -59,28 +59,28 @@ function ledgerCodes(error: unknown) {
 describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
   let prisma: PrismaClient;
   let refs: SeededRefs;
-  /** 第 160 期: 2060-04-01 – 2061-03-31 (免税・税込). */
+  /** 第 160 期: 2080-04-01 – 2081-03-31 (免税・税込). */
   let year: FiscalYear;
-  /** 第 161 期: 2061-04-01 – 2062-03-31. */
+  /** 第 161 期: 2081-04-01 – 2082-03-31. */
   let nextYear: FiscalYear;
   let bank: string;
   let card: string;
   let incomeEntry: string;
   let assetId: string;
-  const today = "2061-05-01";
+  const today = "2081-05-01";
 
   beforeAll(async () => {
     prisma = testPrisma();
     refs = await seededRefs(prisma);
     year = await createFiscalYear(prisma, {
       no: 160,
-      startDate: "2060-04-01",
-      endDate: "2061-03-31",
+      startDate: "2080-04-01",
+      endDate: "2081-03-31",
     });
     nextYear = await createFiscalYear(prisma, {
       no: 161,
-      startDate: "2061-04-01",
-      endDate: "2062-03-31",
+      startDate: "2081-04-01",
+      endDate: "2082-03-31",
     });
     const wallet = async (name: string) =>
       (await prisma.wallet.findFirstOrThrow({ where: { name } })).id;
@@ -138,15 +138,15 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
 
   it("records the year's transactions and an asset bought in it", async () => {
     incomeEntry = (
-      await postSimpleEntry(prisma, simple("income", "2060-05-20", "1,100,000"), { actor })
+      await postSimpleEntry(prisma, simple("income", "2080-05-20", "1,100,000"), { actor })
     ).id;
-    await postSimpleEntry(prisma, simple("expense", "2060-06-05", "330,000"), { actor });
+    await postSimpleEntry(prisma, simple("expense", "2080-06-05", "330,000"), { actor });
     // 開業費 120,000 (役員立替) for the 繰延資産.
     await postVoucherEntry(
       prisma,
       {
         kind: "normal",
-        entryDate: "2060-04-01",
+        entryDate: "2080-04-01",
         description: "開業費（役員立替）",
         partnerId: "",
         memoTagIds: [],
@@ -173,7 +173,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       {
         source: "purchase",
         counterpart: `wallet:${bank}`,
-        entryDate: "2060-07-10",
+        entryDate: "2080-07-10",
         amount: "600,000",
         taxCategoryCode: "purchase_10",
         accountId: refs.account("1510"),
@@ -186,39 +186,39 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       { actor },
     );
     assetId = asset.id;
-    expect(asset.acquisitionEntry?.entryDate).toBe("2060-07-10");
+    expect(asset.acquisitionEntry?.entryDate).toBe("2080-07-10");
   });
 
   it("starts only after the last day, and moves a close on the last day back", async () => {
     expect(
       settingsError(
-        await rejectionOf(startYearEnd(prisma, year.id, {}, { actor, today: "2061-03-31" })),
+        await rejectionOf(startYearEnd(prisma, year.id, {}, { actor, today: "2081-03-31" })),
       ).message,
-    ).toBe("期末は 2061/03/31 です。決算整理は 2061/04/01 から始められます");
+    ).toBe("期末は 2081/03/31 です。決算整理は 2081/04/01 から始められます");
     expect(
       settingsError(
-        await rejectionOf(startYearEnd(prisma, nextYear.id, {}, { actor, today: "2062-05-01" })),
+        await rejectionOf(startYearEnd(prisma, nextYear.id, {}, { actor, today: "2082-05-01" })),
       ).message,
     ).toBe("第 160 期を締めてから始めます");
 
-    await closeFiscalYearThrough(prisma, year.id, { lockedThrough: "2061-03-31" }, { actor });
+    await closeFiscalYearThrough(prisma, year.id, { lockedThrough: "2081-03-31" }, { actor });
     const checklist = await loadYearEndChecklist(prisma, year.id, { today });
     expect(checklist).toMatchObject({
       canStart: true,
       startBlockedReason: null,
-      lockedThroughAfterStart: "2061-02-28",
+      lockedThroughAfterStart: "2081-02-28",
       canPost: false,
     });
     expect(checklist.normalEntryCount).toBe(4);
 
     const result = await startYearEnd(prisma, year.id, { reason: "" }, { actor, today });
-    expect(result).toMatchObject({ no: 160, status: "closing", lockedThrough: "2061-02-28" });
-    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2061-02-28" });
+    expect(result).toMatchObject({ no: 160, status: "closing", lockedThrough: "2081-02-28" });
+    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2081-02-28" });
     expect((await yearAudit(year.id)).map((row) => [row.action, row.before, row.after])).toEqual([
       [
         "fiscal_year.start_adjusting",
-        { status: "open", lockedThrough: "2061-03-31" },
-        { status: "closing", lockedThrough: "2061-02-28" },
+        { status: "open", lockedThrough: "2081-03-31" },
+        { status: "closing", lockedThrough: "2081-02-28" },
       ],
     ]);
   });
@@ -227,7 +227,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
     expect(
       ledgerCodes(
         await rejectionOf(
-          postSimpleEntry(prisma, simple("expense", "2061-03-31", "1,100"), { actor }),
+          postSimpleEntry(prisma, simple("expense", "2081-03-31", "1,100"), { actor }),
         ),
       ),
     ).toContain("FISCAL_YEAR_CLOSING");
@@ -235,7 +235,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       prisma,
       {
         kind: "adjusting",
-        entryDate: "2061-03-31",
+        entryDate: "2081-03-31",
         description: "立替金の振替",
         partnerId: "",
         memoTagIds: [],
@@ -264,23 +264,23 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       closeFiscalYearThrough(
         prisma,
         year.id,
-        { lockedThrough: "2061-01-31", reason: "戻したい" },
+        { lockedThrough: "2081-01-31", reason: "戻したい" },
         { actor },
       ),
     ).rejects.toThrow(message);
-    await expect(previewFiscalYearClose(prisma, year.id, "2061-01-31")).rejects.toThrow(message);
+    await expect(previewFiscalYearClose(prisma, year.id, "2081-01-31")).rejects.toThrow(message);
   });
 
   it("posts the depreciation once per asset and year", async () => {
     const posted = await postDepreciation(prisma, year.id, {}, { actor });
-    // 600,000 × 0.500 × 9 / 12 (2060/07/10〜2061/03/31 は 9 か月) = 225,000。
+    // 600,000 × 0.500 × 9 / 12 (2080/07/10〜2081/03/31 は 9 か月) = 225,000。
     expect(posted.map((row) => [row.assetId, row.amount])).toEqual([[assetId, 225_000n]]);
     const entry = await getJournalEntryDetail(prisma, posted[0]!.entry.id);
     expect(entry).toMatchObject({
       kind: "adjusting",
       sourceKind: "fixed_asset",
       sourceId: assetId,
-      entryDate: "2061-03-31",
+      entryDate: "2081-03-31",
       description: "減価償却費 ノート PC",
     });
     expect(entry?.lines.map((line) => [line.side, line.accountCode, line.amount])).toEqual([
@@ -303,7 +303,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
     // 120,000 × 12 / 60 = 24,000。
     expect(startup).toMatchObject({
       cost: 120_000n,
-      startDate: "2060-04-01",
+      startDate: "2080-04-01",
       amortizedBefore: 0n,
       fiveYears: 24_000n,
       full: 120_000n,
@@ -357,7 +357,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       },
       { actor },
     );
-    expect(prepaid.reversal?.entryDate).toBe("2061-04-01");
+    expect(prepaid.reversal?.entryDate).toBe("2081-04-01");
     const reversalEntry = await getJournalEntryDetail(prisma, prepaid.reversal!.id);
     expect(reversalEntry).toMatchObject({
       kind: "adjusting",
@@ -410,9 +410,9 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       { reason: "翌期分はなかった" },
       { actor },
     );
-    expect(voided.reversal.entryDate).toBe("2061-03-31");
+    expect(voided.reversal.entryDate).toBe("2081-03-31");
     expect(voided.accrualReversal?.voided.id).toBe(prepaid.reversal!.id);
-    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2061-02-28" });
+    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2081-02-28" });
     const statuses = await prisma.journalEntry.findMany({
       where: { id: { in: [prepaid.entry.id, prepaid.reversal!.id] } },
       select: { status: true },
@@ -446,7 +446,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       booked: 0n,
       suggested: 164_500n,
       posted: null,
-      dueDate: "2061-05-31",
+      dueDate: "2081-05-31",
     });
     expect(estimate.estimate.total).toBe(164_500n);
 
@@ -491,10 +491,13 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
     expect((audit[2]?.after as Record<string, unknown>).accruals).toBeNull();
 
     const checklist = await loadYearEndChecklist(prisma, year.id, { today });
-    // Step 2 is S6's inbox, shared by the whole test database.
+    // Steps 1 and 2 are S5's pending lines and S6's inbox, shared by the whole test database.
     const inbox = await countInboxDocuments(prisma);
+    const pending = await prisma.walletTransaction.count({
+      where: { status: "pending", txnDate: { lte: year.endDate } },
+    });
     expect(checklist.steps.map((step) => [step.no, step.state])).toEqual([
-      [1, "pending"],
+      [1, pending === 0 ? "done" : "todo"],
       [2, inbox === 0 ? "done" : "todo"],
       [3, "done"],
       [4, "done"],
@@ -537,7 +540,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       sourceKind: "year_end",
       sourceId: `year_end:closing:${year.id}`,
       description: "決算振替 第 160 期",
-      entryDate: "2061-03-31",
+      entryDate: "2081-03-31",
     });
     expect(closing?.lines.at(-1)).toMatchObject({
       side: "credit",
@@ -552,8 +555,8 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
     // 受け入れ条件: the next year's balance sheet at its start = the closed year's before closing,
     // except 繰越利益剰余金 (+ net income); the P&L before it is only the other (unclosed) years'.
     const opening = await balanceAt(
-      { startDate: "2061-04-01", endDate: "2062-03-31" },
-      "2061-03-31",
+      { startDate: "2081-04-01", endDate: "2082-03-31" },
+      "2081-03-31",
     );
     const accounts = new Map(
       (await loadAccountRefs(prisma)).map((account) => [account.id, account]),
@@ -608,7 +611,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
             prisma,
             {
               kind: "adjusting",
-              entryDate: "2061-03-31",
+              entryDate: "2081-03-31",
               description: "遅れた決算整理",
               partnerId: "",
               memoTagIds: [],
@@ -649,7 +652,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
               reason: "誤り",
               replacement: {
                 kind: "normal",
-                entryDate: "2060-05-20",
+                entryDate: "2080-05-20",
                 description: "月会費",
                 partnerId: "",
                 memoTagIds: [],
@@ -693,9 +696,9 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
   it("reopens with a reason, once the next year is not closed, and can close again", async () => {
     // 第 161 期 can start now; closing it (no P&L there: the reversal was voided) blocks the reopening.
     expect(
-      (await loadYearEndChecklist(prisma, nextYear.id, { today: "2062-05-01" })).canStart,
+      (await loadYearEndChecklist(prisma, nextYear.id, { today: "2082-05-01" })).canStart,
     ).toBe(true);
-    await startYearEnd(prisma, nextYear.id, {}, { actor, today: "2062-05-01" });
+    await startYearEnd(prisma, nextYear.id, {}, { actor, today: "2082-05-01" });
     expect(await closeYear(prisma, nextYear.id, {}, { actor })).toMatchObject({
       status: "closed",
       closingEntry: null,
@@ -721,7 +724,7 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
     const closingEntry = (await loadYearEndBalances(prisma, year.id)).closingEntry!;
     const reopened = await reopenYear(prisma, year.id, { reason: "法人税等を直す" }, { actor });
     expect(reopened).toMatchObject({ status: "closing", closingEntry: { id: closingEntry.id } });
-    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2061-02-28" });
+    expect(await status(year.id)).toEqual({ status: "closing", lockedThrough: "2081-02-28" });
     const voided = await getJournalEntryDetail(prisma, closingEntry.id);
     expect(voided).toMatchObject({ status: "voided", voidReason: "法人税等を直す" });
     expect(voided?.reversal).not.toBeNull();
@@ -741,16 +744,16 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
   it("settles the consumption tax of a taxable, tax-exclusive year", async () => {
     const taxable = await createFiscalYear(prisma, {
       no: 164,
-      startDate: "2064-04-01",
-      endDate: "2065-03-31",
+      startDate: "2084-04-01",
+      endDate: "2085-03-31",
       tax: { consumptionTax: "general", accountingMethod: "tax_exclusive" },
     });
-    const day = "2065-05-01";
+    const day = "2085-05-01";
     // The test book may hold small unsettled tax lines of other years: compare with what was there
     // (the amounts here are large enough to keep every balance positive).
     const before = (await loadYearEndChecklist(prisma, taxable.id, { today: day })).consumptionTax;
-    await postSimpleEntry(prisma, simple("income", "2064-06-01", "11,000,000"), { actor });
-    await postSimpleEntry(prisma, simple("expense", "2064-06-02", "3,300,000"), { actor });
+    await postSimpleEntry(prisma, simple("income", "2084-06-01", "11,000,000"), { actor });
+    await postSimpleEntry(prisma, simple("expense", "2084-06-02", "3,300,000"), { actor });
     await startYearEnd(prisma, taxable.id, {}, { actor, today: day });
     const checklist = await loadYearEndChecklist(prisma, taxable.id, { today: day });
     const tax = checklist.consumptionTax;

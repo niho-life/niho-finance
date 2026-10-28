@@ -16,6 +16,8 @@ export * from "./yen-input";
 export * from "./master-data";
 export * from "./documents";
 export * from "./simple-entry";
+export * from "./suggest";
+export * from "./statement-entry";
 export * from "./invoice-math";
 export * from "./depreciation";
 export * from "./corporate-tax";

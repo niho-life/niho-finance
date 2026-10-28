@@ -215,6 +215,12 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "stripe_account_link.create": "Stripe の接続",
   "stripe_account_link.update": "Stripe の接続の変更",
   "stripe_account_link.delete": "Stripe の接続を外す",
+  "wallet_transaction.register": "明細の登録",
+  "wallet_transaction.transfer": "明細の振替",
+  "wallet_transaction.ignore": "明細の無視",
+  "wallet_transaction.reopen": "明細を未処理に戻す",
+  "wallet_transaction.update": "明細のメモ",
+  "rule.apply": "ルールの適用",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
@@ -257,6 +263,8 @@ export const AUDIT_ENTITIES = [
   "invoice",
   "import_batch",
   "stripe_account_link",
+  "wallet_transaction",
+  "rule",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -278,6 +286,8 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   invoice: "請求",
   import_batch: "取込",
   stripe_account_link: "Stripe の接続",
+  wallet_transaction: "明細",
+  rule: "ルール",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

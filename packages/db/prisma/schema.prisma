@@ -566,14 +566,23 @@ model WalletTransaction {
   ignoredReason   String?                 @map("ignored_reason")
   createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// When it was settled (registered / transfer / ignored); null while pending
+  settledAt       DateTime?               @map("settled_at") @db.Timestamptz(6)
+  /// The rule whose suggestion settled it (or was applied)
+  ruleId          String?                 @map("rule_id")
+  /// Settled by a rule without the owner (on import, or 「ルールを適用」)
+  autoPosted      Boolean                 @default(false) @map("auto_posted")
+  note            String?
 
   wallet        Wallet         @relation(fields: [walletId], references: [id])
   importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
   journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
   documentLinks DocumentLink[]
+  rule          Rule?          @relation(fields: [ruleId], references: [id])
 
   @@unique([walletId, externalId])
   @@index([walletId, status, txnDate])
+  @@index([status, txnDate])
   @@map("wallet_transaction")
 }
 
@@ -631,7 +640,8 @@ model Rule {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  wallet Wallet? @relation(fields: [walletId], references: [id])
+  wallet       Wallet?             @relation(fields: [walletId], references: [id])
+  transactions WalletTransaction[]
 
   @@map("rule")
 }

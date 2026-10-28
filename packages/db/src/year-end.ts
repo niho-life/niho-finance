@@ -841,6 +841,9 @@ export async function loadYearEndChecklist(
   });
   const adjustingEntries = await loadAdjustingEntries(db, year);
   const inboxDocuments = await countInboxDocuments(db);
+  const pendingStatements = await db.walletTransaction.count({
+    where: { status: "pending", txnDate: { lte: year.endDate } },
+  });
   const checks = readChecks(year.yearEndChecks);
 
   const depreciationTargets = depreciation.filter((row) => row.amount > 0n);
@@ -852,11 +855,15 @@ export async function loadYearEndChecklist(
 
   const steps: YearEndStep[] = [
     {
+      // 未処理 of S5 (15-statements §1), limited to the lines dated on or before the year end.
       key: "statements",
       no: 1,
       label: "未処理の明細",
-      state: "pending",
-      summary: "明細の片付けの画面ができると、期末日までの未処理の件数を確かめられます",
+      state: pendingStatements === 0 ? "done" : "todo",
+      summary:
+        pendingStatements === 0
+          ? "期末日までの未処理の明細はありません"
+          : `期末日までの未処理の明細 ${pendingStatements} 件を片付けます`,
     },
     {
       // 受信箱 of S6 (13-documents §3.2): not linked yet, or linked without a date, an amount or a
