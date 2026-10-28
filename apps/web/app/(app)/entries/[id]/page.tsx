@@ -103,6 +103,12 @@ function Bands({ detail, blocked }: { detail: JournalEntryDetail; blocked: boole
             請求書を開く
           </Link>
         ) : null}
+        {/* An entry of 立替精算 is voided there (23-users-and-expenses §5.2). */}
+        {detail.sourceKind === "expense" ? (
+          <Link href="/expenses" className="ml-2 font-bold underline underline-offset-4">
+            立替精算を開く
+          </Link>
+        ) : null}
       </Band>,
     );
   }

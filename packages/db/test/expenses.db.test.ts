@@ -13,6 +13,7 @@ import {
   loadExpensePaymentCandidates,
   payExpenseClaims,
   registerDocument,
+  reopenWalletTransaction,
   setUserActive,
   SettingsError,
   submitExpenseClaim,
@@ -45,8 +46,10 @@ function settingsError(error: unknown) {
 
 /**
  * 立替精算 (23-users-and-expenses §5): 提出 → 支払 → 取消 on fiscal years of their own, 第 240 期
- * (本則課税・税込経理, 2080) and 第 241 期 (本則課税・税抜経理, 2081, closed through 2081/04/30), far
- * from the seeded year 1 and the other test files. The claimants are users made here.
+ * (本則課税・税込経理, 2100) and 第 241 期 (本則課税・税抜経理, 2101, closed through 2101/04/30), after
+ * every other test file's years: the expenses here are losses, and a loss is carried forward to the
+ * next ten years (繰越欠損金), which would change the corporate tax of year-end.db.test.ts (2090–).
+ * The claimants are users made here.
  */
 describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
   let prisma: PrismaClient;
@@ -64,15 +67,15 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     refs = await seededRefs(prisma);
     inclusiveYear = await createFiscalYear(prisma, {
       no: 240,
-      startDate: "2080-04-01",
-      endDate: "2081-03-31",
+      startDate: "2100-04-01",
+      endDate: "2101-03-31",
       tax: { consumptionTax: "general", accountingMethod: "tax_inclusive" },
     });
     exclusiveYear = await createFiscalYear(prisma, {
       no: 241,
-      startDate: "2081-04-01",
-      endDate: "2082-03-31",
-      lockedThrough: "2081-04-30",
+      startDate: "2101-04-01",
+      endDate: "2102-03-31",
+      lockedThrough: "2101-04-30",
       tax: { consumptionTax: "general", accountingMethod: "tax_exclusive" },
     });
     claimant = await createUser(
@@ -104,7 +107,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     overrides: Partial<ExpenseClaimSubmitInput> = {},
   ): ExpenseClaimSubmitInput => ({
     claimantId: claimant.id,
-    spentOn: "2080-05-10",
+    spentOn: "2100-05-10",
     amount: "1,100",
     accountId: refs.account("5360"),
     taxCategoryCode: "purchase_10",
@@ -174,7 +177,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const submitted = await submitExpenseClaim(prisma, claimInput(), options);
     expect(submitted.claim).toMatchObject({
       claimantId: claimant.id,
-      spentOn: "2080-05-10",
+      spentOn: "2100-05-10",
       amount: 1_100n,
       status: "submitted",
       paymentId: null,
@@ -187,7 +190,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     expect(accrual).toMatchObject({
       no: submitted.entry.no,
       fiscalYearId: inclusiveYear.id,
-      entryDate: toDbDate("2080-05-10"),
+      entryDate: toDbDate("2100-05-10"),
       description: "立替精算 架空 一郎 タクシー代",
       kind: "normal",
       sourceKind: "expense",
@@ -211,14 +214,14 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [submitted.claim.id],
-        paidOn: "2080-05-31",
+        paidOn: "2100-05-31",
         walletId: bankWalletId,
       },
       options,
     );
     expect(paid.payment).toMatchObject({
       claimantId: claimant.id,
-      paidOn: "2080-05-31",
+      paidOn: "2100-05-31",
       walletId: bankWalletId,
       walletTransactionId: null,
       amount: 1_100n,
@@ -227,7 +230,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     });
     const payment = await prisma.journalEntry.findUniqueOrThrow({ where: { id: paid.entry.id } });
     expect(payment).toMatchObject({
-      entryDate: toDbDate("2080-05-31"),
+      entryDate: toDbDate("2100-05-31"),
       description: "立替精算の支払 架空 一郎（1 件）",
       sourceKind: "expense",
       sourceId: paid.payment.id,
@@ -254,7 +257,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
         id: claim.id,
         amount: "1100",
         status: "submitted",
-        spentOn: "2080-05-10T00:00:00.000Z",
+        spentOn: "2100-05-10T00:00:00.000Z",
       },
     });
     expect(audit[1]).toMatchObject({
@@ -264,13 +267,13 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const names = await describeAuditTargets(prisma, [
       { entity: "expense_claim", entityId: claim.id },
     ]);
-    expect(names.get(`expense_claim:${claim.id}`)).toBe("立替精算 2080/05/10 タクシー代");
+    expect(names.get(`expense_claim:${claim.id}`)).toBe("立替精算 2100/05/10 タクシー代");
   });
 
   it("splits the tax in a tax-exclusive year (仮払消費税) and pays back to a balance of 0", async () => {
     const submitted = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2081-05-12", amount: "1100", description: "文具" }),
+      claimInput({ spentOn: "2101-05-12", amount: "1100", description: "文具" }),
       options,
     );
     expect(await linesOf(submitted.entry.id)).toEqual([
@@ -285,7 +288,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: submitted.claim.id,
-        paidOn: "2081-05-20",
+        paidOn: "2101-05-20",
         walletId: cashWalletId,
       },
       options,
@@ -300,12 +303,12 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
   it("pays several claims of one claimant in one entry, one debit line per claim", async () => {
     const first = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-06-01", amount: "550", description: "駐車場代" }),
+      claimInput({ spentOn: "2100-06-01", amount: "550", description: "駐車場代" }),
       options,
     );
     const second = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-06-03", amount: "2,200", description: "会議の茶菓" }),
+      claimInput({ spentOn: "2100-06-03", amount: "2,200", description: "会議の茶菓" }),
       options,
     );
     const balance = await payableBalance(inclusiveYear);
@@ -315,7 +318,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [second.claim.id, first.claim.id, first.claim.id],
-        paidOn: "2080-06-10",
+        paidOn: "2100-06-10",
         walletId: bankWalletId,
       },
       options,
@@ -329,7 +332,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const debit = await prisma.journalLine.findFirstOrThrow({
       where: { journalEntryId: paid.entry.id, lineNo: 1 },
     });
-    expect(debit.description).toBe("2080/06/01 駐車場代");
+    expect(debit.description).toBe("2100/06/01 駐車場代");
     expect(await payableBalance(inclusiveYear)).toBe(balance - 2_750n);
     const claims = await prisma.expenseClaim.findMany({
       where: { id: { in: [first.claim.id, second.claim.id] } },
@@ -342,7 +345,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const overview = await loadExpenseOverview(prisma);
     const row = overview.payments.rows.find((item) => item.id === paid.payment.id);
     expect(row).toMatchObject({
-      paidOn: "2080-06-10",
+      paidOn: "2100-06-10",
       claimant: { id: claimant.id, displayName: "架空 一郎" },
       count: 2,
       total: 2_750n,
@@ -355,32 +358,32 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
   it("matches a withdrawal of the total (registered), and the payment's cancellation puts everything back", async () => {
     const first = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-07-01", amount: "1,300", description: "書籍" }),
+      claimInput({ spentOn: "2100-07-01", amount: "1,300", description: "書籍" }),
       options,
     );
     const second = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-07-02", amount: "2,000", description: "郵送料" }),
+      claimInput({ spentOn: "2100-07-02", amount: "2,000", description: "郵送料" }),
       options,
     );
-    const line = await withdrawal(-3_300n, "2080-07-20");
-    await withdrawal(-3_300n, "2080-06-20"); // before the 利用日: not offered
-    await withdrawal(-3_300n, "2080-07-21", cashWalletId); // another wallet
+    const line = await withdrawal(-3_300n, "2100-07-20");
+    await withdrawal(-3_300n, "2100-06-20"); // before the 利用日: not offered
+    await withdrawal(-3_300n, "2100-07-21", cashWalletId); // another wallet
     const balance = await payableBalance(inclusiveYear);
 
     const candidates = await loadExpensePaymentCandidates(prisma, {
       walletId: bankWalletId,
       amount: 3_300n,
-      notBefore: "2080-07-02",
+      notBefore: "2100-07-02",
     });
     expect(candidates.map((candidate) => candidate.id)).toContain(line.id);
     for (const candidate of candidates) {
       expect(candidate.amount).toBe(-3_300n);
-      expect(candidate.txnDate >= "2080-07-02").toBe(true);
+      expect(candidate.txnDate >= "2100-07-02").toBe(true);
     }
 
     // A line of another amount is refused.
-    const short = await withdrawal(-3_000n, "2080-07-20");
+    const short = await withdrawal(-3_000n, "2100-07-20");
     expect(
       settingsError(
         await rejectionOf(
@@ -389,7 +392,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [first.claim.id, second.claim.id],
-              paidOn: "2080-07-20",
+              paidOn: "2100-07-20",
               walletId: bankWalletId,
               walletTransactionId: short.id,
             },
@@ -404,18 +407,36 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [first.claim.id, second.claim.id],
-        paidOn: "2080-07-31", // the line's date wins
+        paidOn: "2100-07-31", // the line's date wins
         walletId: bankWalletId,
         walletTransactionId: line.id,
       },
       options,
     );
-    expect(paid.payment).toMatchObject({ paidOn: "2080-07-20", walletTransactionId: line.id });
+    expect(paid.payment).toMatchObject({ paidOn: "2100-07-20", walletTransactionId: line.id });
     const registered = await prisma.walletTransaction.findUniqueOrThrow({ where: { id: line.id } });
     expect(registered).toMatchObject({ status: "registered", journalEntryId: paid.entry.id });
     expect(registered.settledAt).not.toBeNull();
     expect(await actionsOf(line.id)).toEqual(["wallet_transaction.register"]);
     expect(await payableBalance(inclusiveYear)).toBe(balance - 3_300n);
+
+    // 明細 and 取引 do not undo the payment: it is cancelled here (decision 2026-10-29, 23 §5.2).
+    expect(
+      settingsError(
+        await rejectionOf(
+          reopenWalletTransaction(prisma, line.id, { reason: "やり直し" }, options),
+        ),
+      ).message,
+    ).toBe(
+      "この明細は立替精算の支払に充てています。未処理に戻すには、立替精算の画面で支払を取り消してください",
+    );
+    expect(
+      settingsError(
+        await rejectionOf(
+          voidJournalEntryWithOpenDate(prisma, paid.entry.id, { reason: "取引の画面" }, options),
+        ),
+      ).message,
+    ).toContain("立替精算 の画面");
 
     const cancelled = await cancelExpensePayment(
       prisma,
@@ -434,7 +455,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     expect(reversal).toMatchObject({
       kind: "reversal",
       reversalOfId: paid.entry.id,
-      entryDate: toDbDate("2080-07-20"),
+      entryDate: toDbDate("2100-07-20"),
     });
     expect(
       await prisma.journalEntry.findUniqueOrThrow({ where: { id: paid.entry.id } }),
@@ -492,20 +513,20 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [first.claim.id, second.claim.id],
-        paidOn: "2080-07-25",
+        paidOn: "2100-07-25",
         walletId: bankWalletId,
         walletTransactionId: line.id,
       },
       options,
     );
-    expect(again.payment.paidOn).toBe("2080-07-20");
+    expect(again.payment.paidOn).toBe("2100-07-20");
     expect(await payableBalance(inclusiveYear)).toBe(balance - 3_300n);
   });
 
   it("voids an unpaid claim with a reversal of its accrual", async () => {
     const submitted = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-08-05", amount: "4,400", description: "誤って出した立替" }),
+      claimInput({ spentOn: "2100-08-05", amount: "4,400", description: "誤って出した立替" }),
       options,
     );
     const balance = await payableBalance(inclusiveYear);
@@ -558,7 +579,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
   it("refuses to void a paid claim, to mix claimants, and to pay before the 利用日", async () => {
     const paidClaim = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-09-01", description: "支払済みの立替" }),
+      claimInput({ spentOn: "2100-09-01", description: "支払済みの立替" }),
       options,
     );
     await payExpenseClaims(
@@ -566,7 +587,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [paidClaim.claim.id],
-        paidOn: "2080-09-02",
+        paidOn: "2100-09-02",
         walletId: bankWalletId,
       },
       options,
@@ -581,12 +602,12 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
 
     const mine = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-09-10", description: "自分の立替" }),
+      claimInput({ spentOn: "2100-09-10", description: "自分の立替" }),
       options,
     );
     const theirs = await submitExpenseClaim(
       prisma,
-      claimInput({ claimantId: other.id, spentOn: "2080-09-11", description: "ほかの人の立替" }),
+      claimInput({ claimantId: other.id, spentOn: "2100-09-11", description: "ほかの人の立替" }),
       options,
     );
     const description = await prisma.journalEntry.findUniqueOrThrow({
@@ -603,7 +624,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [mine.claim.id, theirs.claim.id],
-              paidOn: "2080-09-30",
+              paidOn: "2100-09-30",
               walletId: bankWalletId,
             },
             options,
@@ -622,14 +643,14 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [mine.claim.id],
-              paidOn: "2080-09-09",
+              paidOn: "2100-09-09",
               walletId: bankWalletId,
             },
             options,
           ),
         ),
       ),
-    ).toEqual({ message: "支払日は利用日（2080/09/10）以後にしてください", field: "paidOn" });
+    ).toEqual({ message: "支払日は利用日（2100/09/10）以後にしてください", field: "paidOn" });
     // A card cannot pay a claim.
     expect(
       settingsError(
@@ -639,7 +660,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [mine.claim.id],
-              paidOn: "2080-09-30",
+              paidOn: "2100-09-30",
               walletId: cardWalletId,
             },
             options,
@@ -656,7 +677,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [paidClaim.claim.id],
-              paidOn: "2080-09-30",
+              paidOn: "2100-09-30",
               walletId: bankWalletId,
             },
             options,
@@ -670,17 +691,28 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     ).toMatchObject({ status: "submitted", paymentId: null });
   });
 
-  it("refuses to pay a claim whose accrual was voided on the transaction screen; its void skips the reversal", async () => {
+  it("refuses the transaction screen's void; a claim whose accrual is voided anyway is not paid, and its void skips the reversal", async () => {
     const submitted = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-10-01", description: "取引の画面で取り消した立替" }),
+      claimInput({ spentOn: "2100-10-01", description: "取引の画面で取り消した立替" }),
       options,
     );
+    // 取引 (no owner): refused, the entry stays posted.
+    expect(
+      settingsError(
+        await rejectionOf(
+          voidJournalEntryWithOpenDate(prisma, submitted.entry.id, { reason: "取消" }, options),
+        ),
+      ).message,
+    ).toBe(
+      "立替精算 から作った仕訳です。取消は 立替精算 の画面で、立替精算を取り消すか支払を取り消して行います",
+    );
+    // An accrual voided by another way all the same (e.g. before this rule): the claim stops there.
     const { reversal } = await voidJournalEntryWithOpenDate(
       prisma,
       submitted.entry.id,
       { reason: "取引の画面で取消" },
-      options,
+      { ...options, owner: "expense" },
     );
     expect(
       settingsError(
@@ -690,7 +722,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
             {
               claimantId: claimant.id,
               claimIds: [submitted.claim.id],
-              paidOn: "2080-10-02",
+              paidOn: "2100-10-02",
               walletId: bankWalletId,
             },
             options,
@@ -698,7 +730,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
         ),
       ),
     ).toEqual({
-      message: `計上の仕訳 #${submitted.entry.no} は取消済みです。この立替精算を取り消して出し直してください`,
+      message: `計上の仕訳 No. ${submitted.entry.no} は取消済みです。この立替精算を取り消して出し直してください`,
       field: "claimIds",
     });
 
@@ -718,16 +750,16 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const entriesBefore = await prisma.journalEntry.count();
 
     const closed = await rejectionOf(
-      submitExpenseClaim(prisma, claimInput({ spentOn: "2081-04-15" }), options),
+      submitExpenseClaim(prisma, claimInput({ spentOn: "2101-04-15" }), options),
     );
     expect(ledgerErrors(closed)).toEqual([{ code: "PERIOD_LOCKED", field: "spentOn" }]);
     expect((closed as LedgerValidationError).errors[0]?.message).toBe(
-      "2081/04/30 までは締めています。利用日を開いている日にするか、管理者に締めを戻してもらってください",
+      "2101/04/30 までは締めています。利用日を開いている日にするか、管理者に締めを戻してもらってください",
     );
     expect(
       ledgerErrors(
         await rejectionOf(
-          submitExpenseClaim(prisma, claimInput({ spentOn: "2079-06-01" }), options),
+          submitExpenseClaim(prisma, claimInput({ spentOn: "2099-06-01" }), options),
         ),
       ),
     ).toEqual([{ code: "OUT_OF_FISCAL_YEAR", field: "spentOn" }]);
@@ -769,7 +801,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       { description: "" },
       { description: "あ".repeat(61) },
       { taxCategoryCode: "sales_10" },
-      { spentOn: "2080-02-30" },
+      { spentOn: "2100-02-30" },
     ]) {
       expect(
         await rejectionOf(submitExpenseClaim(prisma, claimInput(overrides), options)),
@@ -784,7 +816,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const { document } = await registerDocument(
       prisma,
       {
-        storageKey: `documents/2080/11/${newId()}.pdf`,
+        storageKey: `documents/2100/11/${newId()}.pdf`,
         sha256: randomBytes(32).toString("hex"),
         mime: "application/pdf",
         byteSize: 2_048,
@@ -799,7 +831,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
 
     const submitted = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-11-05", amount: "3,520", documentId: document.id }),
+      claimInput({ spentOn: "2100-11-05", amount: "3,520", documentId: document.id }),
       options,
     );
     expect(submitted.claim.documentId).toBe(document.id);
@@ -818,7 +850,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       .flatMap((group) => group.claims)
       .find((claim) => claim.id === submitted.claim.id);
     expect(row).toMatchObject({
-      spentOn: "2080-11-05",
+      spentOn: "2100-11-05",
       description: "タクシー代",
       accountCode: "5360",
       amount: 3_520n,
@@ -830,7 +862,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
     const voidedDocument = await registerDocument(
       prisma,
       {
-        storageKey: `documents/2080/11/${newId()}.pdf`,
+        storageKey: `documents/2100/11/${newId()}.pdf`,
         sha256: randomBytes(32).toString("hex"),
         mime: "application/pdf",
         byteSize: 1_024,
@@ -844,7 +876,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
         await rejectionOf(
           submitExpenseClaim(
             prisma,
-            claimInput({ spentOn: "2080-11-06", documentId: voidedDocument.document.id }),
+            claimInput({ spentOn: "2100-11-06", documentId: voidedDocument.document.id }),
             options,
           ),
         ),
@@ -871,7 +903,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
   it("keeps the body of a claim and never deletes claims or payments (DB guards)", async () => {
     const submitted = await submitExpenseClaim(
       prisma,
-      claimInput({ spentOn: "2080-12-01", description: "書き換えられない立替" }),
+      claimInput({ spentOn: "2100-12-01", description: "書き換えられない立替" }),
       options,
     );
     await expect(
@@ -885,7 +917,7 @@ describe.skipIf(!hasTestDatabase)("expense claims (立替精算)", () => {
       {
         claimantId: claimant.id,
         claimIds: [submitted.claim.id],
-        paidOn: "2080-12-02",
+        paidOn: "2100-12-02",
         walletId: bankWalletId,
       },
       options,

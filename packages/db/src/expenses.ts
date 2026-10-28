@@ -254,7 +254,12 @@ async function reverseUnlessVoided(
 ): Promise<string | null> {
   const existing = await existingReversal(tx, entryId);
   if (existing.voided) return existing.reversalId;
-  const { reversal } = await voidJournalEntryWithOpenDate(tx, entryId, { reason }, options);
+  const { reversal } = await voidJournalEntryWithOpenDate(
+    tx,
+    entryId,
+    { reason },
+    { ...options, owner: "expense" },
+  );
   return reversal.id;
 }
 
@@ -859,7 +864,7 @@ export async function submitExpenseClaim(
 // ---------------------------------------------------------------------------
 
 function voidedAccrualMessage(no: number): string {
-  return `計上の仕訳 #${no} は取消済みです。この立替精算を取り消して出し直してください`;
+  return `計上の仕訳 No. ${no} は取消済みです。この立替精算を取り消して出し直してください`;
 }
 
 /** 借方 未払金〔立替精算〕 one line per claim / 貸方 the wallet's account (and sub-account), 税区分 na. */
