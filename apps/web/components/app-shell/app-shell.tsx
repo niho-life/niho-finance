@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BottomTabs } from "./bottom-tabs";
+import { SearchLauncher } from "./search/search-launcher";
 import { SideNav } from "./side-nav";
 
 export function Brand({
@@ -41,6 +42,7 @@ export function AppShell({
     <div className="min-h-dvh md:grid md:grid-cols-[216px_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-surface-2 px-3 py-[18px] md:flex">
         <Brand companyName={companyName} fiscalYearNo={fiscalYearNo} />
+        <SearchLauncher />
         <SideNav />
       </aside>
       <main className="min-w-0 px-4 pt-5 pb-[calc(96px+env(safe-area-inset-bottom))] md:px-7 md:pt-[22px] md:pb-10">

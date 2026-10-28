@@ -109,11 +109,11 @@ Issue #3 の条件に加えて:
 
 | 種類 | 対象の項目 | 開く先 | すべて見る |
 | --- | --- | --- | --- |
-| 取引 | 摘要・行の摘要・No.・金額（借方合計） | `/entries/[id]` | 文字: `/entries?q=…&status=all`（日付の指定がないと一覧は今期） / 金額・No.: `/search?q=…&kind=entry` |
+| 取引 | 摘要・行の摘要・No.・金額（借方合計） | `/entries/[id]` | 文字: `/entries?from=…&to=…&q=…&status=all`（該当の最も古い日付〜最も新しい日付。日付の指定がないと一覧は今期だけになり件数が合わないため） / 金額・No.: `/search?q=…&kind=entry` |
 | 明細 | 摘要・振込人・金額 | `/statements?status=<その明細の状態>&wallet=<口座>&q=<金額>`（その明細が出る一覧） | `/statements?q=…`（未処理のタブ） |
 | 証憑 | 取引先名・元のファイル名・メモ・金額 | `/documents/[id]` | 文字: `/documents?tab=all&q=…` / 金額: `/documents?tab=all&amountMin=…&amountMax=…` |
 | 取引先 | 名前・カナ・登録番号 | `/settings/partners?q=<名前>` | `/settings/partners?q=…` |
-| 請求 | 番号・件名・取引先の名前・金額（合計） | `/invoices/[id]` | 文字: `/invoices?status=all&q=…` / 金額: `/search?q=…&kind=invoice` |
+| 請求 | 番号・件名・取引先の名前・金額（合計） | `/invoices/[id]` | 文字: `/invoices?type=all&status=all&q=…`（一覧の既定は請求書だけのため、見積書・納品書も出す） / 金額: `/search?q=…&kind=invoice` |
 
 - 問い合わせの読み方（`parseSearchQuery`）: NFKC で正規化し小文字にして前後の空白を除く。
   - 金額: 「1,650」「1650」「¥1,650」「￥1650」「1,650円」は金額 1,650（`|金額|` と一致）。
@@ -132,7 +132,7 @@ Issue #3 の条件に加えて:
 
 ### 7.4 データと層
 
-- migration（索引だけ）: `CREATE EXTENSION IF NOT EXISTS pg_trgm` と、検索する文字の列の式 `lower(normalize(列, NFKC))` への GIN（`gin_trgm_ops`）索引（`journal_entry.description`、`journal_line.description`、`wallet_transaction.description_raw` と `counterparty_raw`、`document.partner_name` と `original_name` と `note`、`partner.name` と `name_kana`、`invoice.number` と `title`）。金額は既存の列の B-tree 索引を必要なものだけ足す。`pg_trgm` は 3 文字以上の部分一致で索引を使う（2 文字の日本語は全件を見るが、1 社の件数では 1 秒に収まる）。`pg_trgm` は Cloud SQL でも使える trusted な拡張で、DB の所有者が作れる。
+- migration（索引だけ）: `CREATE EXTENSION IF NOT EXISTS pg_trgm` と、検索する文字の列の式 `lower(normalize(列, NFKC))` への GIN（`gin_trgm_ops`）索引（`journal_entry.description`、`journal_line.description`、`wallet_transaction.description_raw` と `counterparty_raw`、`document.partner_name` と `original_name` と `note`、`partner.name` と `name_kana`、`invoice.number` と `title`）。金額の B-tree 索引は足さない（種類ごとの条件を UNION の別の枝にし、金額の枝は整数の比較だけで読む）。`pg_trgm` は 3 文字以上の部分一致で索引を使う（2 文字の日本語は全件を見るが、1 社の件数では 1 秒に収まる）。`pg_trgm` は Cloud SQL でも使える trusted な拡張で、DB の所有者が作れる。
 - `packages/db/src/search.ts`: `parseSearchQuery(text)`（純粋）、`searchAll(db, text, { perKind })`（種類ごとに上位 n 件と件数）、`searchKind(db, text, kind, { page, pageSize })`。SQL は `$queryRaw`（パラメータで渡す。`%` `_` `\` はエスケープ）。読むだけ。
 - `apps/web/components/app-shell/search/`: 入口（左ナビの欄）、パレット（client）、`/` と Ctrl+K のキー。結果は Server Action `searchAction(q)` で取る（読むだけ）。`apps/web/app/(app)/search/page.tsx`。
 - テスト: `parseSearchQuery` の単体テスト、`search.db.test.ts`（フィクスチャの摘要の一部・金額・取引先名・請求番号・登録番号・No. のそれぞれで該当が出る、1 秒以内、監査ログが増えない、反対仕訳が出ない、`%` を含む問い合わせ）。
