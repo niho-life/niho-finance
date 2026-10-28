@@ -200,6 +200,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "invoice.pay": "入金の登録",
   "invoice.cancel_payment": "入金の取消",
   "invoice.void": "書類の無効",
+  "invoice.attach_pdf": "PDF の保存",
   "import_batch.import": "明細の取込",
   "import_batch.sync": "Stripe の同期",
   "wallet.update_importer": "取込形式の変更",
