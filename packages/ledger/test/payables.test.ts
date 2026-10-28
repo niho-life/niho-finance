@@ -12,6 +12,7 @@ import {
   defaultPayableDueDate,
   describePaymentTerms,
   isPayableDueSoon,
+  isPayableExpenseAccount,
   isPayableOverdue,
   LedgerValidationError,
   PAYABLE_AUDIT_ACTIONS,
@@ -628,6 +629,17 @@ describe("the rest and the state, derived (25 §1, §2)", () => {
 });
 
 describe("the form's defaults and the vocabulary", () => {
+  it("offers expenses and non-cash assets, not 売掛金・未収入金・減価償却累計額", () => {
+    const none = new Set<string>();
+    const account = (code: string, kind: EntryAccount["kind"]) => ({ id: code, code, kind });
+    expect(isPayableExpenseAccount(account("5100", "expense"), none)).toBe(true);
+    expect(isPayableExpenseAccount(account("1510", "asset"), none)).toBe(true);
+    expect(isPayableExpenseAccount(account("1200", "asset"), none)).toBe(false);
+    expect(isPayableExpenseAccount(account("1250", "asset"), none)).toBe(false);
+    expect(isPayableExpenseAccount(account("1590", "asset"), none)).toBe(false);
+    expect(isPayableExpenseAccount(account("4000", "revenue"), none)).toBe(false);
+  });
+
   const partner = {
     name: "テスト外注株式会社",
     invoiceRegistrationNumber: null,

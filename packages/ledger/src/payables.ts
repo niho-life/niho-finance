@@ -207,6 +207,12 @@ export function payableTaxCategoryCode(taxCategoryCode: string, qualifiedInvoice
   return WITHOUT_INVOICE[taxCategoryCode] ?? taxCategoryCode;
 }
 
+/**
+ * Assets a received invoice never books: 売掛金・未収入金 are what others owe us, and
+ * 減価償却累計額 is the contra account of the fixed assets.
+ */
+const NOT_PAYABLE_ACCOUNT_CODES: ReadonlySet<string> = new Set(["1200", "1250", "1590"]);
+
 /** The accounts a payable's line may book (25 §4.1): expenses and non-cash assets, no reserved ones. */
 export function isPayableExpenseAccount(
   account: { id: string; code: string; kind: EntryAccount["kind"]; isCashLike?: boolean },
@@ -214,6 +220,7 @@ export function isPayableExpenseAccount(
 ): boolean {
   return (
     (account.kind === "expense" || account.kind === "asset") &&
+    !NOT_PAYABLE_ACCOUNT_CODES.has(account.code) &&
     !isReservedAccount(account, walletAccountIds)
   );
 }
