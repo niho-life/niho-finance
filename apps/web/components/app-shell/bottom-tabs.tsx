@@ -54,7 +54,7 @@ export function BottomTabs() {
       <Tab href="/" active={isActivePath(pathname, "/")} label="ホーム">
         <NavIcon name="home" className="size-[22px]" />
       </Tab>
-      <Tab href={null} label="明細">
+      <Tab href="/statements" active={isActivePath(pathname, "/statements")} label="明細">
         <NavIcon name="statements" className="size-[22px]" />
       </Tab>
       <span

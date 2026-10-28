@@ -138,7 +138,11 @@ export default async function HomePage() {
         <Link href="/entries" className="font-bold text-text underline underline-offset-4">
           取引
         </Link>
-        の登録と報告が使えます。明細・証憑は準備中です。勘定科目や口座は{" "}
+        ・
+        <Link href="/statements" className="font-bold text-text underline underline-offset-4">
+          明細
+        </Link>
+        の登録と報告が使えます。証憑は準備中です。勘定科目や口座は{" "}
         <Link href="/settings" className="font-bold text-text underline underline-offset-4">
           設定
         </Link>{" "}
