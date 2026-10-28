@@ -93,7 +93,10 @@ export default async function HomePage() {
       ) : null}
 
       <p className="mt-6 text-[13px] text-muted">
-        明細・取引・報告は準備中です。勘定科目や口座は{" "}
+        <Link href="/entries" className="font-bold text-text underline underline-offset-4">
+          取引
+        </Link>
+        は登録できます。明細・報告は準備中です。勘定科目や口座は{" "}
         <Link href="/settings" className="font-bold text-text underline underline-offset-4">
           設定
         </Link>{" "}

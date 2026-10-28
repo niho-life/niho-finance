@@ -31,11 +31,15 @@ export function Sheet({ open, onClose, title, description, children, footer }: S
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      // React passes `cancel` / `close` of a dialog inside this one (a ConfirmDialog in the sheet) up
+      // to these handlers: only this dialog's own events close the sheet.
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         onClose();
       }}
-      onClose={() => {
+      onClose={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (open) onClose();
       }}
       className="fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-dvh w-full max-w-full border-0 border-l border-border bg-surface p-0 text-text shadow-float md:w-[400px]"

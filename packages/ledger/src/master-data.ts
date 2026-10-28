@@ -5,7 +5,10 @@ import type {
   AccountingMethod,
   AccountKind,
   ConsumptionTaxMethod,
+  EntryKind,
+  EntryStatus,
   FiscalYearStatus,
+  SourceKind,
 } from "./types";
 
 /**
@@ -141,3 +144,111 @@ export function isStandardSegmentCode(code: string): code is SegmentCode {
 
 /** Segment of the company as a whole (共通): opening entries and company-wide costs. */
 export const CORPORATE_SEGMENT_CODE: SegmentCode = "corporate";
+
+// ---------------------------------------------------------------------------
+// Journal entries and the audit log (11-transactions §3, §5, §8)
+// ---------------------------------------------------------------------------
+
+export const ENTRY_KIND_LABELS: Readonly<Record<EntryKind, string>> = {
+  opening: "開始",
+  normal: "通常",
+  transfer: "振替",
+  adjusting: "決算整理",
+  closing: "決算振替",
+  reversal: "反対仕訳",
+};
+
+/** 生成元 of an entry. `system` entries are the setup's opening entries. */
+export const SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
+  manual: "手入力",
+  system: "初期設定",
+  wallet_txn: "明細",
+  stripe: "Stripe",
+  invoice: "請求書",
+  fixed_asset: "固定資産",
+  recurring: "定期取引",
+  import: "取込",
+};
+
+export const ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {
+  posted: "登録済み",
+  voided: "取消済み",
+};
+
+/** Actions with a label of their own (`<entity>.<verb>`). */
+export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
+  "journal_entry.post": "仕訳の登録",
+  "journal_entry.void": "仕訳の取消",
+  "journal_entry.correct": "仕訳の訂正",
+  "fiscal_year.close": "締め",
+  "fiscal_year.reopen": "締めを戻す",
+  "setup.skip": "初期設定を後回し",
+  "standard_data.bootstrap": "標準データの投入",
+  "import_batch.import": "明細の取込",
+  "import_batch.sync": "Stripe の同期",
+  "wallet.update_importer": "取込形式の変更",
+  "stripe_account_link.create": "Stripe の接続",
+  "stripe_account_link.update": "Stripe の接続の変更",
+  "stripe_account_link.delete": "Stripe の接続を外す",
+};
+
+/** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
+const AUDIT_VERB_LABELS: Readonly<Record<string, string>> = {
+  create: "追加",
+  update: "変更",
+  activate: "有効化",
+  deactivate: "無効化",
+  enable: "有効化",
+  disable: "無効化",
+};
+
+/** The owner-facing label of an audit action, or `null` when there is none (shown as is, muted). */
+export function auditActionLabel(action: string): string | null {
+  const own = AUDIT_ACTION_LABELS[action];
+  if (own) return own;
+  const verb = action.slice(action.lastIndexOf(".") + 1);
+  return action.includes(".") ? (AUDIT_VERB_LABELS[verb] ?? null) : null;
+}
+
+/**
+ * The targets the audit log can be narrowed to (11 §8), in the order of the filter. `setup` has no
+ * rows of its own: the setup's choices are recorded on the company with `setup.*` actions.
+ */
+export const AUDIT_ENTITIES = [
+  "journal_entry",
+  "fiscal_year",
+  "company",
+  "account",
+  "sub_account",
+  "tax_rate_rule",
+  "wallet",
+  "partner",
+  "segment",
+  "memo_tag",
+  "standard_data",
+  "setup",
+  "import_batch",
+  "stripe_account_link",
+] as const;
+export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
+
+export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
+  journal_entry: "仕訳",
+  fiscal_year: "会計期間",
+  company: "事業所",
+  account: "勘定科目",
+  sub_account: "補助科目",
+  tax_rate_rule: "税率規則",
+  wallet: "口座",
+  partner: "取引先",
+  segment: "セグメント",
+  memo_tag: "タグ",
+  standard_data: "標準データ",
+  setup: "初期設定",
+  import_batch: "取込",
+  stripe_account_link: "Stripe の接続",
+};
+
+export function isAuditEntity(value: unknown): value is AuditEntity {
+  return typeof value === "string" && (AUDIT_ENTITIES as readonly string[]).includes(value);
+}
