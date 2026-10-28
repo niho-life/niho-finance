@@ -3,10 +3,12 @@
 import {
   confirmBonusRun,
   confirmPayrollRun,
+  confirmYearEnd,
   createEmployee,
   getPrismaClient,
   markPayrollPaymentDone,
   postPayrollPayment,
+  saveYearEndDeclaration,
   setEmployeeActive,
   SettingsError,
   todayInJapan,
@@ -16,8 +18,9 @@ import {
   type PayrollBonusRunInput,
   type PayrollPaymentInput,
   type PayrollRunInput,
+  type YearEndDeclarationFormInput,
 } from "@niho-finance/db";
-import { formatYenInput, parseYenInput } from "@niho-finance/ledger";
+import { formatYen, formatYenInput, parseYenInput } from "@niho-finance/ledger";
 import {
   determineStandardRemuneration,
   findKenpoTable,
@@ -39,6 +42,7 @@ import {
   type PaymentPreviewView,
   type RunPreviewView,
 } from "./_lib/views";
+import { loadYearEndPreview, type YearEndPreviewView } from "./_lib/year-end-views";
 
 /*
  * Server Actions of /payroll (22-payroll §6). The repository validates every input with its Zod
@@ -251,5 +255,80 @@ export async function confirmBonusRunAction(
     async () =>
       confirmBonusRun(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput, await by()),
     (run) => ({ id: run.id, label: `${run.title}（${yearMonthLabel(run.payMonth)}支給）` }),
+  );
+}
+
+// 年末調整 (§11.5) ----------------------------------------------------------------
+
+const yearSchema = z.number().int().min(2000).max(2100);
+
+/** Every step with the form's values (unsaved: nothing is written). */
+export async function previewYearEndAction(
+  year: number,
+  employeeId: string,
+  values: unknown,
+): Promise<ActionResult<YearEndPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return attemptPayroll(() =>
+    loadYearEndPreview(
+      prisma(),
+      yearSchema.parse(year),
+      parseId(employeeId),
+      valuesSchema.parse(values) as YearEndDeclarationFormInput,
+    ),
+  );
+}
+
+/** 申告を保存 (audit log `payroll_year_end_declaration.save`). */
+export async function saveYearEndDeclarationAction(
+  year: number,
+  employeeId: string,
+  values: unknown,
+): Promise<ActionResult<null>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      saveYearEndDeclaration(
+        prisma(),
+        {
+          year: yearSchema.parse(year),
+          employeeId: parseId(employeeId),
+          declaration: valuesSchema.parse(values) as YearEndDeclarationFormInput,
+        },
+        await by(),
+      ),
+    () => null,
+  );
+}
+
+export interface ConfirmedYearEnd {
+  /** 「過納 115,270 円（還付）」 */
+  settlement: string;
+  entryNo: number | null;
+}
+
+/** 年末調整を確定: with the 年調年税額 and 過不足 the dialog showed. */
+export async function confirmYearEndAction(
+  year: number,
+  employeeId: string,
+  expected: { annualTax: string; difference: string },
+): Promise<ActionResult<ConfirmedYearEnd>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      confirmYearEnd(prisma(), yearSchema.parse(year), parseId(employeeId), {
+        ...(await by()),
+        expected: z.object({ annualTax: z.string(), difference: z.string() }).parse(expected),
+      }),
+    (record) => ({
+      settlement:
+        record.result.settlement.kind === "none"
+          ? "過不足なし"
+          : `${record.result.settlement.label} ${formatYen(record.result.settlement.amount)} 円`,
+      entryNo: record.settlementEntry?.no ?? null,
+    }),
   );
 }

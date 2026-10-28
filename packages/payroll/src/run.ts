@@ -225,10 +225,11 @@ export function paymentCategoryOfRuleKey(ruleKey: string): PayrollPaymentCategor
 /** What a confirmed run owes, by category (22-payroll §7.2). */
 export interface PayrollRunSummary extends PayrollRunSettings {
   /**
-   * `bonus` for a 賞与 run (22-payroll §10.4: its premium month is its pay month, no 住民税).
-   * Left out for a monthly run.
+   * `bonus` for a 賞与 run (22-payroll §10.4: its premium month is its pay month, no 住民税);
+   * `year_end` for the settlement of a 年末調整 (§11.4: `incomeTax` is the 過不足, + 不足 / − 過納,
+   * added to the 源泉所得税 of the last pay run's month). Left out for a monthly run.
    */
-  kind?: "monthly" | "bonus";
+  kind?: "monthly" | "bonus" | "year_end";
   headcount: number;
   grossPay: Money;
   totalDeductions: Money;
@@ -320,56 +321,169 @@ export function runPaymentSlots(
   })).filter(({ amount }) => isNonZero(amount));
 }
 
+/** What the runs paying into one deadline add up to, and which runs they are. */
+export interface ScheduleAmount extends PaymentAmount {
+  /** The pay months of the monthly runs that pay into it. */
+  payMonths: YearMonth[];
+  /** The pay months of the bonus runs that pay into it (22-payroll §10.4). */
+  bonusMonths: YearMonth[];
+  /** The pay months of the 年末調整 settlements in it (§11.4: the last pay run's month). */
+  yearEndMonths: YearMonth[];
+}
+
 /**
- * The scheduled amount of the payment `ruleKey` (22-payroll §7.2): the sum over the confirmed runs
- * that pay into it. 0 for a rule key no run pays into (or one not made by pay runs).
+ * The derived amount of the payment `ruleKey` (22-payroll §7.2): the sum over the confirmed runs
+ * that pay into it (a 年末調整's refund makes a 源泉所得税 sum smaller, even negative: see
+ * `scheduledPayments` for the carry-over). 0 for a rule key no run pays into (or one not made by
+ * pay runs).
  */
 export function scheduleAmount(
   ruleKey: string,
   runs: readonly PayrollRunSummary[],
-): PaymentAmount & { payMonths: YearMonth[]; bonusMonths: YearMonth[] } {
+): ScheduleAmount {
   const category = paymentCategoryOfRuleKey(ruleKey);
-  const amount = {
+  const amount: ScheduleAmount = {
     total: 0n,
     withheld: 0n,
     employer: 0n,
-    payMonths: [] as YearMonth[],
-    bonusMonths: [] as YearMonth[],
+    payMonths: [],
+    bonusMonths: [],
+    yearEndMonths: [],
   };
   if (!category) return amount;
   for (const run of runs) {
     if (paymentSlotFor(category, run).ruleKey !== ruleKey) continue;
     const own = runAmount(category, run);
-    // A bonus run pays only into the deadlines it has an amount for (never 住民税).
-    if (run.kind === "bonus" && !isNonZero(own)) continue;
+    // A bonus run or a settlement pays only into the deadlines it has an amount for.
+    if (run.kind !== undefined && run.kind !== "monthly" && !isNonZero(own)) continue;
     amount.total += own.total;
     amount.withheld += own.withheld;
     amount.employer += own.employer;
-    (run.kind === "bonus" ? amount.bonusMonths : amount.payMonths).push(run.payMonth);
+    (run.kind === "bonus"
+      ? amount.bonusMonths
+      : run.kind === "year_end"
+        ? amount.yearEndMonths
+        : amount.payMonths
+    ).push(run.payMonth);
   }
   amount.payMonths.sort();
   amount.bonusMonths.sort();
+  amount.yearEndMonths.sort();
   return amount;
 }
 
-export interface PayrollScheduleEntry extends PayrollPaymentSlot, PaymentAmount {
-  /** The pay months of the monthly runs that pay into it. */
-  payMonths: YearMonth[];
-  /** The pay months of the bonus runs that pay into it (22-payroll §10.4). */
-  bonusMonths: YearMonth[];
+/**
+ * The settlement of a confirmed 年末調整 (22-payroll §11.4) in the shape of a run's summary, so that
+ * the schedule adds it: `difference` (年調年税額 − 徴収済み税額; + 不足, − 過納) goes to the 源泉所得税
+ * deadline of the last pay run's month (its half year with 納期の特例).
+ */
+export function summarizeYearEndSettlement(settlement: {
+  payMonth: YearMonth;
+  withholdingSpecialDue: boolean;
+  difference: Money;
+}): PayrollRunSummary {
+  return {
+    kind: "year_end",
+    payMonth: settlement.payMonth,
+    premiumMonth: settlement.payMonth,
+    withholdingSpecialDue: settlement.withholdingSpecialDue,
+    residentTaxSpecialDue: false,
+    headcount: 1,
+    grossPay: 0n,
+    totalDeductions: 0n,
+    netPay: 0n,
+    incomeTax: settlement.difference,
+    residentTax: 0n,
+    socialInsuranceEmployee: 0n,
+    socialInsuranceEmployer: 0n,
+    employmentInsuranceEmployee: 0n,
+  };
 }
 
+/** A deadline as the calendar holds it: what the carry-over needs to order them. */
+export interface PayrollScheduleSlotRef {
+  ruleKey: string;
+  dueDate: CalendarDate;
+}
+
+/** The scheduled amount of a deadline after the carry-over of refunds (§11.4). */
+export interface ScheduledPayment extends ScheduleAmount {
+  /** What the runs add up to before the carry-over (源泉所得税 may be negative after a refund). */
+  derived: Money;
+  /** 源泉所得税: the refund (過納) of earlier deadlines taken off this one (充当). */
+  refundApplied: Money;
+  /** 源泉所得税: the refund still left after this deadline, carried to the next ones. */
+  refundCarried: Money;
+}
+
+const byDueDate = (a: PayrollScheduleSlotRef, b: PayrollScheduleSlotRef) =>
+  (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0) ||
+  (a.ruleKey < b.ruleKey ? -1 : a.ruleKey > b.ruleKey ? 1 : 0);
+
 /**
- * Every deadline the runs pay into (a run's 0 円 categories make none), with the derived amounts,
- * by due date and then 源泉所得税 → 住民税 → 社会保険料.
+ * The scheduled amounts of the deadlines `slots` (22-payroll §7.2・§11.4). 住民税 and 社会保険料 are
+ * their derived sums. 源泉所得税 deadlines are taken in due-date order: a deadline whose sum would
+ * be negative (a 年末調整's refund larger than what was withheld for it) is 0 — 「納付なし」 — and the
+ * rest of the refund is taken off the next 源泉所得税 deadlines (翌月以降の源泉所得税から充当), as
+ * far as they go; `refundCarried` of the last one is what is still to be applied. The sum of the
+ * amounts minus that last carry is always the sum of what the runs withheld.
+ */
+export function scheduledPayments(
+  slots: readonly PayrollScheduleSlotRef[],
+  runs: readonly PayrollRunSummary[],
+): Map<string, ScheduledPayment> {
+  const result = new Map<string, ScheduledPayment>();
+  for (const slot of slots) {
+    const amount = scheduleAmount(slot.ruleKey, runs);
+    result.set(slot.ruleKey, {
+      ...amount,
+      derived: amount.total,
+      refundApplied: 0n,
+      refundCarried: 0n,
+    });
+  }
+  const withholding = [...new Map(slots.map((slot) => [slot.ruleKey, slot])).values()]
+    .filter((slot) => paymentCategoryOfRuleKey(slot.ruleKey) === "withholding")
+    .sort(byDueDate);
+  let carry = 0n;
+  for (const slot of withholding) {
+    const payment = result.get(slot.ruleKey);
+    if (!payment) continue;
+    const net = payment.derived - carry;
+    if (net >= 0n) {
+      payment.refundApplied = carry;
+      payment.refundCarried = 0n;
+      payment.total = net;
+      carry = 0n;
+    } else {
+      payment.refundApplied = payment.derived > 0n ? payment.derived : 0n;
+      payment.refundCarried = -net;
+      payment.total = 0n;
+      carry = -net;
+    }
+    payment.withheld = payment.total;
+  }
+  return result;
+}
+
+export interface PayrollScheduleEntry extends PayrollPaymentSlot, ScheduledPayment {}
+
+/**
+ * Every deadline the runs pay into (a run's 0 円 categories make none), with the scheduled amounts
+ * (after the carry-over of refunds), by due date and then 源泉所得税 → 住民税 → 社会保険料.
  */
 export function payrollSchedule(runs: readonly PayrollRunSummary[]): PayrollScheduleEntry[] {
   const slots = new Map<string, PayrollPaymentSlot>();
   for (const run of runs) {
     for (const { slot } of runPaymentSlots(run)) slots.set(slot.ruleKey, slot);
   }
+  const amounts = scheduledPayments([...slots.values()], runs);
   return [...slots.values()]
-    .map((slot) => ({ ...slot, ...scheduleAmount(slot.ruleKey, runs) }))
+    .map((slot): PayrollScheduleEntry => {
+      const amount = amounts.get(slot.ruleKey);
+      if (!amount) throw new Error(`payrollSchedule: no amount for ${slot.ruleKey}`);
+      return { ...slot, ...amount };
+    })
     .sort(
       (a, b) =>
         (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0) ||

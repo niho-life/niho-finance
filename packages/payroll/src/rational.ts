@@ -85,6 +85,11 @@ export function floorToYen(value: Rational): Money {
   return value.num < 0n && whole * value.den !== value.num ? whole - 1n : whole;
 }
 
+/** Smallest whole yen ≥ value (1 円未満切り上げ; toward +∞ for negative values). */
+export function ceilToYen(value: Rational): Money {
+  return -floorToYen(ratio(-value.num, value.den));
+}
+
 /** Whole yen and the remainder in [0, den) of a non-negative rational. */
 function splitNonNegative(value: Rational): { whole: bigint; remainder: bigint } {
   const whole = value.num / value.den;
