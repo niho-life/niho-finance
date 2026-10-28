@@ -25,6 +25,7 @@ import { z } from "zod";
 import { attempt, formInput, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { keepInvoicePdfAsDocument } from "./_lib/evidence";
 import { sendInvoiceMail, type SentInvoiceMail } from "./_lib/mail";
 
@@ -80,6 +81,8 @@ async function write<T, R>(
 export async function createInvoiceDraftAction(
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       createInvoiceDraft(prisma(), valuesSchema.parse(values) as InvoiceDraftInput, await by()),
@@ -92,6 +95,8 @@ export async function updateInvoiceDraftAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateInvoiceDraft(
@@ -109,6 +114,8 @@ export async function updateInvoiceDraftAction(
  * (18 §11). The issue stands even when the PDF cannot be saved.
  */
 export async function issueInvoiceAction(id: string): Promise<ActionResult<IssuedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const record = await issueInvoice(prisma(), parseId(id), await by());
@@ -121,6 +128,8 @@ export async function issueInvoiceAction(id: string): Promise<ActionResult<Issue
 
 /** PDF を証憑に保存: for an issued document whose PDF was not saved on issue (18 §11). */
 export async function saveInvoicePdfAction(id: string): Promise<ActionResult<string>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const documentId = await keepInvoicePdfAsDocument(prisma(), parseId(id), await by());
@@ -137,6 +146,8 @@ export async function saveInvoicePdfAction(id: string): Promise<ActionResult<str
 
 /** 破棄 of a draft (logical). */
 export async function discardInvoiceDraftAction(id: string): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => discardInvoiceDraft(prisma(), parseId(id), await by()), saved);
 }
 
@@ -145,6 +156,8 @@ export async function markInvoiceSentAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       markInvoiceSent(
@@ -164,6 +177,8 @@ export async function sendInvoiceMailAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SentInvoiceMail>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       sendInvoiceMail(
@@ -181,6 +196,8 @@ export async function voidInvoiceAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       voidInvoice(
@@ -198,6 +215,8 @@ export async function recordInvoicePaymentAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       recordInvoicePayment(
@@ -215,6 +234,8 @@ export async function cancelInvoicePaymentAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedInvoice>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       cancelInvoicePayment(
@@ -229,6 +250,8 @@ export async function cancelInvoicePaymentAction(
 
 /** 請求の設定: the 振込先 printed on invoices. */
 export async function saveInvoiceSettingsAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => updateInvoiceSettings(prisma(), formInput(formData), await by()),
     () => null,

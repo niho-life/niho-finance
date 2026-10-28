@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { attempt, formInput, inlinePatch, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult, RowValues } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of 設定 › 定期取引 (21-cashflow §7), the same as the other settings lists: the
@@ -73,6 +74,8 @@ function recurringValues(item: RecurringItemSettings): RowValues {
 
 /** 「追加」: the start date is today unless the form says otherwise (21 §7). */
 export async function createRecurringItemAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const input = formInput<RecurringItemCreateInput>(formData);
@@ -90,6 +93,8 @@ export async function updateRecurringItemAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => {
     const { id: itemId, ...fields } = inlinePatch(id, patch, RECURRING_FIELDS);
     return updateRecurringItem(prisma(), itemId, fields, await by());
@@ -101,6 +106,8 @@ export async function setRecurringItemActiveAction(
   id: string,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateRecurringItem(prisma(), parseId(id), { isActive: parseBoolean(isActive) }, await by()),
