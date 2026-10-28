@@ -27,10 +27,12 @@ function StatementLine({ wallet }: { wallet: CashWalletRow }) {
       <p className="text-[11px] text-muted">明細の残高と一致（{formatDate(statement.date)}）</p>
     );
   }
+  // difference = 明細の残高 − 帳簿の残高: say which side is larger, not just the gap.
+  const larger = statement.difference > 0n ? "明細" : "帳簿";
   return (
     <p className="text-[11px] font-bold text-warn">
-      明細の残高と <span className="num">{formatAmount(abs(statement.difference))}</span> 円の差（
-      {formatDate(statement.date)} 時点）
+      {larger}の残高が <span className="num">{formatAmount(abs(statement.difference))}</span>{" "}
+      円多い（{formatDate(statement.date)} 時点）
     </p>
   );
 }

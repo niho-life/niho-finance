@@ -10,7 +10,7 @@ export interface ProfitFigures {
 }
 
 /**
- * 今月の損益 / 今期の損益 (14-reports §9): 売上 ・ 費用 ・ 利益 (利益 in primary-ink) and the
+ * 今月の損益 / 今期の損益 (14-reports §9): 売上 ・ 費用 ・ 利益 (a profit in primary-ink) and the
  * profit by segment. The heading opens 試算表 with the same period.
  */
 export function ProfitCard({
@@ -31,7 +31,13 @@ export function ProfitCard({
   const items = [
     { key: "revenue", label: "売上", value: figures.revenue, className: "" },
     { key: "expenses", label: "費用", value: figures.expenses, className: "" },
-    { key: "profit", label: "利益", value: figures.profit, className: "text-primary-ink" },
+    {
+      key: "profit",
+      label: "利益",
+      value: figures.profit,
+      // The brand colour marks a profit; a loss keeps the text colour (never red, 05-ui-ux §3).
+      className: figures.profit >= 0n ? "text-primary-ink" : "",
+    },
   ];
   return (
     <HomeCard id={id} title={title} href={href} aside={periodLabel}>
