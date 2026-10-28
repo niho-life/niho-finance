@@ -78,6 +78,7 @@ export const DOCUMENT_AUDIT_ACTIONS = [
   "document.void",
   "document.export",
   "records_policy.save",
+  "document.read",
 ] as const;
 export type DocumentAuditAction = (typeof DOCUMENT_AUDIT_ACTIONS)[number];
 
@@ -89,6 +90,7 @@ export const DOCUMENT_AUDIT_ACTION_LABELS: Readonly<Record<DocumentAuditAction, 
   "document.void": "無効",
   "document.export": "索引簿の書き出し",
   "records_policy.save": "規程の保存",
+  "document.read": "読み取り",
 };
 
 /**
