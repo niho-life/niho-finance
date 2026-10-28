@@ -14,7 +14,7 @@ import {
 } from "./types";
 
 /**
- * Local storage for development (`NIHO_FINANCE_STORAGE=local`, 13-documents §6): files live in a
+ * Local storage for development (no documents bucket set, 13-documents §6): files live in a
  * folder, and the browser uploads to `PUT /api/documents/upload` with a signed, expiring URL (the
  * local stand-in for a GCS signed URL). Never used in production (`index.ts` refuses it).
  */

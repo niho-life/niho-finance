@@ -11,7 +11,7 @@ import {
 } from "./types";
 
 /**
- * GCS storage for production (`NIHO_FINANCE_STORAGE=gcs`, 13-documents §6). Authentication is ADC
+ * GCS storage for production (`NIHO_FINANCE_DOCUMENTS_BUCKET`, 13-documents §6). Authentication is ADC
  * (the Cloud Run service account; signing goes through IAM signBlob). The bucket keeps versions and
  * a retention policy, and the service account cannot delete objects (S8). The client library is
  * loaded on first use, so local development never loads it.
@@ -23,7 +23,7 @@ const UPLOAD_URL_SECONDS = 15 * 60;
 const READ_URL_SECONDS = 10 * 60;
 
 export interface GcsDocumentStorageOptions {
-  /** `NIHO_FINANCE_GCS_BUCKET` */
+  /** `NIHO_FINANCE_DOCUMENTS_BUCKET` */
   bucket: string;
   now?: () => Date;
   /**

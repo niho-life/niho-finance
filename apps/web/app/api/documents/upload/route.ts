@@ -12,7 +12,7 @@ import { isLocalDocumentStorage } from "@/lib/storage/local";
 export const dynamic = "force-dynamic";
 
 /**
- * The upload endpoint of the local storage (`NIHO_FINANCE_STORAGE=local`; 404 otherwise): the
+ * The upload endpoint of the local storage (no documents bucket set; 404 with GCS): the
  * stand-in for a GCS signed URL. The query is signed (key, type, size, expiry); an existing key is
  * never written again.
  */

@@ -21,7 +21,7 @@
 | `/settings/documents-policy` | 証憑の規程 |
 | `POST /api/documents/prepare` | 重複の判定と送信先の発行 |
 | `POST /api/documents/complete` | 送信済みファイルの検証と登録 |
-| `PUT /api/documents/upload` | ローカル保存の受け口（`NIHO_FINANCE_STORAGE=local` のときだけ） |
+| `PUT /api/documents/upload` | ローカル保存の受け口（保存先がローカルのときだけ） |
 | `GET /api/documents/[id]/file` | ファイル本体（GCS は署名付き URL へ 302、ローカルは本体を返す） |
 | `GET /api/documents/index.csv` | 索引簿 |
 
@@ -79,11 +79,11 @@
 
 ## 6. 保存層 `apps/web/lib/storage/`
 
-- `NIHO_FINANCE_STORAGE=local | gcs`。未設定は `local`。`NIHO_FINANCE_ENV=prod` で未設定か `local` のときは起動時でなく最初の利用時にエラー（本番でローカルディスクに保存しない）。
+- 保存先は環境変数で決める（`config.ts` の `documentStorageConfig`）: `NIHO_FINANCE_DOCUMENTS_BUCKET`（S8 の `scripts/deploy.sh` が Cloud Run に設定する）があれば `gcs`、なければ `local`。`NIHO_FINANCE_STORAGE=local | gcs` で明示もできる。`NIHO_FINANCE_ENV=prod` で `local` になるときは起動時でなく最初の利用時にエラー（本番でローカルディスクに保存しない）。
 - 共通の型 `DocumentStorage`（`types.ts`）: `createUploadTarget({ key, mime, byteSize })`（ブラウザが PUT する先: `url` / `method` / `headers` / `expiresAt`）、`stat(key)`（`{ byteSize }` か `null`）、`read(key)`（全体。20 MB 上限）、`write(key, bytes, mime)`（サーバー側の保存。S4 の CSV、#16 の PDF、差し替え）、`fileResponse(key, { mime, filename })`（GCS は署名付き GET URL への 302、ローカルは本体の `Response`）。`getDocumentStorage()` が env から 1 つ選ぶ（プロセスで 1 つ）。
 - キー（`keys.ts`）: `documents/<yyyy>/<mm>/<ulid>.<ext>`。yyyy/mm は保存時刻の JST、拡張子は MIME から。キーに元のファイル名を入れない。
 - `local`（`local.ts`）: `NIHO_FINANCE_STORAGE_DIR`（既定 `<repo root>/tmp/documents`。`tmp/` は `.gitignore` 済み）。送信先は `PUT /api/documents/upload?key=…&mime=…&size=…&exp=…&sig=…`（`key` `mime` `size` `exp` の HMAC-SHA256。鍵は `NIHO_FINANCE_UPLOAD_SECRET`、未設定ならプロセスごとの乱数）。受け口は署名と期限を確かめ、`Content-Type` と大きさが一致する本体だけを書き、既にあるキーには書かない。
-- `gcs`（`gcs.ts`）: `@google-cloud/storage`（apps/web の依存に足す）。`NIHO_FINANCE_GCS_BUCKET`。認証は ADC（Cloud Run のサービスアカウント。署名は IAM の signBlob）。送信は V4 の署名付き PUT（15 分、`Content-Type` を固定）、閲覧は V4 の署名付き GET（10 分、`response-content-disposition` でファイル名）。
+- `gcs`（`gcs.ts`）: `@google-cloud/storage`（apps/web の依存に足す）。バケットは `NIHO_FINANCE_DOCUMENTS_BUCKET`。認証は ADC（Cloud Run のサービスアカウント。署名は IAM の signBlob）。送信は V4 の署名付き PUT（15 分、`Content-Type` を固定）、閲覧は V4 の署名付き GET（10 分、`response-content-disposition` でファイル名）。
 - S8 に渡すバケットの要件: バージョニング ON、削除保護（保持ポリシー 7 年・ロックしない）、均一なバケットレベルのアクセス、公開アクセスの防止。CORS: アプリの origin（Cloud Run の URL）から `PUT`、ヘッダー `Content-Type`、`maxAgeSeconds` 3600。サービスアカウントに `storage.objects.create` と `storage.objects.get`（削除と上書きの権限は与えない）、自身への `roles/iam.serviceAccountTokenCreator`（署名付き URL の signBlob）。ライフサイクルの削除は置かない。送信の途中で検証に失敗したオブジェクト（どの `Document` からも参照されない）は保持ポリシーの下で残るが、量は小さく、証憑一式の書き出し（S7）は `Document` から辿るので混ざらない。
 - 受け付ける形式（`mime.ts`。純粋関数は `packages/ledger/src/documents.ts`）: `image/jpeg` `image/png` `image/webp` `image/heic` `image/heif` `application/pdf` `text/csv`。ブラウザの `type` が空か `application/octet-stream` / `text/plain` / `application/vnd.ms-excel` のときは拡張子から決める。`complete` では先頭バイトで形式を確かめる（JPEG `FF D8 FF`、PNG の署名、WEBP の `RIFF….WEBP`、HEIC / HEIF の `ftyp`、PDF の `%PDF`。CSV は UTF-8 か Shift_JIS として読めること）。合わなければ「ファイルの中身が形式と合いません」。
 
@@ -161,7 +161,7 @@
 
 Issue #7 の条件に加えて:
 
-- `NIHO_FINANCE_STORAGE=local` で GCS なしに、アップロード → 受信箱 → 詳細 → 紐づけ → 索引簿の書き出しまで通る。
+- バケットを設定しない（ローカル保存の）状態で GCS なしに、アップロード → 受信箱 → 詳細 → 紐づけ → 索引簿の書き出しまで通る。
 - 同じファイルを 2 回アップロードすると 2 回目は送信されず、既存の証憑が開く。
 - 無効にした証憑が「すべて」「無効」で理由つきで出て、項目は変えられず、ファイルは開ける。
 - 候補の「紐づける」で証憑の空の項目が相手から埋まり、監査ログに `document.link` と `document.update` が残る。
