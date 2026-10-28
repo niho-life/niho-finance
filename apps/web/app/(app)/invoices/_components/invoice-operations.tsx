@@ -20,7 +20,7 @@ import {
   issueInvoiceAction,
   markInvoiceSentAction,
   voidInvoiceAction,
-  type SavedInvoice,
+  type IssuedInvoice,
 } from "../actions";
 
 /** What the operations of the detail need (no bigint: amounts come formatted). */
@@ -118,8 +118,15 @@ function IssueButton({ model }: { model: InvoiceOperationsModel }) {
         onConfirm={() =>
           dialog.run(
             () => issueInvoiceAction(model.id),
-            (data: SavedInvoice) => {
-              toast(`${invoiceNumberLabel(data.number)} を発行しました`);
+            (data: IssuedInvoice) => {
+              if (data.pdfDocumentId) {
+                toast(`${invoiceNumberLabel(data.number)} を発行し、PDF を証憑に保存しました`);
+              } else {
+                toast(
+                  `${invoiceNumberLabel(data.number)} を発行しました。PDF は証憑に保存できませんでした。詳細の「PDF を証憑に保存」から保存し直します`,
+                  { tone: "error" },
+                );
+              }
               router.refresh();
             },
           )
