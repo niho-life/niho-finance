@@ -2,14 +2,18 @@ import {
   addDays,
   compareDates,
   dateParts,
+  daysBetween,
   lastDayOfMonth,
   parseCalendarDate,
   type CalendarDate,
 } from "@niho-finance/ledger";
+import { PAYROLL_RULE_KEY_PREFIX } from "@niho-finance/payroll";
 import type { CalendarItem, CalendarItemKind } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
-import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { fromDbDate, fromDbDateOrNull, toDbDate, todayInJapan } from "./dates";
+import { SettingsError } from "./errors";
 import { newId } from "./ids";
+import { DEADLINE_WINDOW_DAYS } from "./reports-query";
 import { getCompany, listFiscalYears, type WriteOptions } from "./settings";
 import { lockSettings, runInTransaction } from "./transaction";
 
@@ -417,4 +421,175 @@ export async function markCalendarItemsNotified(
       after: { ids, today },
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// The calendar screen (24): the list, 完了にする / 未完了に戻す
+// ---------------------------------------------------------------------------
+
+/** A deadline as the calendar screen shows it. */
+export interface CalendarListItem {
+  id: string;
+  kind: CalendarItemKind;
+  title: string;
+  note: string | null;
+  dueDate: CalendarDate;
+  completedAt: Date | null;
+  completedBy: string | null;
+  /**
+   * Where the completion is recorded: on the calendar screen, or on the payroll screen for the
+   * payments a pay run added (22 §7: 納付を登録 posts the entry and completes the item).
+   */
+  managedBy: "calendar" | "payroll";
+}
+
+/** The deadlines of one fiscal year (`fiscalYear` is `null` for items outside every year). */
+export interface CalendarGroup {
+  fiscalYear: { id: string; no: number; startDate: CalendarDate; endDate: CalendarDate } | null;
+  /** Not completed, by due date (then title). */
+  open: CalendarListItem[];
+  /** Completed, by due date (then title). */
+  completed: CalendarListItem[];
+}
+
+/** A payment deadline a pay run added (22 §7.1): no fiscal year, a `payroll.` rule key. */
+function isPayrollItem(row: Pick<CalendarItem, "fiscalYearId" | "ruleKey">): boolean {
+  return row.fiscalYearId === null && (row.ruleKey?.startsWith(PAYROLL_RULE_KEY_PREFIX) ?? false);
+}
+
+function toListItem(row: CalendarItem): CalendarListItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    note: row.note,
+    dueDate: fromDbDate(row.dueDate),
+    completedAt: row.completedAt,
+    completedBy: row.completedBy,
+    managedBy: isPayrollItem(row) ? "payroll" : "calendar",
+  };
+}
+
+/**
+ * The calendar screen's list (24 §3): one group per fiscal year from 第 1 期, years without items
+ * included. An item of no fiscal year (the payroll payments) goes to the year its due date falls
+ * in; the ones outside every year come last, in a group of their own.
+ */
+export async function listCalendarItems(db: Db): Promise<CalendarGroup[]> {
+  const fiscalYears = (
+    await db.fiscalYear.findMany({
+      orderBy: { no: "asc" },
+      select: { id: true, no: true, startDate: true, endDate: true },
+    })
+  ).map((year) => ({
+    id: year.id,
+    no: year.no,
+    startDate: fromDbDate(year.startDate),
+    endDate: fromDbDate(year.endDate),
+  }));
+  const rows = await db.calendarItem.findMany({
+    orderBy: [{ dueDate: "asc" }, { title: "asc" }, { id: "asc" }],
+  });
+  const groups = new Map<string | null, CalendarGroup>(
+    fiscalYears.map((year) => [year.id, { fiscalYear: year, open: [], completed: [] }]),
+  );
+  for (const row of rows) {
+    const item = toListItem(row);
+    const yearId =
+      row.fiscalYearId ??
+      fiscalYears.find((year) => year.startDate <= item.dueDate && item.dueDate <= year.endDate)
+        ?.id;
+    let group = (yearId === undefined ? undefined : groups.get(yearId)) ?? groups.get(null);
+    if (!group) {
+      group = { fiscalYear: null, open: [], completed: [] };
+      groups.set(null, group);
+    }
+    (item.completedAt === null ? group.open : group.completed).push(item);
+  }
+  return [...groups.values()];
+}
+
+/** How the calendar screen shows an item on a day (24 §1). */
+export type CalendarItemStatus =
+  | { kind: "completed"; on: CalendarDate }
+  | { kind: "overdue" }
+  | { kind: "today" }
+  | { kind: "soon"; days: number }
+  | { kind: "open" };
+
+/**
+ * The state of an item on `today` (pure): completed (on the JST day it was recorded), overdue, due
+ * today, due within the home's 7 days (`soon`), or later (`open`).
+ */
+export function calendarItemStatus(
+  item: { dueDate: CalendarDate; completedAt: Date | null },
+  today: CalendarDate,
+): CalendarItemStatus {
+  if (item.completedAt !== null) return { kind: "completed", on: todayInJapan(item.completedAt) };
+  if (item.dueDate < today) return { kind: "overdue" };
+  if (item.dueDate === today) return { kind: "today" };
+  const days = daysBetween(today, item.dueDate);
+  return days <= DEADLINE_WINDOW_DAYS ? { kind: "soon", days } : { kind: "open" };
+}
+
+const CALENDAR_ITEM_NOT_FOUND = "この期限は見つかりません。画面を読み込み直してください";
+
+async function setCalendarItemCompleted(
+  db: Db,
+  id: string,
+  completed: boolean,
+  options: WriteOptions,
+): Promise<CalendarListItem> {
+  return runInTransaction(db, async (tx) => {
+    // The sync's lock: a sync that read the item as open cannot overwrite it once completed.
+    await lockSettings(tx, "fiscalYears");
+    const row = await tx.calendarItem.findUnique({ where: { id } });
+    if (!row) throw new SettingsError(CALENDAR_ITEM_NOT_FOUND);
+    // A payroll payment is completed by registering it on the payroll screen, which posts the
+    // entry (22 §7): completing or reopening it here would put the schedule and the ledger apart.
+    if (isPayrollItem(row)) {
+      throw new SettingsError(`「${row.title}」は給与の画面で納付を記録します`);
+    }
+    // Already so (another tab, a second click): nothing to write, nothing to log.
+    if ((row.completedAt !== null) === completed) return toListItem(row);
+    const after = await tx.calendarItem.update({
+      where: { id },
+      data: completed
+        ? { completedAt: new Date(), completedBy: options.actor }
+        : { completedAt: null, completedBy: null },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: completed ? "calendar_item.complete" : "calendar_item.reopen",
+      entity: "calendar_item",
+      entityId: id,
+      before: row,
+      after,
+    });
+    return toListItem(after);
+  });
+}
+
+/**
+ * 完了にする (24 §2): records when and by whom (audit `calendar_item.complete`). The sync and the
+ * reminders leave a completed item alone.
+ */
+export async function completeCalendarItem(
+  db: Db,
+  id: string,
+  options: WriteOptions,
+): Promise<CalendarListItem> {
+  return setCalendarItemCompleted(db, id, true, options);
+}
+
+/**
+ * 未完了に戻す (24 §2): clears the record (audit `calendar_item.reopen`). The next sync puts the item
+ * back on its rule; reminders already sent are not sent again (`lastNotifiedOn` stays).
+ */
+export async function reopenCalendarItem(
+  db: Db,
+  id: string,
+  options: WriteOptions,
+): Promise<CalendarListItem> {
+  return setCalendarItemCompleted(db, id, false, options);
 }
