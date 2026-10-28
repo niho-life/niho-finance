@@ -35,17 +35,17 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /*
  * Server Actions of /closing (16-year-end §1.1, §3–§9) and of the fixed asset ledger (§5). The
  * repository validates every input with its Zod schemas, locks the fiscal years and writes the audit
- * log as `NIHO_FINANCE_ACTOR`. Expected failures come back as `{ ok: false }` with the field of each
+ * log as the IAP user (`lib/actor.ts`; `NIHO_FINANCE_ACTOR` locally). Expected failures come back as `{ ok: false }` with the field of each
  * problem. Amounts go back as text: bigint stays on the server.
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -90,8 +90,13 @@ export async function startYearEndAction(
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
   return write(
-    () =>
-      startYearEnd(prisma(), parseId(fiscalYearId), values<YearEndTransitionInput>(input), by()),
+    async () =>
+      startYearEnd(
+        prisma(),
+        parseId(fiscalYearId),
+        values<YearEndTransitionInput>(input),
+        await by(),
+      ),
     transitionData,
   );
 }
@@ -102,8 +107,13 @@ export async function cancelYearEndAction(
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
   return write(
-    () =>
-      cancelYearEnd(prisma(), parseId(fiscalYearId), values<YearEndTransitionInput>(input), by()),
+    async () =>
+      cancelYearEnd(
+        prisma(),
+        parseId(fiscalYearId),
+        values<YearEndTransitionInput>(input),
+        await by(),
+      ),
     transitionData,
   );
 }
@@ -112,7 +122,10 @@ export async function cancelYearEndAction(
 export async function closeYearAction(
   fiscalYearId: string,
 ): Promise<ActionResult<YearEndTransitionData>> {
-  return write(() => closeYear(prisma(), parseId(fiscalYearId), {}, by()), transitionData);
+  return write(
+    async () => closeYear(prisma(), parseId(fiscalYearId), {}, await by()),
+    transitionData,
+  );
 }
 
 /** 締めを戻す (closed → closing): voids the closing entry. The reason is required. */
@@ -121,7 +134,13 @@ export async function reopenYearAction(
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
   return write(
-    () => reopenYear(prisma(), parseId(fiscalYearId), values<YearEndTransitionInput>(input), by()),
+    async () =>
+      reopenYear(
+        prisma(),
+        parseId(fiscalYearId),
+        values<YearEndTransitionInput>(input),
+        await by(),
+      ),
     transitionData,
   );
 }
@@ -136,7 +155,13 @@ export async function setYearEndCheckAction(
   input: unknown,
 ): Promise<ActionResult<null>> {
   return write(
-    () => setYearEndCheck(prisma(), parseId(fiscalYearId), values<YearEndCheckInput>(input), by()),
+    async () =>
+      setYearEndCheck(
+        prisma(),
+        parseId(fiscalYearId),
+        values<YearEndCheckInput>(input),
+        await by(),
+      ),
     () => null,
   );
 }
@@ -150,7 +175,7 @@ export async function postDepreciationAction(
   fiscalYearId: string,
 ): Promise<ActionResult<{ count: number; total: string }>> {
   return write(
-    () => postDepreciation(prisma(), parseId(fiscalYearId), {}, by()),
+    async () => postDepreciation(prisma(), parseId(fiscalYearId), {}, await by()),
     (posted) => ({
       count: posted.length,
       total: formatYen(posted.reduce((sum, item) => sum + item.amount, 0n)),
@@ -164,12 +189,12 @@ export async function postDeferredAmortizationAction(
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
   return write(
-    () =>
+    async () =>
       postDeferredAmortization(
         prisma(),
         parseId(fiscalYearId),
         values<DeferredAmortizationInput>(input),
-        by(),
+        await by(),
       ),
     (entry) => ({ no: entry.no }),
   );
@@ -181,7 +206,8 @@ export async function postAccrualAction(
   input: unknown,
 ): Promise<ActionResult<{ no: number; reversalNo: number | null }>> {
   return write(
-    () => postAccrual(prisma(), parseId(fiscalYearId), values<AccrualEntryInput>(input), by()),
+    async () =>
+      postAccrual(prisma(), parseId(fiscalYearId), values<AccrualEntryInput>(input), await by()),
     (posted) => ({ no: posted.entry.no, reversalNo: posted.reversal?.no ?? null }),
   );
 }
@@ -192,12 +218,12 @@ export async function postConsumptionTaxSettlementAction(
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
   return write(
-    () =>
+    async () =>
       postConsumptionTaxSettlement(
         prisma(),
         parseId(fiscalYearId),
         values<ConsumptionTaxSettlementInput>(input),
-        by(),
+        await by(),
       ),
     (entry) => ({ no: entry.no }),
   );
@@ -209,12 +235,12 @@ export async function postCorporateTaxAction(
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
   return write(
-    () =>
+    async () =>
       postCorporateTax(
         prisma(),
         parseId(fiscalYearId),
         values<CorporateTaxEntryInput>(input),
-        by(),
+        await by(),
       ),
     (entry) => ({ no: entry.no }),
   );
@@ -233,7 +259,8 @@ export async function voidYearEndEntryAction(
   input: unknown,
 ): Promise<ActionResult<VoidedYearEndEntryData>> {
   return write(
-    () => voidYearEndEntry(prisma(), parseId(entryId), values<YearEndVoidInput>(input), by()),
+    async () =>
+      voidYearEndEntry(prisma(), parseId(entryId), values<YearEndVoidInput>(input), await by()),
     (result) => ({
       no: result.voided.no,
       reversalNo: result.reversal.no,
@@ -251,7 +278,7 @@ export async function registerFixedAssetAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string; name: string }>> {
   return write(
-    () => registerFixedAsset(prisma(), values<FixedAssetRegisterInput>(input), by()),
+    async () => registerFixedAsset(prisma(), values<FixedAssetRegisterInput>(input), await by()),
     (asset) => ({ id: asset.id, name: asset.name }),
   );
 }
@@ -262,7 +289,8 @@ export async function updateFixedAssetAction(
   input: unknown,
 ): Promise<ActionResult<{ name: string }>> {
   return write(
-    () => updateFixedAsset(prisma(), parseId(id), values<FixedAssetUpdateInput>(input), by()),
+    async () =>
+      updateFixedAsset(prisma(), parseId(id), values<FixedAssetUpdateInput>(input), await by()),
     (asset) => ({ name: asset.name }),
   );
 }
@@ -273,7 +301,8 @@ export async function voidFixedAssetAction(
   input: unknown,
 ): Promise<ActionResult<{ name: string }>> {
   return write(
-    () => voidFixedAsset(prisma(), parseId(id), values<FixedAssetVoidInput>(input), by()),
+    async () =>
+      voidFixedAsset(prisma(), parseId(id), values<FixedAssetVoidInput>(input), await by()),
     (asset) => ({ name: asset.name }),
   );
 }
@@ -284,7 +313,8 @@ export async function disposeFixedAssetAction(
   input: unknown,
 ): Promise<ActionResult<{ entryNo: number | null; bookValue: string }>> {
   return write(
-    () => disposeFixedAsset(prisma(), parseId(id), values<FixedAssetDisposeInput>(input), by()),
+    async () =>
+      disposeFixedAsset(prisma(), parseId(id), values<FixedAssetDisposeInput>(input), await by()),
     (result) => ({ entryNo: result.entry?.no ?? null, bookValue: formatYen(result.bookValue) }),
   );
 }
