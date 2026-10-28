@@ -26,6 +26,7 @@ import { attempt, formInput, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { keepInvoicePdfAsDocument } from "./_lib/evidence";
+import { sendInvoiceMail, type SentInvoiceMail } from "./_lib/mail";
 
 /*
  * Server Actions of /invoices (18 §8–§10). The repository validates every input with its Zod
@@ -153,6 +154,25 @@ export async function markInvoiceSentAction(
         await by(),
       ),
     saved,
+  );
+}
+
+/**
+ * メールで送付: the PDF goes to the partner by mail; a mail that went out (SMTP) records 送付済み.
+ */
+export async function sendInvoiceMailAction(
+  id: string,
+  values: unknown,
+): Promise<ActionResult<SentInvoiceMail>> {
+  return write(
+    async () =>
+      sendInvoiceMail(
+        prisma(),
+        parseId(id),
+        valuesSchema.parse(values) as Parameters<typeof sendInvoiceMail>[2],
+        await by(),
+      ),
+    (sent) => sent,
   );
 }
 

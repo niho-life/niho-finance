@@ -57,7 +57,10 @@ export async function sendMail(message: MailMessage, settings?: MailEnv): Promis
     if (to.length === 0) {
       return { ok: false, error: "メールの宛先がありません（NIHO_FINANCE_MAIL_TO）" };
     }
-    const subject = `${MAIL_SUBJECT_PREFIX}${message.subject}`;
+    const subject =
+      message.prefixSubject === false
+        ? message.subject
+        : `${MAIL_SUBJECT_PREFIX}${message.subject}`;
     const attachments = message.attachments ?? [];
 
     if (env.NIHO_FINANCE_MAIL === "log") {

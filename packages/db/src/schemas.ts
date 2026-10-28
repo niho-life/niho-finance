@@ -837,8 +837,33 @@ export type InvoiceDraftUpdateInput = z.input<typeof invoiceDraftUpdateSchema>;
 export type ParsedInvoiceDraftUpdate = z.output<typeof invoiceDraftUpdateSchema>;
 
 /** 送付済みにする (18 §9.3): where it was sent (an email address or a note), optional. */
-export const invoiceSendSchema = z.object({ sentTo: optionalText("宛先", 200) });
+export const invoiceSendSchema = z.object({
+  sentTo: optionalText("宛先", 200),
+  /** Set when the document went out by mail (18 §11): a paid one may then be sent again. */
+  mailSubject: optionalText("件名", 200),
+});
 export type InvoiceSendInput = z.input<typeof invoiceSendSchema>;
+
+/** A mail address as the mail form takes it (no display names, no lists inside). */
+const MAIL_ADDRESS_PATTERN = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
+
+/** 宛先 of a mail: addresses separated by commas or spaces, 1 to 5, duplicates dropped. */
+const mailRecipientsField = fromText("宛先", (text): Conversion<string[]> => {
+  const list = [...new Set(text.split(/[\s,、;]+/).filter((item) => item !== ""))];
+  if (list.length === 0) return problem("宛先のメールアドレスを入れてください");
+  if (list.length > 5) return problem("宛先は 5 件までにしてください");
+  const bad = list.find((item) => item.length > 254 || !MAIL_ADDRESS_PATTERN.test(item));
+  if (bad) return problem(`「${bad}」はメールアドレスの形ではありません。確かめてください`);
+  return ok(list);
+});
+
+/** メールで送付 (18 §11): the recipients, the subject and the plain-text body; the PDF is attached. */
+export const invoiceMailSchema = z.object({
+  to: mailRecipientsField,
+  subject: requiredText("件名", 200),
+  text: requiredText("本文", 5000),
+});
+export type InvoiceMailInput = z.input<typeof invoiceMailSchema>;
 
 /** 無効にする (18 §9.3): the reason is stored on the document and on the reversal. */
 export const invoiceVoidSchema = z.object({ reason: requiredText("理由", 500) });
