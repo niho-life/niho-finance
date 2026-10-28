@@ -1,5 +1,6 @@
 import { SEGMENT_CODES, type SegmentCode } from "./chart-template";
 import type { DepreciationMethod } from "./depreciation";
+import { PAYABLE_AUDIT_ACTION_LABELS } from "./payables";
 import type { TaxDirection } from "./tax-categories";
 import type {
   AccountGroup,
@@ -211,6 +212,8 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "invoice.cancel_payment": "入金の取消",
   "invoice.void": "書類の無効",
   "invoice.attach_pdf": "PDF の保存",
+  // 支払 (25-payables §1)
+  ...PAYABLE_AUDIT_ACTION_LABELS,
   "import_batch.import": "明細の取込",
   "import_batch.sync": "明細の同期",
   "wallet.update_importer": "取込形式の変更",
@@ -285,6 +288,7 @@ export const AUDIT_ENTITIES = [
   "employee",
   "payroll_run",
   "calendar_item",
+  "payable",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -312,6 +316,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   employee: "従業員",
   payroll_run: "給与の支給",
   calendar_item: "期限",
+  payable: "支払",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

@@ -19,6 +19,7 @@ export * from "./simple-entry";
 export * from "./suggest";
 export * from "./statement-entry";
 export * from "./invoice-math";
+export * from "./payables";
 export * from "./depreciation";
 export * from "./corporate-tax";
 export * from "./year-end";

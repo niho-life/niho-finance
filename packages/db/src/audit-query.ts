@@ -17,6 +17,7 @@ import type { Db } from "./audit";
 import { fromDbDate } from "./dates";
 import { ruleDisplayName } from "./rule-json";
 import { invoiceAuditName } from "./invoices";
+import { payableAuditName } from "./payables";
 import type { AuditLogFilter } from "./schemas";
 import { formatStatementAmount } from "./statements";
 
@@ -182,6 +183,22 @@ export async function describeAuditTargets(
       select: { id: true, name: true, match: true },
     });
     for (const rule of rules) label("rule", rule.id, ruleDisplayName(rule));
+  }
+  if (ids.has("payable")) {
+    const documents = await db.document.findMany({
+      where: { id: of("payable") },
+      select: {
+        id: true,
+        note: true,
+        originalName: true,
+        partnerName: true,
+        partner: { select: { name: true } },
+      },
+    });
+    for (const row of documents) {
+      const partnerName = row.partner?.name ?? row.partnerName;
+      label("payable", row.id, payableAuditName({ ...row, partnerName }));
+    }
   }
   if (ids.has("invoice")) {
     const invoices = await db.invoice.findMany({

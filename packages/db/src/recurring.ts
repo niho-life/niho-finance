@@ -25,6 +25,7 @@ import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { SettingsError } from "./errors";
 import { newId } from "./ids";
 import { INVOICE_LIST_LIMIT, listInvoices } from "./invoices";
+import { listPayablesForCashflow } from "./payables";
 import { listPayrollSchedule } from "./payroll";
 import {
   recurringItemCreateSchema,
@@ -415,8 +416,8 @@ function toForecastItem(row: RecurringItem): CashflowRecurringItem {
  * What the forecast reads besides the book (21 §3.1): every recurring item (the forecast counts
  * the active ones), the open payment deadlines of `start < due ≤ start + days` (`null` while the
  * calendar has no row at all) with the amounts the pay runs give (22-payroll §7.2), and what
- * issued invoices still wait for (18-invoicing). 申告と納付 carries 法人税等 (16-year-end §12); the
- * interim return has no amount yet, and received invoices are not connected yet (`null`).
+ * issued invoices still wait for (18-invoicing) and what received invoices still wait for
+ * (25-payables). 申告と納付 carries 法人税等 (16-year-end §12); the interim return has no amount yet.
  */
 export async function loadCashflowInputs(
   db: Db,
@@ -476,5 +477,6 @@ export async function loadCashflowInputs(
     });
   }
 
-  return { recurring, deadlines, receivables, payables: null };
+  // 未払の請求: what received invoices still wait for (支払, 25-payables §8.3).
+  return { recurring, deadlines, receivables, payables: await listPayablesForCashflow(db) };
 }

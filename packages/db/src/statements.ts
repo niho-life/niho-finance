@@ -409,6 +409,28 @@ async function markSettled(
   });
 }
 
+/**
+ * 明細を登録済みにする for an entry another module posted for the line (請求の入金 18 §5.2, 支払
+ * 25 §4.2): pending → registered with `journalEntryId`, `settledAt` and the audit log
+ * `wallet_transaction.register`, as 登録 does. The caller checked the line (its wallet and amount)
+ * under the line's lock in the same transaction; the lock is taken again here (re-entrant).
+ */
+export async function settleWalletTransactionWithEntry(
+  tx: Tx,
+  lineId: string,
+  entryId: string,
+  options: ActorOptions,
+): Promise<void> {
+  const row = requireRow(await lockRows(tx, [lineId]), lineId);
+  assertPending(row);
+  await markSettled(
+    tx,
+    row,
+    { status: "registered", journalEntryId: entryId, ignoredReason: null, ruleId: null },
+    { actor: options.actor },
+  );
+}
+
 /** The rule named by a settle, if it exists (rules are never deleted; a stale id is dropped). */
 async function existingRuleId(tx: Tx, ruleId: string | null): Promise<string | null> {
   if (!ruleId) return null;
