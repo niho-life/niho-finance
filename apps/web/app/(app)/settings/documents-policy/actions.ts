@@ -6,12 +6,15 @@ import { attempt, formInput } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { POLICY_VERSION } from "@/lib/documents/policy";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /**
  * 設定 › 証憑の規程 (13 §5): puts the policy text of `POLICY_VERSION` in force with its 施行日 and
  * the people responsible. Recorded as `records_policy.save` by the repository.
  */
 export async function saveRecordsPolicyAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () =>
     saveRecordsPolicy(
       getPrismaClient(),

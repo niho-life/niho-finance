@@ -62,7 +62,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 
 - 読みは Server Components（`lib/data.ts` の `db()` は `connection()` で毎回描画にする）、書きは Server Actions（`app/(app)/settings/actions.ts`、`app/setup/actions.ts`）。
 - 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに actor（`lib/actor.ts` の `actor()`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
-- actor は IAP が付ける署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証した email。`NIHO_FINANCE_ENV=prod` でヘッダーがない・検証に失敗したときは `ActorError` で書き込みを拒み、`{ ok: false, error }`（「ログイン情報を確認できませんでした…」）を返す。ローカル（IAP なし）は `NIHO_FINANCE_ACTOR`（既定 `owner`）。
+- actor は IAP が付ける署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証した email。`NIHO_FINANCE_ENV=prod` でヘッダーがない・検証に失敗したときは `ActorError` で書き込みを拒み、`{ ok: false, error }`（「ログイン情報を確認できませんでした…」）を返す。ローカル（IAP なし）は `NIHO_FINANCE_ACTOR`（既定 `owner@example.com` = seed の管理者。設定 › 利用者 に登録したメールでないと画面が開かない）。
 - 結果は `{ ok: true, data } | { ok: false, error, fieldErrors }`（`lib/action-types.ts`）。想定内の失敗（入力・規則）は throw せず返す。`error` は「状態と戻り方」を書いた利用者向けの文。
 - 書いたら `revalidatePath("/", "layout")`。ウィザードは保存してから次のステップへ redirect する。
 - 金額は画面では文字列（`50,000` も `50000` も可）、サーバーで `bigint` にする。

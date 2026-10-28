@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
+import { currentUser } from "@/lib/authz";
 import { db } from "@/lib/data";
 import { formatPeriod } from "@/lib/format";
 import { formatDateTime, segmentName } from "../../reports/_lib/format";
@@ -45,12 +46,15 @@ function Section({
 /**
  * 設定 › 書き出しとバックアップ (14-reports §10): one GET form per export; 「書き出す」 downloads the
  * file (`/settings/export/download`). Every download is in the audit log and in 最近の書き出し.
+ * 閲覧 sees the exports of the books only (freee・弥生・beancount, 23 §3.4), with the way back to 報告.
  */
 export default async function ExportSettingsPage({ searchParams }: PageProps<"/settings/export">) {
   const { error } = await searchParams;
+  const user = await currentUser();
+  const viewer = user.state === "unregistered" || user.role === "viewer";
   const prisma = await db();
   const source = await loadReportSource(prisma);
-  const recent = await listRecentExports(prisma);
+  const recent = viewer ? [] : await listRecentExports(prisma);
   const years = [...source.fiscalYears].sort((a, b) => a.no - b.no);
   const current = fiscalYearOn(years, todayInJapan());
   const yearOptions = years.map((year) => ({
@@ -63,7 +67,10 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
 
   return (
     <>
-      <PageHeader title="書き出しとバックアップ" back={{ href: "/settings", label: "設定" }} />
+      <PageHeader
+        title={viewer ? "書き出し" : "書き出しとバックアップ"}
+        back={viewer ? { href: "/reports", label: "報告" } : { href: "/settings", label: "設定" }}
+      />
       {errorMessage ? (
         <p role="alert" className="mb-4 rounded-card bg-warn-soft px-4 py-3 text-[14px] text-warn">
           {errorMessage}
@@ -110,113 +117,119 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
         </form>
       </Section>
 
-      <Section
-        id="export-documents"
-        title="証憑一式"
-        description="索引の CSV（証憑 ID・種類・日付・金額・取引先・登録番号・仕訳 No.・明細・ファイル名・SHA-256）と証憑のファイルを zip で書き出します。"
-      >
-        <form
-          method="get"
-          action="/settings/export/download"
-          className="flex flex-wrap items-end gap-3"
-        >
-          <input type="hidden" name="kind" value="documents" />
-          <input type="hidden" name="fy" value="custom" />
-          <FormField label="開始日" htmlFor="documents-from" className="w-full sm:w-44">
-            <Input
-              id="documents-from"
-              type="date"
-              name="from"
-              required
-              defaultValue={current?.startDate}
-            />
-          </FormField>
-          <FormField label="終了日" htmlFor="documents-to" className="w-full sm:w-44">
-            <Input
-              id="documents-to"
-              type="date"
-              name="to"
-              required
-              defaultValue={current?.endDate}
-            />
-          </FormField>
-          <Button type="submit" variant="primary">
-            書き出す
-          </Button>
-        </form>
-      </Section>
+      {viewer ? null : (
+        <>
+          <Section
+            id="export-documents"
+            title="証憑一式"
+            description="索引の CSV（証憑 ID・種類・日付・金額・取引先・登録番号・仕訳 No.・明細・ファイル名・SHA-256）と証憑のファイルを zip で書き出します。"
+          >
+            <form
+              method="get"
+              action="/settings/export/download"
+              className="flex flex-wrap items-end gap-3"
+            >
+              <input type="hidden" name="kind" value="documents" />
+              <input type="hidden" name="fy" value="custom" />
+              <FormField label="開始日" htmlFor="documents-from" className="w-full sm:w-44">
+                <Input
+                  id="documents-from"
+                  type="date"
+                  name="from"
+                  required
+                  defaultValue={current?.startDate}
+                />
+              </FormField>
+              <FormField label="終了日" htmlFor="documents-to" className="w-full sm:w-44">
+                <Input
+                  id="documents-to"
+                  type="date"
+                  name="to"
+                  required
+                  defaultValue={current?.endDate}
+                />
+              </FormField>
+              <Button type="submit" variant="primary">
+                書き出す
+              </Button>
+            </form>
+          </Section>
 
-      <Section
-        id="export-backup"
-        title="バックアップ"
-        description="設定・仕訳・明細・証憑の情報・仕訳帳の CSV・beancount を 1 つの zip にします（毎日のバックアップと同じ中身）。"
-      >
-        <form method="get" action="/settings/export/download">
-          <input type="hidden" name="kind" value="backup" />
-          <Button type="submit" variant="primary">
-            今すぐ書き出す
-          </Button>
-        </form>
-      </Section>
+          <Section
+            id="export-backup"
+            title="バックアップ"
+            description="設定・仕訳・明細・証憑の情報・仕訳帳の CSV・beancount を 1 つの zip にします（毎日のバックアップと同じ中身）。"
+          >
+            <form method="get" action="/settings/export/download">
+              <input type="hidden" name="kind" value="backup" />
+              <Button type="submit" variant="primary">
+                今すぐ書き出す
+              </Button>
+            </form>
+          </Section>
 
-      <Section
-        id="export-statements"
-        title="決算書と申告用データ"
-        description="計算書類の PDF、e-Tax の財務諸表 CSV、勘定科目内訳の元データ、消費税の集計、決算公告の HTML は決算書の画面から書き出します。"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <ButtonLink href="/closing/statements" variant="primary">
-            決算書を開く
-          </ButtonLink>
-          <ButtonLink href="/closing/statements/consumption-tax">消費税の集計を開く</ButtonLink>
-        </div>
-      </Section>
+          <Section
+            id="export-statements"
+            title="決算書と申告用データ"
+            description="計算書類の PDF、e-Tax の財務諸表 CSV、勘定科目内訳の元データ、消費税の集計、決算公告の HTML は決算書の画面から書き出します。"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <ButtonLink href="/closing/statements" variant="primary">
+                決算書を開く
+              </ButtonLink>
+              <ButtonLink href="/closing/statements/consumption-tax">消費税の集計を開く</ButtonLink>
+            </div>
+          </Section>
 
-      <section aria-labelledby="export-recent" className="border-t border-border pt-5">
-        <h2 id="export-recent" className="mb-3 text-[15px] font-extrabold">
-          最近の書き出し
-        </h2>
-        {recent.length === 0 ? (
-          <EmptyState
-            title="書き出しの記録はまだありません"
-            description="報告の「CSV」「PDF」やこのページの「書き出す」で書き出すと、ここに残ります。"
-          />
-        ) : (
-          <Table label="最近の書き出し">
-            <TableHead {...RECENT_COLUMNS}>
-              <Th>日時</Th>
-              <Th>種類</Th>
-              <Th sm="hide">形式</Th>
-              <Th>期間</Th>
-              <Th sm="hide">実行者</Th>
-            </TableHead>
-            {recent.map((row) => {
-              const format = EXPORT_FORMAT_LABELS[row.format] ?? row.format;
-              const range =
-                row.from && row.to
-                  ? `${row.fiscalYearNo ? `第${row.fiscalYearNo}期 ` : ""}${formatPeriod(row.from, row.to)}`
-                  : "全期間";
-              const segment = row.segment ? ` · ${segmentName(source.segments, row.segment)}` : "";
-              return (
-                <TableRow key={row.id} {...RECENT_COLUMNS}>
-                  <Td className="num text-[13px] text-muted">{formatDateTime(row.at)}</Td>
-                  <Td className="font-bold">{EXPORT_KIND_LABELS[row.kind] ?? "書き出し"}</Td>
-                  <Td sm="hide" className="text-[13px]">
-                    {row.encoding === "sjis" ? `${format}（Shift_JIS）` : format}
-                  </Td>
-                  <Td sm="full" className="num text-[13px]">
-                    {range}
-                    {segment}
-                  </Td>
-                  <Td sm="hide" className="truncate text-[13px] text-muted">
-                    {row.actor}
-                  </Td>
-                </TableRow>
-              );
-            })}
-          </Table>
-        )}
-      </section>
+          <section aria-labelledby="export-recent" className="border-t border-border pt-5">
+            <h2 id="export-recent" className="mb-3 text-[15px] font-extrabold">
+              最近の書き出し
+            </h2>
+            {recent.length === 0 ? (
+              <EmptyState
+                title="書き出しの記録はまだありません"
+                description="報告の「CSV」「PDF」やこのページの「書き出す」で書き出すと、ここに残ります。"
+              />
+            ) : (
+              <Table label="最近の書き出し">
+                <TableHead {...RECENT_COLUMNS}>
+                  <Th>日時</Th>
+                  <Th>種類</Th>
+                  <Th sm="hide">形式</Th>
+                  <Th>期間</Th>
+                  <Th sm="hide">実行者</Th>
+                </TableHead>
+                {recent.map((row) => {
+                  const format = EXPORT_FORMAT_LABELS[row.format] ?? row.format;
+                  const range =
+                    row.from && row.to
+                      ? `${row.fiscalYearNo ? `第${row.fiscalYearNo}期 ` : ""}${formatPeriod(row.from, row.to)}`
+                      : "全期間";
+                  const segment = row.segment
+                    ? ` · ${segmentName(source.segments, row.segment)}`
+                    : "";
+                  return (
+                    <TableRow key={row.id} {...RECENT_COLUMNS}>
+                      <Td className="num text-[13px] text-muted">{formatDateTime(row.at)}</Td>
+                      <Td className="font-bold">{EXPORT_KIND_LABELS[row.kind] ?? "書き出し"}</Td>
+                      <Td sm="hide" className="text-[13px]">
+                        {row.encoding === "sjis" ? `${format}（Shift_JIS）` : format}
+                      </Td>
+                      <Td sm="full" className="num text-[13px]">
+                        {range}
+                        {segment}
+                      </Td>
+                      <Td sm="hide" className="truncate text-[13px] text-muted">
+                        {row.actor}
+                      </Td>
+                    </TableRow>
+                  );
+                })}
+              </Table>
+            )}
+          </section>
+        </>
+      )}
     </>
   );
 }

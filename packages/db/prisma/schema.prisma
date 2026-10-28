@@ -161,6 +161,8 @@ enum SourceKind {
   payroll
   /// Year-end entries not about one fixed asset (繰延資産の償却・前払未払・消費税・法人税等・決算振替)
   year_end
+  /// 立替精算: the accrual of a claim (sourceId = the claim) and its payment (sourceId = the payment)
+  expense
 
   @@map("source_kind")
 }
@@ -366,6 +368,7 @@ model Account {
   fixedAssets        FixedAsset[]
   recurringItems     RecurringItem[]
   invoices           Invoice[]
+  expenseClaims      ExpenseClaim[]
 
   @@map("account")
 }
@@ -407,6 +410,7 @@ model TaxCategory {
   journalLines    JournalLine[]
   partnerDefaults Partner[]
   recurringItems  RecurringItem[]
+  expenseClaims   ExpenseClaim[]
 
   @@map("tax_category")
 }
@@ -447,6 +451,7 @@ model Segment {
   fixedAssets     FixedAsset[]
   recurringItems  RecurringItem[]
   invoices        Invoice[]
+  expenseClaims   ExpenseClaim[]
 
   @@map("segment")
 }
@@ -459,6 +464,11 @@ model Partner {
   invoiceRegistrationNumber    String?                   @map("invoice_registration_number")
   invoiceRegistrationStatus    InvoiceRegistrationStatus @default(unknown) @map("invoice_registration_status")
   invoiceRegistrationCheckedAt DateTime?                 @map("invoice_registration_checked_at") @db.Timestamptz(6)
+  /// The registry's published name, registration date and end (失効・取消, the earlier); read only
+  /// while the status is not `unknown` (20-reader §7.1)
+  invoiceRegistrationName      String?                   @map("invoice_registration_name")
+  invoiceRegisteredOn          DateTime?                 @map("invoice_registered_on") @db.Date
+  invoiceRegistrationEndedOn   DateTime?                 @map("invoice_registration_ended_on") @db.Date
   defaultAccountId             String?                   @map("default_account_id")
   defaultSegmentId             String?                   @map("default_segment_id")
   defaultTaxCategoryCode       String?                   @map("default_tax_category_code")
@@ -477,6 +487,7 @@ model Partner {
   documents          Document[]
   invoices           Invoice[]
   recurringItems     RecurringItem[]
+  expenseClaims      ExpenseClaim[]
 
   @@map("partner")
 }
@@ -534,14 +545,15 @@ model Wallet {
   /// Why the last sync failed; cleared by the next one that completes
   bankApiError         String?    @map("bank_api_error")
 
-  account        Account             @relation(fields: [accountId], references: [id])
-  subAccount     SubAccount?         @relation(fields: [subAccountId], references: [id])
-  defaultSegment Segment?            @relation(fields: [defaultSegmentId], references: [id])
-  stripeAccount  StripeAccountLink?
-  transactions   WalletTransaction[]
-  importBatches  ImportBatch[]
-  rules          Rule[]
-  recurringItems RecurringItem[]
+  account         Account             @relation(fields: [accountId], references: [id])
+  subAccount      SubAccount?         @relation(fields: [subAccountId], references: [id])
+  defaultSegment  Segment?            @relation(fields: [defaultSegmentId], references: [id])
+  stripeAccount   StripeAccountLink?
+  transactions    WalletTransaction[]
+  importBatches   ImportBatch[]
+  rules           Rule[]
+  recurringItems  RecurringItem[]
+  expensePayments ExpensePayment[]
 
   @@map("wallet")
 }
@@ -598,11 +610,12 @@ model WalletTransaction {
   autoPosted      Boolean                 @default(false) @map("auto_posted")
   note            String?
 
-  wallet        Wallet         @relation(fields: [walletId], references: [id])
-  importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
-  journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
-  documentLinks DocumentLink[]
-  rule          Rule?          @relation(fields: [ruleId], references: [id])
+  wallet          Wallet           @relation(fields: [walletId], references: [id])
+  importBatch     ImportBatch?     @relation(fields: [importBatchId], references: [id])
+  journalEntry    JournalEntry?    @relation(fields: [journalEntryId], references: [id])
+  documentLinks   DocumentLink[]
+  rule            Rule?            @relation(fields: [ruleId], references: [id])
+  expensePayments ExpensePayment[]
 
   @@unique([walletId, externalId])
   @@index([walletId, status, txnDate])
@@ -696,17 +709,21 @@ model JournalEntry {
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   postedAt     DateTime    @default(now()) @map("posted_at") @db.Timestamptz(6)
 
-  fiscalYear         FiscalYear          @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  lines              JournalLine[]
-  reversalOf         JournalEntry?       @relation("Reversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  reversal           JournalEntry?       @relation("Reversal")
-  replacedBy         JournalEntry?       @relation("Replacement", fields: [replacedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  replaces           JournalEntry[]      @relation("Replacement")
-  walletTransactions WalletTransaction[]
-  documentLinks      DocumentLink[]
-  invoices           Invoice[]
-  disposedAssets     FixedAsset[]        @relation("FixedAssetDisposal")
-  acquiredAssets     FixedAsset[]        @relation("FixedAssetAcquisition")
+  fiscalYear              FiscalYear          @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lines                   JournalLine[]
+  reversalOf              JournalEntry?       @relation("Reversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversal                JournalEntry?       @relation("Reversal")
+  replacedBy              JournalEntry?       @relation("Replacement", fields: [replacedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replaces                JournalEntry[]      @relation("Replacement")
+  walletTransactions      WalletTransaction[]
+  documentLinks           DocumentLink[]
+  invoices                Invoice[]
+  disposedAssets          FixedAsset[]        @relation("FixedAssetDisposal")
+  acquiredAssets          FixedAsset[]        @relation("FixedAssetAcquisition")
+  expenseClaims           ExpenseClaim[]      @relation("ExpenseClaimEntry")
+  expenseClaimReversals   ExpenseClaim[]      @relation("ExpenseClaimReversal")
+  expensePayments         ExpensePayment[]    @relation("ExpensePaymentEntry")
+  expensePaymentReversals ExpensePayment[]    @relation("ExpensePaymentReversal")
 
   @@unique([fiscalYearId, no])
   @@index([fiscalYearId, entryDate])
@@ -799,6 +816,10 @@ model Document {
   links         DocumentLink[]
   importBatches ImportBatch[]
   invoicePdfs   Invoice[]
+  expenseClaims ExpenseClaim[]
+
+  /// Readings of this document (20-reader §9)
+  apiUsages ExternalApiUsage[]
 
   @@index([txnDate, amount, partnerId])
   @@index([sha256])
@@ -1022,6 +1043,9 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  expenseClaims   ExpenseClaim[]
+  expensePayments ExpensePayment[]
+
   @@map("app_user")
 }
 
@@ -1118,4 +1142,132 @@ model PayrollRun {
   confirmedBy           String        @map("confirmed_by")
 
   @@map("payroll_run")
+}
+
+// ---------------------------------------------------------------------------
+// 立替精算 (docs/design/23-users-and-expenses.md §5)
+// ---------------------------------------------------------------------------
+
+/// 未払 / 支払済み / 取消済み.
+enum ExpenseClaimStatus {
+  submitted
+  paid
+  void
+
+  @@map("expense_claim_status")
+}
+
+/// One receipt a user paid for the company. Submitting posts 科目 / 未払金〔立替精算〕 on the day it
+/// was spent; paying posts 未払金〔立替精算〕 / 口座 (ExpensePayment). Never deleted: a claim is voided
+/// with a reversal (DB trigger); after the submission only the state columns change.
+model ExpenseClaim {
+  id              String             @id
+  /// 立替えた人
+  claimantId      String             @map("claimant_id")
+  /// 利用日: the date of the accrual entry
+  spentOn         DateTime           @map("spent_on") @db.Date
+  /// Tax-inclusive, positive
+  amount          BigInt
+  accountId       String             @map("account_id")
+  taxCategoryCode String             @map("tax_category_code")
+  segmentId       String?            @map("segment_id")
+  partnerId       String?            @map("partner_id")
+  /// 内容
+  description     String
+  /// 証憑 (linked to the accrual entry on submission)
+  documentId      String?            @map("document_id")
+  status          ExpenseClaimStatus @default(submitted)
+  /// 計上の仕訳
+  journalEntryId  String             @map("journal_entry_id")
+  /// The payment in force (set while paid)
+  paymentId       String?            @map("payment_id")
+  voidReason      String?            @map("void_reason")
+  voidedAt        DateTime?          @map("voided_at") @db.Timestamptz(6)
+  /// The reversal of the accrual entry (取消); null when it was voided on the transaction screen first
+  reversalEntryId String?            @map("reversal_entry_id")
+  createdBy       String             @map("created_by")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  claimant      User            @relation(fields: [claimantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  account       Account         @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  taxCategory   TaxCategory     @relation(fields: [taxCategoryCode], references: [code], onDelete: Restrict, onUpdate: Restrict)
+  segment       Segment?        @relation(fields: [segmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  partner       Partner?        @relation(fields: [partnerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  document      Document?       @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalEntry  JournalEntry    @relation("ExpenseClaimEntry", fields: [journalEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  payment       ExpensePayment? @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversalEntry JournalEntry?   @relation("ExpenseClaimReversal", fields: [reversalEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([status])
+  @@index([claimantId])
+  @@index([paymentId])
+  @@index([journalEntryId])
+  @@map("expense_claim")
+}
+
+/// One payment of a claimant's claims in one entry (未払金〔立替精算〕 / 口座). Never deleted: a payment
+/// is cancelled with a reversal (DB trigger); only the cancellation columns are set, once.
+model ExpensePayment {
+  id                  String    @id
+  claimantId          String    @map("claimant_id")
+  /// 支払日: the date of the payment entry (the statement line's date when one was matched)
+  paidOn              DateTime  @map("paid_on") @db.Date
+  /// 支払元 (an active bank or cash wallet)
+  walletId            String    @map("wallet_id")
+  /// The statement line the payment was matched with (registered with the payment entry)
+  walletTransactionId String?   @map("wallet_transaction_id")
+  /// The total of the claims
+  amount              BigInt
+  /// 支払の仕訳
+  journalEntryId      String    @map("journal_entry_id")
+  cancelledAt         DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason        String?   @map("cancel_reason")
+  /// The reversal of the payment entry; null when it was voided on the transaction screen first
+  reversalEntryId     String?   @map("reversal_entry_id")
+  createdBy           String    @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  claimant          User               @relation(fields: [claimantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  wallet            Wallet             @relation(fields: [walletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalEntry      JournalEntry       @relation("ExpensePaymentEntry", fields: [journalEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversalEntry     JournalEntry?      @relation("ExpensePaymentReversal", fields: [reversalEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  claims            ExpenseClaim[]
+
+  @@index([claimantId])
+  @@index([journalEntryId])
+  @@map("expense_payment")
+}
+
+// ---------------------------------------------------------------------------
+// External API usage (docs/design/20-reader-and-registry.md §7.1・§9)
+// ---------------------------------------------------------------------------
+
+/// One row per call of an external API (a reading, a registry lookup). Append-only (DB triggers).
+model ExternalApiUsage {
+  id           String   @id
+  at           DateTime @default(now()) @db.Timestamptz(6)
+  /// `reader` | `registry`
+  service      String
+  /// `anthropic` / `recorded` / `nta` / `fixture`
+  provider     String
+  model        String?
+  documentId   String?  @map("document_id")
+  /// `ok` | `failed`
+  outcome      String
+  error        String?
+  requestCount Int      @default(1) @map("request_count")
+  /// Numbers looked up (registry)
+  itemCount    Int      @default(0) @map("item_count")
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  /// 10⁻⁹ USD
+  costNanoUsd  BigInt   @default(0) @map("cost_nano_usd")
+  actor        String
+
+  document Document? @relation(fields: [documentId], references: [id])
+
+  @@index([service, at])
+  @@map("external_api_usage")
 }

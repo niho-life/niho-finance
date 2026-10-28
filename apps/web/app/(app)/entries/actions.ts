@@ -16,6 +16,7 @@ import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of /entries (11 §4–§6). The repository validates every input with its Zod schemas
@@ -48,6 +49,8 @@ async function write<T, R>(
 
 /** 収入 / 支出 / 振替. */
 export async function postSimpleEntryAction(values: unknown): Promise<ActionResult<PostedEntry>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postSimpleEntry(prisma(), valuesSchema.parse(values) as SimpleEntryFormInput, await by()),
@@ -57,6 +60,8 @@ export async function postSimpleEntryAction(values: unknown): Promise<ActionResu
 
 /** 伝票. */
 export async function postVoucherEntryAction(values: unknown): Promise<ActionResult<PostedEntry>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postVoucherEntry(prisma(), valuesSchema.parse(values) as VoucherEntryFormInput, await by()),
@@ -76,6 +81,8 @@ export async function voidEntryAction(
   id: string,
   values: { reason: string },
 ): Promise<ActionResult<VoidedEntry>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       voidJournalEntryWithOpenDate(
@@ -101,6 +108,8 @@ export async function correctEntryAction(
   id: string,
   values: { reason: string; replacement: unknown },
 ): Promise<ActionResult<CorrectedEntry>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await write(
     async () => {
       const input = valuesSchema.parse(values);

@@ -29,6 +29,17 @@ export type {
   StripeBalanceTransaction,
   StripeFeeDetail,
 } from "./stripe/types";
+export { createNtaClient, NTA_API_BASE, NTA_BATCH_SIZE } from "./nta/client";
+export { createNtaLookupFromEnv, ntaConfig, type NtaConfig } from "./nta/config";
+export { NtaApiError } from "./nta/errors";
+export { createFixtureNtaLookup, FIXTURE_NTA_REGISTRATIONS } from "./nta/fixture";
+export { parseNtaResponse, registrationStatusAt } from "./nta/parse";
+export type {
+  NtaLookup,
+  NtaLookupResult,
+  NtaRegistration,
+  NtaRegistrationStatus,
+} from "./nta/types";
 export { isYenOrdinaryAccount, maskAccountLabel } from "./gmo-aozora/accounts";
 export { createGmoAozoraApi, type GmoAozoraApiOptions } from "./gmo-aozora/client";
 export {
