@@ -360,10 +360,13 @@ export async function previewOpeningEntries(db: Db, input: OpeningInput): Promis
   );
 }
 
-/** Opening entries of fiscal year 1 as posted (Step 5 shows them read-only once registered). */
+/**
+ * Opening entries of fiscal year 1 in force (Step 5 shows them read-only once registered). A
+ * corrected one shows as its replacement: the voided original is left out.
+ */
 export async function loadOpeningEntries(db: Db): Promise<OpeningPreview> {
   const rows = await db.journalEntry.findMany({
-    where: { kind: "opening", fiscalYear: { no: 1 } },
+    where: { kind: "opening", status: "posted", fiscalYear: { no: 1 } },
     orderBy: { no: "asc" },
     include: {
       lines: {

@@ -86,6 +86,17 @@ export default async function CorrectEntryPage({ params }: PageProps<"/entries/[
           dateHelp: detail.isLocked
             ? `${entryNo(detail.no)} の日付（${displayDate(detail.entryDate)}）は締めているため、開いている最初の日付にしています`
             : null,
+          original: {
+            accountingMethod: detail.fiscalYear.accountingMethod,
+            rows: detail.lines.map((line) => ({
+              side: line.side,
+              accountId: line.accountId,
+              subAccountId: line.subAccountId ?? "",
+              amount: line.amount.toString(),
+              taxCategoryCode: line.taxCategoryCode,
+              taxAmount: line.taxAmount.toString(),
+            })),
+          },
         }}
       />
     </>

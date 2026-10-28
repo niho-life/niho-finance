@@ -7,6 +7,7 @@ import {
   isCalendarDate,
   parseYenInput,
   voucherLineTaxAmount,
+  type AccountingMethod,
   type EntryKind,
   type Side,
 } from "@niho-finance/ledger";
@@ -52,6 +53,16 @@ export interface VoucherDraft {
   lines: VoucherLineDraft[];
 }
 
+/** A row of the entry being corrected, as the server matches it to keep its tax (amounts as digits). */
+export interface OriginalRow {
+  side: Side;
+  accountId: string;
+  subAccountId: string;
+  amount: string;
+  taxCategoryCode: string;
+  taxAmount: string;
+}
+
 export type VoucherMode =
   | { kind: "new" }
   | {
@@ -62,18 +73,46 @@ export type VoucherMode =
       dateHelp: string | null;
       /** What happens to the original (the reversal and its date). */
       notice: string;
+      /** The original's rows and method: unchanged rows keep their tax (`correctJournalEntry`). */
+      original: { accountingMethod: AccountingMethod; rows: readonly OriginalRow[] };
     };
 
-const HEADER_FIELDS = new Set([
-  "kind",
-  "entryDate",
-  "description",
-  "partnerId",
-  "memoTagIds",
-  "lines",
-]);
-const LINE_FIELD =
-  /^lines\.(\d+)\.(side|accountId|subAccountId|amount|taxCategoryCode|segmentId|partnerId|description)$/;
+/**
+ * The tax the server keeps for each row (`keepUnchangedTax` in the repository): a row equal to an
+ * original row (side, account, sub-account, amount, tax category; each original row once) keeps the
+ * original's tax when the method is the same. `null` = computed.
+ */
+function keptTaxes(
+  lines: readonly VoucherLineDraft[],
+  mode: VoucherMode,
+  accountingMethod: AccountingMethod,
+): (bigint | null)[] {
+  if (mode.kind !== "correct" || mode.original.accountingMethod !== accountingMethod) {
+    return lines.map(() => null);
+  }
+  const unmatched = [...mode.original.rows];
+  return lines.map((line) => {
+    const amount = parseYenInput(line.amount);
+    const index = unmatched.findIndex(
+      (row) =>
+        row.side === line.side &&
+        row.accountId === line.accountId &&
+        row.subAccountId === line.subAccountId &&
+        amount !== null &&
+        BigInt(row.amount) === amount &&
+        row.taxCategoryCode === line.taxCategoryCode,
+    );
+    const [match] = index < 0 ? [] : unmatched.splice(index, 1);
+    return match ? BigInt(match.taxAmount) : null;
+  });
+}
+
+/** Header fields with an error line under them. Errors of anything not drawn go above the form. */
+const HEADER_FIELDS = new Set(["kind", "entryDate", "description", "partnerId"]);
+/** Row inputs with an error line under them (貸借・取引先・摘要 have none). */
+const LINE_FIELD = /^lines\.(\d+)\.(accountId|subAccountId|amount|taxCategoryCode|segmentId)$/;
+/** The most rows a 伝票 takes (the schema's limit). */
+const MAX_LINES = 100;
 
 export function blankLine(key: string, side: Side): VoucherLineDraft {
   return {
@@ -134,6 +173,7 @@ export function VoucherForm({
   const accounts = new Map(options.accounts.map((account) => [account.id, account]));
   const year = fiscalYearOn(draft.entryDate, options.fiscalYears);
   const method = year?.accountingMethod ?? "tax_inclusive";
+  const kept = keptTaxes(draft.lines, mode, method);
 
   const change = (patch: Partial<VoucherDraft>) => setDraft({ ...draft, ...patch });
 
@@ -166,6 +206,7 @@ export function VoucherForm({
   const difference = debitTotal - creditTotal;
 
   function addLine() {
+    if (draft.lines.length >= MAX_LINES) return;
     nextKey.current += 1;
     const side: Side = difference > 0n ? "credit" : "debit";
     const line = blankLine(`added-${nextKey.current}`, side);
@@ -239,13 +280,18 @@ export function VoucherForm({
   }
 
   const fieldError = (field: string) => error?.fieldErrors[field];
-  const shows = (field: string) => {
-    if (HEADER_FIELDS.has(field) || (mode.kind === "correct" && field === "reason")) return true;
-    const match = LINE_FIELD.exec(field);
-    return Boolean(match && Number(match[1]) < draft.lines.length);
-  };
   const subAccountsOf = (accountId: string) =>
     options.subAccounts.filter((sub) => sub.accountId === accountId);
+  /** Only the fields an error is drawn under; the rest (e.g. `lines`: 100 行まで) go above. */
+  const shows = (field: string) => {
+    if (HEADER_FIELDS.has(field)) return true;
+    if (field === "memoTagIds") return options.memoTags.length > 0;
+    if (field === "reason") return mode.kind === "correct";
+    const match = LINE_FIELD.exec(field);
+    const line = match ? draft.lines[Number(match[1])] : undefined;
+    if (!match || !line) return false;
+    return match[2] !== "subAccountId" || subAccountsOf(line.accountId).length > 0;
+  };
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-5">
@@ -364,7 +410,8 @@ export function VoucherForm({
             let tax: string;
             try {
               const computed =
-                amount !== null && amount > 0n && isCalendarDate(draft.entryDate)
+                kept[index] ??
+                (amount !== null && amount > 0n && isCalendarDate(draft.entryDate)
                   ? voucherLineTaxAmount(
                       amount,
                       line.taxCategoryCode,
@@ -372,7 +419,7 @@ export function VoucherForm({
                       method,
                       options.taxRules,
                     )
-                  : 0n;
+                  : 0n);
               tax = computed === null ? "規則なし" : computed === 0n ? "—" : formatYen(computed);
             } catch {
               tax = "規則なし";
@@ -565,10 +612,13 @@ export function VoucherForm({
             );
           })}
         </ol>
-        <div>
-          <Button variant="ghost" onClick={addLine}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="ghost" onClick={addLine} disabled={draft.lines.length >= MAX_LINES}>
             ＋ 行を追加
           </Button>
+          {draft.lines.length >= MAX_LINES ? (
+            <span className="text-[12px] text-muted">行は {MAX_LINES} 行までです</span>
+          ) : null}
         </div>
       </section>
 

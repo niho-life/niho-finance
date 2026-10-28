@@ -108,7 +108,12 @@ export function TransferForm({ options, today }: { options: EntryFormOptions; to
 
   return (
     <form onSubmit={submit} noValidate className="flex max-w-3xl flex-col gap-4">
-      <FormAlerts messages={formLevelErrors(error, (field) => FIELDS.has(field))} />
+      <FormAlerts
+        messages={formLevelErrors(
+          error,
+          (field) => FIELDS.has(field) && (field !== "memoTagIds" || options.memoTags.length > 0),
+        )}
+      />
       <div className="grid gap-4 md:grid-cols-2">
         <DateField
           id={`${id}-date`}

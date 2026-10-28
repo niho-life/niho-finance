@@ -2,12 +2,14 @@
 
 import type { EntryFormOptions } from "@niho-finance/db";
 import {
-  containedTaxAmount,
-  displayDate,
   formatYen,
   getTaxCategory,
   isCalendarDate,
+  isReservedAccount,
+  LedgerValidationError,
   parseYenInput,
+  splitTaxInclusive,
+  walletAccountIdsOf,
   type TaxDirection,
 } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
@@ -88,16 +90,21 @@ const TEXT = {
   }
 >;
 
-/** 仮払消費税 / 仮受消費税 are added by the ledger in tax-exclusive years: never chosen by hand. */
-const TAX_LINE_CODES = new Set(["1400", "2310"]);
-
 const REVENUE_GROUP_ORDER = ["sales", "non_operating_income", "extraordinary_income"];
 
 type Account = EntryFormOptions["accounts"][number];
 
-/** 収入: revenue (売上高・営業外収益 の順). 支出: expenses, then non-cash assets, then liabilities. */
-function accountChoices(type: FlowType, accounts: readonly Account[]): Account[] {
-  const usable = accounts.filter((account) => !TAX_LINE_CODES.has(account.code));
+/**
+ * 収入: revenue (売上高・営業外収益 の順). 支出: expenses, then non-cash assets, then liabilities.
+ * The accounts the ledger refuses here are left out (`isReservedAccount`: wallets' accounts, cash,
+ * 仮払・仮受消費税): money in a wallet is chosen as the wallet.
+ */
+function accountChoices(
+  type: FlowType,
+  accounts: readonly Account[],
+  walletAccountIds: ReadonlySet<string>,
+): Account[] {
+  const usable = accounts.filter((account) => !isReservedAccount(account, walletAccountIds));
   if (type === "income") {
     return usable
       .filter((account) => account.kind === "revenue")
@@ -109,16 +116,20 @@ function accountChoices(type: FlowType, accounts: readonly Account[]): Account[]
   }
   return [
     ...usable.filter((account) => account.kind === "expense"),
-    ...usable.filter((account) => account.kind === "asset" && !account.isCashLike),
+    ...usable.filter((account) => account.kind === "asset"),
     ...usable.filter((account) => account.kind === "liability"),
   ];
 }
 
-/** 入金先: assets and liabilities (例: 売掛金). 支払元: liabilities (例: 未払金・未払費用). */
-function counterpartAccounts(type: FlowType, accounts: readonly Account[]): Account[] {
+/** 入金先: assets and liabilities (例: 売掛金). 支払元: liabilities (例: 未払費用). Same exclusions. */
+function counterpartAccounts(
+  type: FlowType,
+  accounts: readonly Account[],
+  walletAccountIds: ReadonlySet<string>,
+): Account[] {
   return accounts.filter(
     (account) =>
-      !TAX_LINE_CODES.has(account.code) &&
+      !isReservedAccount(account, walletAccountIds) &&
       (account.kind === "liability" || (type === "income" && account.kind === "asset")),
   );
 }
@@ -145,11 +156,12 @@ export function SimpleEntryForm({
   const text = TEXT[type];
 
   const lookups = useMemo(() => {
-    const choices = accountChoices(type, options.accounts);
+    const walletAccountIds = walletAccountIdsOf(options.wallets);
+    const choices = accountChoices(type, options.accounts, walletAccountIds);
     return {
       choices,
       choiceIds: new Set(choices.map((account) => account.id)),
-      counterAccounts: counterpartAccounts(type, options.accounts),
+      counterAccounts: counterpartAccounts(type, options.accounts, walletAccountIds),
       accounts: new Map(options.accounts.map((account) => [account.id, account])),
       wallets: new Map(options.wallets.map((wallet) => [wallet.id, wallet])),
       partners: new Map(options.partners.map((partner) => [partner.id, partner])),
@@ -226,27 +238,30 @@ export function SimpleEntryForm({
 
   const fieldError = (field: keyof Draft) => error?.fieldErrors[field];
   const year = fiscalYearOn(draft.entryDate, options.fiscalYears);
+  // The same split the ledger makes (`splitTaxInclusive`): in tax-exclusive years the 仮受・仮払
+  // line, which for a purchase without a qualified invoice is only the creditable share (経過措置).
   const taxNote = (() => {
     const amount = parseYenInput(draft.amount);
     if (amount === null || amount <= 0n || !isCalendarDate(draft.entryDate)) return null;
-    let tax: bigint | null;
+    let split: ReturnType<typeof splitTaxInclusive>;
     try {
-      tax = containedTaxAmount(amount, draft.taxCategoryCode, draft.entryDate, options.taxRules);
-    } catch {
-      return { warn: true, text: "税率の規則が重なっています。設定 › 税区分 で確かめてください" };
-    }
-    if (tax === null) {
-      const name = getTaxCategory(draft.taxCategoryCode)?.name ?? draft.taxCategoryCode;
+      split = splitTaxInclusive(amount, draft.taxCategoryCode, draft.entryDate, {
+        accountingMethod: year?.accountingMethod ?? "tax_inclusive",
+        taxRules: options.taxRules,
+      });
+    } catch (problem) {
+      const message =
+        problem instanceof LedgerValidationError ? problem.errors[0]?.message : undefined;
       return {
         warn: true,
-        text: `税区分「${name}」の税率が ${displayDate(draft.entryDate)} に設定されていません。設定 › 税区分 で足してください`,
+        text: message ?? "税率の規則が重なっています。設定 › 税区分 で確かめてください",
       };
     }
     const separate =
-      year?.accountingMethod === "tax_exclusive" && tax > 0n
-        ? `（税抜経理: ${text.taxLine}の行を足します）`
+      split.taxLineAmount > 0n
+        ? `（税抜経理: ${text.taxLine} ${formatYen(split.taxLineAmount)} 円の行を足します）`
         : "";
-    return { warn: false, text: `うち消費税 ${formatYen(tax)} 円${separate}` };
+    return { warn: false, text: `うち消費税 ${formatYen(split.taxAmount)} 円${separate}` };
   })();
 
   /** 登録 (Enter) opens the new entry; 続けて登録 stays on the form. */
@@ -275,7 +290,11 @@ export function SimpleEntryForm({
     send(false);
   }
 
-  const alerts = formLevelErrors(error, (field) => FIELDS.has(field));
+  // Errors of fields that are not drawn (the tags when there are none) go above the form.
+  const alerts = formLevelErrors(
+    error,
+    (field) => FIELDS.has(field) && (field !== "memoTagIds" || options.memoTags.length > 0),
+  );
   const wallets = options.wallets.filter((wallet) => wallet.isActive);
 
   return (

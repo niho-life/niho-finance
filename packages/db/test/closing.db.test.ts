@@ -298,6 +298,46 @@ describe.skipIf(!hasTestDatabase)("closing (締め) and the audit log", () => {
     );
   });
 
+  it("refuses to void or correct the entries of a year in its year-end adjustments (決算整理中)", async () => {
+    const closingYear = await createFiscalYear(prisma, {
+      no: 47,
+      startDate: "2047-04-01",
+      endDate: "2048-03-31",
+    });
+    const entry = await postSimpleEntry(prisma, expense("2047-05-10"), { actor });
+    await prisma.fiscalYear.update({ where: { id: closingYear.id }, data: { status: "closing" } });
+    const nextNo = async () =>
+      (await prisma.fiscalYear.findUniqueOrThrow({ where: { id: closingYear.id } })).nextEntryNo;
+    const before = await nextNo();
+    expect(
+      ledgerErrors(
+        await rejectionOf(
+          voidJournalEntryWithOpenDate(prisma, entry.id, { reason: "誤り" }, { actor }),
+        ),
+      ),
+    ).toEqual([{ code: "FISCAL_YEAR_CLOSING", field: undefined }]);
+    expect(
+      ledgerErrors(
+        await rejectionOf(
+          correctJournalEntry(
+            prisma,
+            entry.id,
+            { reason: "誤り", replacement: replacement("2047-05-10") },
+            { actor },
+          ),
+        ),
+      ),
+    ).toEqual([{ code: "FISCAL_YEAR_CLOSING", field: undefined }]);
+    expect((await getJournalEntryDetail(prisma, entry.id))?.blockedReason).toBe(
+      "第 47 期は決算整理中のため、訂正・取消はできません",
+    );
+    // Nothing was written: still posted, no reversal, no number used.
+    expect((await prisma.journalEntry.findUniqueOrThrow({ where: { id: entry.id } })).status).toBe(
+      "posted",
+    );
+    expect(await nextNo()).toBe(before);
+  });
+
   it("lists the audit log newest first, by target and by period, naming the targets", async () => {
     const today = todayInJapan();
     const years = await listAuditLog(prisma, { entity: "fiscal_year", from: today, to: today });

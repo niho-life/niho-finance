@@ -10,6 +10,7 @@ import {
   type SimpleEntryFormInput,
   type VoucherEntryFormInput,
 } from "@niho-finance/db";
+import type { CalendarDate } from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
@@ -63,7 +64,8 @@ export async function postVoucherEntryAction(values: unknown): Promise<ActionRes
 export interface VoidedEntry {
   no: number;
   reversalNo: number;
-  reversalDate: string;
+  /** The date the reversal was given (the first open date when the entry's month is closed). */
+  reversalDate: CalendarDate;
 }
 
 /** 取消: the reversal is dated on the entry's date, or the first open date when it is closed. */

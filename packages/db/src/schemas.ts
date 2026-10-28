@@ -695,7 +695,10 @@ const filterDate = lenient<CalendarDate | null>(z.string().refine(isCalendarDate
 const filterId = lenient<string | null>(z.string().trim().min(1).max(64), null);
 const filterPage = lenient(z.coerce.number().int().min(1).max(100_000), 1);
 
-/** 状態 of the journal list: 登録済み (default) / 取消済み / すべて. */
+/**
+ * 状態 of the journal list: 登録済み (default: the entries in force, reversals left out) /
+ * 取消済み (the voided entries and their reversals) / すべて.
+ */
 export const ENTRY_STATUS_FILTERS = ["posted", "voided", "all"] as const;
 export type EntryStatusFilter = (typeof ENTRY_STATUS_FILTERS)[number];
 

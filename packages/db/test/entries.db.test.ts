@@ -1,10 +1,11 @@
-import { LedgerValidationError } from "@niho-finance/ledger";
+import { assertSequence, LedgerValidationError } from "@niho-finance/ledger";
 import type { FiscalYear, PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
   chainedEntryIds,
   correctJournalEntry,
+  createTaxRateRule,
   getJournalEntryDetail,
   listJournalEntries,
   loadEntryFormOptions,
@@ -13,6 +14,7 @@ import {
   postVoucherEntry,
   voidJournalEntryWithOpenDate,
   type SimpleEntryFormInput,
+  type StoredJournalEntry,
   type VoucherEntryFormInput,
   type VoucherLineFormInput,
 } from "../src";
@@ -316,11 +318,48 @@ describe.skipIf(!hasTestDatabase)("transactions (取引)", () => {
     const before = await nextNo(exemptYear);
     const lines = await prisma.journalLine.count();
 
+    const noSegment = await rejectionOf(
+      postSimpleEntry(prisma, expense({ segmentId: "" }), { actor }),
+    );
+    expect(ledgerErrors(noSegment)).toEqual([{ code: "SEGMENT_REQUIRED", field: "segmentId" }]);
+    // A form without rows: the message drops the ledger's 「1 行目（5320）の」.
+    expect((noSegment as LedgerValidationError).errors[0]?.message).toBe(
+      "セグメントを選んでください",
+    );
+    const income = await rejectionOf(
+      postSimpleEntry(
+        prisma,
+        {
+          type: "income",
+          entryDate: "2041-06-02",
+          description: "会費",
+          counterpart: `wallet:${wallet("架空銀行 普通")}`,
+          accountId: refs.account("4010"),
+          amount: "1,100",
+          taxCategoryCode: "sales_10",
+          segmentId: "",
+        },
+        { actor },
+      ),
+    );
+    expect((income as LedgerValidationError).errors).toMatchObject([
+      { code: "SEGMENT_REQUIRED", field: "segmentId", message: "セグメントを選んでください" },
+    ]);
+    // The accounts the forms leave out are refused by the ledger too.
     expect(
       ledgerErrors(
-        await rejectionOf(postSimpleEntry(prisma, expense({ segmentId: "" }), { actor })),
+        await rejectionOf(
+          postSimpleEntry(prisma, expense({ accountId: refs.account("1400") }), { actor }),
+        ),
       ),
-    ).toEqual([{ code: "SEGMENT_REQUIRED", field: "segmentId" }]);
+    ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "accountId" }]);
+    expect(
+      ledgerErrors(
+        await rejectionOf(
+          postSimpleEntry(prisma, expense({ accountId: refs.account("2100") }), { actor }),
+        ),
+      ),
+    ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "accountId" }]);
     expect(
       ledgerErrors(
         await rejectionOf(
@@ -534,12 +573,149 @@ describe.skipIf(!hasTestDatabase)("transactions (取引)", () => {
       path: ["reason"],
       message: "理由を入力してください",
     });
+    // A correction is 通常・決算整理 or the original's kind: 開始 is refused for a 通常 entry.
+    expect(
+      ledgerErrors(
+        await rejectionOf(
+          correctJournalEntry(
+            prisma,
+            original.id,
+            { reason: "種類の誤り", replacement: { ...replacement, kind: "opening" } },
+            { actor },
+          ),
+        ),
+      ),
+    ).toEqual([{ code: "INVALID_KIND", field: "replacement.kind" }]);
     // Nothing of the failed corrections remains: no reversal, no number used, still posted.
     expect(await nextNo(exemptYear)).toBe(before);
     expect(
       await prisma.journalEntry.findUniqueOrThrow({ where: { id: original.id } }),
     ).toMatchObject({ status: "posted", replacedById: null });
     expect((await auditOf(original.id)).map((row) => row.action)).toEqual(["journal_entry.post"]);
+  });
+
+  /** The 伝票 the correction page fills from an entry (its rows as they are). */
+  function asVoucher(
+    entry: StoredJournalEntry,
+    overrides: Record<string, unknown> = {},
+  ): VoucherEntryFormInput {
+    return {
+      kind: entry.kind,
+      entryDate: entry.entryDate,
+      description: entry.description,
+      partnerId: "",
+      memoTagIds: [],
+      lines: entry.lines.map((line) => ({
+        side: line.side,
+        accountId: line.accountId,
+        subAccountId: line.subAccountId ?? "",
+        amount: String(line.amount),
+        taxCategoryCode: line.taxCategoryCode,
+        segmentId: line.segmentId ?? "",
+        partnerId: line.partnerId ?? "",
+        description: line.description ?? "",
+      })),
+      ...overrides,
+    };
+  }
+
+  it("訂正 keeps the tax of the rows it does not change (税抜経理・経過措置)", async () => {
+    // 1,000 円: 5320 910 with a tax of 90 and 仮払消費税 90. Recomputed, 910 × 10% would be 91.
+    const paid = await postSimpleEntry(
+      prisma,
+      expense({ entryDate: "2042-07-01", amount: "1000" }),
+      { actor },
+    );
+    const corrected = await correctJournalEntry(
+      prisma,
+      paid.id,
+      {
+        reason: "摘要の誤り",
+        replacement: asVoucher(paid, { description: "クラウド利用料（7 月）" }),
+      },
+      { actor },
+    );
+    expect(await linesOf(corrected.replacement.id)).toEqual([
+      ["debit", "5320", 910n, "purchase_10", 90n],
+      ["debit", "1400", 90n, "na", 0n],
+      ["credit", "2100", 1_000n, "na", 0n],
+    ]);
+
+    // 経過措置: only the creditable 70% of the tax goes to 仮払消費税 (this year's fixture rule).
+    await createTaxRateRule(
+      prisma,
+      {
+        taxCategoryCode: "purchase_10_ni",
+        effectiveFrom: "2042-04-01",
+        effectiveTo: "2043-03-31",
+        ratePercent: "10",
+        deductiblePercent: "70",
+        note: "テスト用の経過措置",
+      },
+      { actor },
+    );
+    const noInvoice = await postSimpleEntry(
+      prisma,
+      expense({ entryDate: "2042-07-02", amount: "3,300", taxCategoryCode: "purchase_10_ni" }),
+      { actor },
+    );
+    const split = [
+      ["debit", "5320", 3_090n, "purchase_10_ni", 300n],
+      ["debit", "1400", 210n, "na", 0n],
+      ["credit", "2100", 3_300n, "na", 0n],
+    ];
+    expect(await linesOf(noInvoice.id)).toEqual(split);
+    const kept = await correctJournalEntry(
+      prisma,
+      noInvoice.id,
+      { reason: "摘要の誤り", replacement: asVoucher(noInvoice, { description: "海外 SaaS" }) },
+      { actor },
+    );
+    // Recomputed it would be 309 (3,090 × 10%).
+    expect(await linesOf(kept.replacement.id)).toEqual(split);
+
+    // A changed row is computed again; each original row is matched once.
+    const [main, inputTax, card] = asVoucher(noInvoice).lines;
+    const changed = await correctJournalEntry(
+      prisma,
+      kept.replacement.id,
+      {
+        reason: "金額の誤り",
+        replacement: asVoucher(kept.replacement, {
+          lines: [{ ...main, amount: "3,100" }, inputTax, { ...card, amount: "3,310" }],
+        }),
+      },
+      { actor },
+    );
+    expect(await linesOf(changed.replacement.id)).toEqual([
+      ["debit", "5320", 3_100n, "purchase_10_ni", 310n],
+      ["debit", "1400", 210n, "na", 0n],
+      ["credit", "2100", 3_310n, "na", 0n],
+    ]);
+  });
+
+  it("取消 of the same entry at the same time succeeds once, without gaps in the numbers", async () => {
+    const entry = await postSimpleEntry(prisma, expense({ entryDate: "2041-09-01" }), { actor });
+    const results = await Promise.allSettled([
+      voidJournalEntryWithOpenDate(prisma, entry.id, { reason: "重複 A" }, { actor }),
+      voidJournalEntryWithOpenDate(prisma, entry.id, { reason: "重複 B" }, { actor }),
+    ]);
+    const done = results.filter((result) => result.status === "fulfilled");
+    const refused = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : [],
+    );
+    expect(done).toHaveLength(1);
+    expect(refused.map(ledgerErrors)).toEqual([[{ code: "ALREADY_VOIDED", field: undefined }]]);
+    expect(await prisma.journalEntry.count({ where: { reversalOfId: entry.id } })).toBe(1);
+    expect(
+      (await auditOf(entry.id)).filter((row) => row.action === "journal_entry.void"),
+    ).toHaveLength(1);
+    assertSequence(
+      await prisma.journalEntry.findMany({
+        where: { fiscalYearId: exemptYear.id },
+        select: { no: true },
+      }),
+    );
   });
 
   it("offers the active choices, plus the inactive ones an entry being corrected uses", async () => {
@@ -646,9 +822,10 @@ describe.skipIf(!hasTestDatabase)("journal list (仕訳帳)", () => {
       { actor },
     );
 
+    // 登録済み: the entries in force. The voided entry and its reversal are left out.
     const posted = await listJournalEntries(prisma, range);
-    expect(posted.rows.map((row) => row.id)).toEqual([split.id, tagged.id, rent.id, reversal.id]);
-    expect(posted).toMatchObject({ total: 4, page: 1, pageSize: 50, pageCount: 1 });
+    expect(posted.rows.map((row) => row.id)).toEqual([split.id, tagged.id, rent.id]);
+    expect(posted).toMatchObject({ total: 3, page: 1, pageSize: 50, pageCount: 1 });
     const splitRow = posted.rows[0];
     expect(splitRow).toMatchObject({
       no: split.no,
@@ -659,13 +836,14 @@ describe.skipIf(!hasTestDatabase)("journal list (仕訳帳)", () => {
       segment: { name: "鎌倉", others: true },
       isLocked: false,
     });
-    expect(posted.rows[3]).toMatchObject({
-      kind: "reversal",
-      reversalOf: { id: april.id, no: april.no },
-    });
 
+    // 取消済み: the voided entry and the reversal that cancels it, side by side.
     const voided = await listJournalEntries(prisma, { ...range, status: "voided" });
-    expect(voided.rows.map((row) => [row.id, row.status])).toEqual([[april.id, "voided"]]);
+    expect(voided.rows.map((row) => [row.id, row.status, row.kind])).toEqual([
+      [reversal.id, "posted", "reversal"],
+      [april.id, "voided", "normal"],
+    ]);
+    expect(voided.rows[0]?.reversalOf).toEqual({ id: april.id, no: april.no });
     expect((await listJournalEntries(prisma, { ...range, status: "all" })).total).toBe(5);
 
     const ids = async (filters: Parameters<typeof listJournalEntries>[1]) =>
@@ -682,13 +860,14 @@ describe.skipIf(!hasTestDatabase)("journal list (仕訳帳)", () => {
   });
 
   it("pages the list and keeps a page past the end on the last page", async () => {
-    const first = await listJournalEntries(prisma, range, 1, { pageSize: 3 });
-    const second = await listJournalEntries(prisma, range, 2, { pageSize: 3 });
+    const all = { ...range, status: "all" } as const;
+    const first = await listJournalEntries(prisma, all, 1, { pageSize: 3 });
+    const second = await listJournalEntries(prisma, all, 2, { pageSize: 3 });
     expect([first.rows.length, second.rows.length, first.pageCount, first.total]).toEqual([
-      3, 1, 2, 4,
+      3, 2, 2, 5,
     ]);
-    expect(new Set([...first.rows, ...second.rows].map((row) => row.id)).size).toBe(4);
-    const beyond = await listJournalEntries(prisma, range, 99, { pageSize: 3 });
+    expect(new Set([...first.rows, ...second.rows].map((row) => row.id)).size).toBe(5);
+    const beyond = await listJournalEntries(prisma, all, 99, { pageSize: 3 });
     expect(beyond.page).toBe(2);
     expect(beyond.rows.map((row) => row.id)).toEqual(second.rows.map((row) => row.id));
   });

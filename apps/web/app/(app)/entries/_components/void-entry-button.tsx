@@ -61,7 +61,10 @@ export function VoidEntryButton({
       setOpen(false);
       setReason("");
       setError(null);
-      toast(`${entryNo(no)} を取り消しました（反対仕訳 ${entryNo(result.data.reversalNo)}）`);
+      // The date the reversal was really given (the close may have moved since the page opened).
+      toast(
+        `${entryNo(no)} を取り消しました（反対仕訳 ${entryNo(result.data.reversalNo)}・${displayDate(result.data.reversalDate)} 付）`,
+      );
       router.refresh();
     });
   }

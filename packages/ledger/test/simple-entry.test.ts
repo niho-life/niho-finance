@@ -7,6 +7,7 @@ import {
   buildSimpleEntry,
   buildVoucherEntry,
   containedTaxAmount,
+  isReservedAccount,
   LedgerValidationError,
   splitTaxInclusive,
   STANDARD_TAX_RATE_RULES,
@@ -46,6 +47,13 @@ const ACCOUNT_ROWS: readonly EntryAccount[] = [
     defaultTaxCategoryCode: "na",
   },
   { id: "acc_card", code: "2100", name: "未払金", kind: "liability", defaultTaxCategoryCode: "na" },
+  {
+    id: "acc_accrued",
+    code: "2110",
+    name: "未払費用",
+    kind: "liability",
+    defaultTaxCategoryCode: "na",
+  },
   {
     id: "acc_output_tax",
     code: "2310",
@@ -268,7 +276,7 @@ describe("buildSimpleEntry: debits equal credits for any input", () => {
       type: fc.constant("expense" as const),
       entryDate: datesArb,
       description: fc.constant("支払"),
-      counterpart: counterpartArb(["acc_card", "acc_owner"]),
+      counterpart: counterpartArb(["acc_accrued", "acc_owner"]),
       accountId: fc.constantFrom("acc_comm", "acc_fee", "acc_insurance", "acc_prepaid"),
       amount: amountArb,
       taxCategoryCode: fc.constantFrom(...PURCHASES),
@@ -462,6 +470,55 @@ describe("buildSimpleEntry: 収入・支出", () => {
       ),
     ).toEqual([{ code: "STANDARD_ACCOUNT_MISSING", field: undefined }]);
   });
+
+  it("refuses the accounts the forms leave out: wallets' accounts, 仮払・仮受消費税, cash", () => {
+    // 2100 is the card wallet's account, 1100 the bank's; 1400 / 2310 are written by the ledger.
+    for (const accountId of ["acc_card", "acc_bank", "acc_input_tax", "acc_output_tax"]) {
+      expect(
+        buildErrors(() => buildSimpleEntry(expense({ accountId }), context("tax_inclusive"))),
+        accountId,
+      ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "accountId" }]);
+      expect(
+        buildErrors(() => buildSimpleEntry(income({ accountId }), context("tax_inclusive"))),
+        accountId,
+      ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "accountId" }]);
+    }
+    // As 入金先 / 支払元 too: such money is chosen as the wallet.
+    expect(
+      buildErrors(() =>
+        buildSimpleEntry(
+          expense({ counterpart: { kind: "account", accountId: "acc_card" } } as never),
+          context("tax_inclusive"),
+        ),
+      ),
+    ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "counterpart" }]);
+    // A cash-like asset without a wallet is refused as well.
+    const cashLike = new Map(
+      [...ACCOUNTS].map(([id, account]) => [
+        id,
+        id === "acc_prepaid" ? { ...account, isCashLike: true } : account,
+      ]),
+    );
+    expect(
+      buildErrors(() =>
+        buildSimpleEntry(
+          expense({ accountId: "acc_prepaid" }),
+          context("tax_inclusive", { accounts: cashLike }),
+        ),
+      ),
+    ).toEqual([{ code: "ACCOUNT_NOT_ALLOWED", field: "accountId" }]);
+    // An inactive wallet no longer reserves its account (the 旧口座 posts to 1100 like the bank).
+    const withoutBank = new Map([...WALLETS].filter(([id]) => id !== "w_bank"));
+    expect(
+      buildSimpleEntry(
+        income({ counterpart: { kind: "account", accountId: "acc_bank" } } as never),
+        context("tax_inclusive", { wallets: withoutBank }),
+      ).lines[0]?.accountId,
+    ).toBe("acc_bank");
+    expect(
+      isReservedAccount({ id: "acc_comm", code: "5320", kind: "expense" }, new Set(["acc_card"])),
+    ).toBe(false);
+  });
 });
 
 describe("buildSimpleEntry: 振替", () => {
@@ -595,6 +652,17 @@ describe("buildVoucherEntry", () => {
         { code: "TAX_RULE_MISSING", field: "lines.0.taxCategoryCode", lineIndex: 0 },
       ]);
     }
+  });
+
+  it("keeps the tax a row brings (an unchanged row of a correction) instead of computing it", () => {
+    const [first, ...rest] = voucher().lines;
+    if (!first) throw new Error("the voucher has rows");
+    // Computed it would be 910 × 10 ÷ 100 = 91; the original 支出 split 1,000 into 910 / 90.
+    const kept = buildVoucherEntry(voucher({ lines: [{ ...first, taxAmount: 90n }, ...rest] }), {
+      accountingMethod: "tax_exclusive",
+      taxRules: [],
+    });
+    expect(kept.lines.map((line) => line.taxAmount)).toEqual([90n, 0n, 0n]);
   });
 
   it("leaves the balance check to the ledger", () => {

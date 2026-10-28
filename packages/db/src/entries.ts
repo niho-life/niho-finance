@@ -10,6 +10,7 @@ import {
   buildVoucherEntry,
   CORPORATE_SEGMENT_CODE,
   displayDate,
+  ENTRY_KIND_LABELS,
   firstOpenDate,
   isLocked,
   LedgerValidationError,
@@ -43,6 +44,7 @@ import {
   voidJournalEntryInTransaction,
   type ActorOptions,
   type StoredJournalEntry,
+  type StoredJournalLine,
   type VoidJournalEntryResult,
 } from "./journal";
 import { toFiscalYearContext } from "./queries";
@@ -50,6 +52,7 @@ import {
   correctEntrySchema,
   simpleEntrySchema,
   voidEntrySchema,
+  VOUCHER_KINDS,
   voucherEntrySchema,
   type CorrectEntryInput,
   type EntriesFilter,
@@ -264,14 +267,25 @@ function simpleField(input: ParsedSimpleEntry, entry: JournalEntryInput | undefi
   };
 }
 
+/** 「2 行目（4010）の」「1 行目の」: the ledger's way of naming a line. */
+const LINE_PREFIX = /^\d+ 行目(?:（[^）]*）)?の/;
+
 function withFields(
   error: LedgerValidationError,
   fieldOf: (error: LedgerError) => string | undefined,
+  options: { dropLineNo?: boolean } = {},
 ): LedgerValidationError {
   return new LedgerValidationError(
     error.errors.map((item) => {
       const field = fieldOf(item);
-      return field ? { ...item, field } : item;
+      if (!field) return item;
+      // A form without rows (収入・支出・振替) shows a line's message under the field that chose the
+      // line's account: the line number means nothing there.
+      const message =
+        options.dropLineNo && item.field === undefined
+          ? item.message.replace(LINE_PREFIX, "")
+          : item.message;
+      return { ...item, field, message };
     }),
   );
 }
@@ -282,7 +296,14 @@ function withFields(
 
 async function loadSimpleEntryContext(tx: Tx, fiscalYear: FiscalYear): Promise<SimpleEntryContext> {
   const accounts = await tx.account.findMany({
-    select: { id: true, code: true, name: true, kind: true, defaultTaxCategoryCode: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      kind: true,
+      defaultTaxCategoryCode: true,
+      isCashLike: true,
+    },
   });
   const wallets = await tx.wallet.findMany({
     select: {
@@ -328,9 +349,44 @@ export async function postSimpleEntry(
         options,
       );
     } catch (error) {
-      if (error instanceof LedgerValidationError) throw withFields(error, simpleField(data, entry));
+      if (error instanceof LedgerValidationError) {
+        throw withFields(error, simpleField(data, entry), { dropLineNo: true });
+      }
       throw error;
     }
+  });
+}
+
+/** The rows of the entry being corrected, whose tax unchanged rows keep (11 §1). */
+interface OriginalRows {
+  accountingMethod: AccountingMethod;
+  lines: readonly StoredJournalLine[];
+}
+
+/**
+ * An unchanged row of a correction keeps the original row's tax: recomputing it from the row (amount
+ * × rate) can differ by a yen from the tax the 仮受・仮払 rows were written with (or, 経過措置, from
+ * the creditable share). Rows are matched one to one on side, account, sub-account, amount and tax
+ * category; only when both years use the same accounting method. Changed rows are computed.
+ */
+function keepUnchangedTax(
+  lines: Parameters<typeof buildVoucherEntry>[0]["lines"],
+  original: OriginalRows | undefined,
+  accountingMethod: AccountingMethod,
+): Parameters<typeof buildVoucherEntry>[0]["lines"] {
+  if (!original || original.accountingMethod !== accountingMethod) return lines;
+  const unmatched = [...original.lines];
+  return lines.map((line) => {
+    const index = unmatched.findIndex(
+      (row) =>
+        row.side === line.side &&
+        row.accountId === line.accountId &&
+        (row.subAccountId ?? null) === (line.subAccountId ?? null) &&
+        row.amount === line.amount &&
+        row.taxCategoryCode === line.taxCategoryCode,
+    );
+    const [match] = index < 0 ? [] : unmatched.splice(index, 1);
+    return match ? { ...line, taxAmount: match.taxAmount } : line;
   });
 }
 
@@ -338,12 +394,14 @@ async function postVoucherInTransaction(
   tx: Tx,
   data: Parameters<typeof buildVoucherEntry>[0],
   options: ActorOptions,
+  original?: OriginalRows,
 ): Promise<StoredJournalEntry> {
   const fiscalYear = await lockFiscalYearOn(tx, data.entryDate);
-  const entry = buildVoucherEntry(data, {
-    accountingMethod: fiscalYear.accountingMethod,
-    taxRules: await loadTaxRules(tx),
-  });
+  const lines = keepUnchangedTax(data.lines, original, fiscalYear.accountingMethod);
+  const entry = buildVoucherEntry(
+    { ...data, lines },
+    { accountingMethod: fiscalYear.accountingMethod, taxRules: await loadTaxRules(tx) },
+  );
   return postJournalEntryInTransaction(tx, { ...entry, fiscalYearId: fiscalYear.id }, options);
 }
 
@@ -368,11 +426,24 @@ export async function postVoucherEntry(
 // Writes: 取消 and 訂正
 // ---------------------------------------------------------------------------
 
+interface ReversalTarget {
+  /** The date of the reversal: the original's, or the first open date of a closed month. */
+  date: CalendarDate;
+  kind: EntryKind;
+  accountingMethod: AccountingMethod;
+}
+
 /**
- * Locks the entry, then its fiscal year (the order `voidJournalEntry` takes them), and returns the
- * date of the reversal. Throws when the entry cannot be voided.
+ * Locks the entry, then the fiscal years the void (and the correction) will write to: the
+ * original's and the one containing `alsoDate` (the replacement's date), in `start_date` order, so
+ * that corrections across two years in opposite directions cannot deadlock. The later locks of
+ * `voidJournalEntry` and `postJournalEntry` are re-entrant. Throws when the entry cannot be voided.
  */
-async function lockForReversal(tx: Tx, entryId: string): Promise<CalendarDate> {
+async function lockForReversal(
+  tx: Tx,
+  entryId: string,
+  alsoDate?: CalendarDate,
+): Promise<ReversalTarget> {
   const locked = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "journal_entry" WHERE "id" = ${entryId} FOR UPDATE`;
   if (locked.length === 0) throw new JournalEntryNotFoundError(entryId);
@@ -380,7 +451,25 @@ async function lockForReversal(tx: Tx, entryId: string): Promise<CalendarDate> {
     where: { id: entryId },
     select: { status: true, kind: true, entryDate: true, fiscalYearId: true },
   });
-  await tx.$queryRaw`SELECT "id" FROM "fiscal_year" WHERE "id" = ${original.fiscalYearId} FOR UPDATE`;
+  const yearIds = new Set([original.fiscalYearId]);
+  if (alsoDate !== undefined) {
+    const day = toDbDate(alsoDate);
+    const containing = await tx.fiscalYear.findMany({
+      where: { startDate: { lte: day }, endDate: { gte: day } },
+      select: { id: true },
+    });
+    // No (or an ambiguous) year: the replacement's posting reports it, with its field.
+    const [only] = containing;
+    if (only && containing.length === 1) yearIds.add(only.id);
+  }
+  const years = await tx.fiscalYear.findMany({
+    where: { id: { in: [...yearIds] } },
+    select: { id: true },
+    orderBy: [{ startDate: "asc" }, { id: "asc" }],
+  });
+  for (const year of years) {
+    await tx.$queryRaw`SELECT "id" FROM "fiscal_year" WHERE "id" = ${year.id} FOR UPDATE`;
+  }
   const fiscalYear = await tx.fiscalYear.findUniqueOrThrow({
     where: { id: original.fiscalYearId },
   });
@@ -390,7 +479,7 @@ async function lockForReversal(tx: Tx, entryId: string): Promise<CalendarDate> {
       plan.blocked ?? { code: "PERIOD_LOCKED", message: "取消できる日付がありません" },
     ]);
   }
-  return plan.date;
+  return { date: plan.date, kind: original.kind, accountingMethod: fiscalYear.accountingMethod };
 }
 
 /**
@@ -405,13 +494,25 @@ export async function voidJournalEntryWithOpenDate(
 ): Promise<VoidJournalEntryResult> {
   const data = voidEntrySchema.parse(input);
   return runInTransaction(db, async (tx) => {
-    const date = await lockForReversal(tx, entryId);
+    const { date } = await lockForReversal(tx, entryId);
     return voidJournalEntryInTransaction(tx, entryId, {
       reason: data.reason,
       date,
       actor: options.actor,
     });
   });
+}
+
+/** A correction keeps the original's kind or becomes one a 伝票 can have (通常・決算整理). */
+function assertCorrectionKind(kind: EntryKind, originalKind: EntryKind): void {
+  if ((VOUCHER_KINDS as readonly EntryKind[]).includes(kind) || kind === originalKind) return;
+  throw new LedgerValidationError([
+    {
+      code: "INVALID_KIND",
+      message: `訂正後の種類は 通常・決算整理 か、元の仕訳と同じ「${ENTRY_KIND_LABELS[originalKind]}」にしてください`,
+      field: "replacement.kind",
+    },
+  ]);
 }
 
 export interface CorrectJournalEntryResult extends VoidJournalEntryResult {
@@ -421,9 +522,10 @@ export interface CorrectJournalEntryResult extends VoidJournalEntryResult {
 
 /**
  * 訂正 (11 §1, §6) in one transaction: 取消 (the reversal, dated like a void) → the replacement,
- * posted as a 伝票 (`sourceKind = manual`, its date as given: a closed date is rejected) → the
- * original's `replacedById`. The audit log gets the two rows of the void, the replacement's posting
- * and `journal_entry.correct` with the reason. Field errors of the replacement are `replacement.<field>`.
+ * posted as a 伝票 (`sourceKind = manual`, its date as given: a closed date is rejected; its kind
+ * 通常・決算整理 or the original's; unchanged rows keep the original's tax) → the original's
+ * `replacedById`. The audit log gets the two rows of the void, the replacement's posting and
+ * `journal_entry.correct` with the reason. Field errors of the replacement are `replacement.<field>`.
  */
 export async function correctJournalEntry(
   db: Db,
@@ -433,15 +535,19 @@ export async function correctJournalEntry(
 ): Promise<CorrectJournalEntryResult> {
   const data = correctEntrySchema.parse(input);
   return runInTransaction(db, async (tx) => {
-    const date = await lockForReversal(tx, entryId);
-    const { reversal } = await voidJournalEntryInTransaction(tx, entryId, {
+    const target = await lockForReversal(tx, entryId, data.replacement.entryDate);
+    assertCorrectionKind(data.replacement.kind, target.kind);
+    const { voided, reversal } = await voidJournalEntryInTransaction(tx, entryId, {
       reason: data.reason,
-      date,
+      date: target.date,
       actor: options.actor,
     });
     let replacement: StoredJournalEntry;
     try {
-      replacement = await postVoucherInTransaction(tx, data.replacement, options);
+      replacement = await postVoucherInTransaction(tx, data.replacement, options, {
+        accountingMethod: target.accountingMethod,
+        lines: voided.lines,
+      });
     } catch (error) {
       if (error instanceof LedgerValidationError) {
         throw withFields(error, (item) => {
@@ -527,8 +633,11 @@ function entriesWhere(filters: JournalEntryFilters): Prisma.JournalEntryWhereInp
       },
     });
   }
+  // 登録済み: the entries in force (no reversals). 取消済み: the voided entries and the reversals
+  // that cancel them, side by side. すべて: everything.
   const status = filters.status ?? "posted";
-  if (status !== "all") and.push({ status });
+  if (status === "posted") and.push({ status: "posted", kind: { not: "reversal" } });
+  if (status === "voided") and.push({ OR: [{ status: "voided" }, { kind: "reversal" }] });
   if (filters.account) and.push({ lines: { some: { accountId: filters.account } } });
   if (filters.partner) and.push({ lines: { some: { partnerId: filters.partner } } });
   if (filters.segment) and.push({ lines: { some: { segmentId: filters.segment } } });

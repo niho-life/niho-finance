@@ -49,7 +49,10 @@ export default async function EntriesPage({ searchParams }: PageProps<"/entries"
       id ? [id] : [],
     ),
   });
+  // Anything but the default view (今期, 登録済み) counts as narrowed, dates included: an empty
+  // narrowed list says 「条件に合う取引がありません」, not that there are no entries at all.
   const narrowed = Boolean(
+    !noDates ||
     filters.account ||
     filters.partner ||
     filters.segment ||
@@ -106,7 +109,7 @@ export default async function EntriesPage({ searchParams }: PageProps<"/entries"
         partners={options.partners.map((partner) => ({ value: partner.id, label: partner.name }))}
         segments={options.segments.map((segment) => ({ value: segment.id, label: segment.name }))}
         tags={options.memoTags.map((tag) => ({ value: tag.id, label: tag.name }))}
-        filtered={narrowed || !noDates}
+        filtered={narrowed}
       />
       {result.total === 0 ? (
         narrowed ? (

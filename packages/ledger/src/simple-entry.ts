@@ -137,6 +137,39 @@ export interface EntryAccount {
   name: string;
   kind: AccountKind;
   defaultTaxCategoryCode: string | null;
+  /** Cash and deposits: chosen through their wallet, not as an account. */
+  isCashLike?: boolean;
+}
+
+/** 仮払消費税 / 仮受消費税: written by the ledger in tax-exclusive years, never chosen by hand. */
+export const TAX_LINE_ACCOUNT_CODES: readonly string[] = [
+  INPUT_TAX_ACCOUNT_CODE,
+  OUTPUT_TAX_ACCOUNT_CODE,
+];
+
+/**
+ * Accounts the 収入 / 支出 forms leave out (11 §4), on the screen and in the ledger alike: the tax
+ * lines' accounts, the accounts an active wallet posts to and cash-like assets. Money in a wallet is
+ * chosen as the wallet, so that its line carries the wallet's sub-account.
+ */
+export function isReservedAccount(
+  account: { id: string; code: string; kind: AccountKind; isCashLike?: boolean },
+  walletAccountIds: ReadonlySet<string>,
+): boolean {
+  return (
+    TAX_LINE_ACCOUNT_CODES.includes(account.code) ||
+    walletAccountIds.has(account.id) ||
+    (account.kind === "asset" && account.isCashLike === true)
+  );
+}
+
+/** The accounts the active wallets post to (the input of `isReservedAccount`). */
+export function walletAccountIdsOf(
+  wallets: Iterable<{ accountId: string; isActive: boolean }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const wallet of wallets) if (wallet.isActive) ids.add(wallet.accountId);
+  return ids;
 }
 
 export interface EntryWallet {
@@ -256,7 +289,8 @@ function findAccount(
       field,
     });
   }
-  if (!allowed.includes(account.kind)) {
+  const walletAccountIds = walletAccountIdsOf(context.wallets.values());
+  if (!allowed.includes(account.kind) || isReservedAccount(account, walletAccountIds)) {
     return problems.add({
       code: "ACCOUNT_NOT_ALLOWED",
       message: `勘定科目「${account.code} ${account.name}」はここでは選べません。一覧から選んでください`,
@@ -544,6 +578,11 @@ export interface VoucherLineInput {
   /** Blank → the entry's partner. */
   partnerId: string | null;
   description: string | null;
+  /**
+   * The tax to keep instead of computing it: an unchanged row of a correction keeps the original
+   * row's tax (11 §1), so that it still matches the 仮受・仮払 rows written with it.
+   */
+  taxAmount?: Money | null;
 }
 
 export interface VoucherEntryInput {
@@ -563,8 +602,9 @@ export interface VoucherEntryContext {
 }
 
 /**
- * 伝票 → a journal entry: each row's tax is computed (no lines are added; in tax-exclusive years the
- * 仮受・仮払 rows are written by hand). Throws `TAX_RULE_MISSING` naming the row (`lines.<n>.taxCategoryCode`).
+ * 伝票 → a journal entry: each row's tax is computed, unless the row brings its own (`taxAmount`, an
+ * unchanged row of a correction). No lines are added: in tax-exclusive years the 仮受・仮払 rows are
+ * written by hand. Throws `TAX_RULE_MISSING` naming the row (`lines.<n>.taxCategoryCode`).
  */
 export function buildVoucherEntry(
   input: VoucherEntryInput,
@@ -573,13 +613,15 @@ export function buildVoucherEntry(
   const problems = new Problems();
   const tags = [...(input.memoTagIds ?? [])];
   const lines = input.lines.map((line, index): JournalLineInput => {
-    const taxAmount = voucherLineTaxAmount(
-      line.amount,
-      line.taxCategoryCode,
-      input.entryDate,
-      context.accountingMethod,
-      context.taxRules,
-    );
+    const taxAmount =
+      line.taxAmount ??
+      voucherLineTaxAmount(
+        line.amount,
+        line.taxCategoryCode,
+        input.entryDate,
+        context.accountingMethod,
+        context.taxRules,
+      );
     if (taxAmount === null) {
       problems.add({
         ...missingRule(line.taxCategoryCode, input.entryDate, `lines.${index}.taxCategoryCode`),
