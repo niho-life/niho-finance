@@ -78,10 +78,9 @@ erDiagram
 | --- | --- | --- |
 | code | string | 例: `sales_10`, `sales_8r`, `sales_exempt`, `sales_out`, `purchase_10`, `purchase_8r`, `purchase_10_ni`（インボイスなし。控除割合は日付で決まる）, `purchase_exempt`, `purchase_out`, `na`（対象外） |
 | direction | `sales` / `purchase` / `none` | |
-| rate | 0 / 8 / 10 | 軽減税率は 8 |
 | kind | `taxable` / `exempt` / `out_of_scope` / `export` / `na` | 課税 / 非課税 / 不課税 / 輸出免税 / 対象外 |
-| deductibleRatio | 100 / 80 / 70 / 50 / 30 / 0 | 仕入税額控除の割合。インボイスなしの仕入は経過措置で 80%（〜2026-09）→ 70%（2026-10〜2028-09）→ 50%（2028-10〜2030-09）→ 30%（2030-10〜2031-09）→ 0%（2031-10〜）。日付で引く |
-| effectiveFrom / effectiveTo | date | 経過措置の期間 |
+
+税率と控除割合は `TaxRateRule`（taxCategoryCode・effectiveFrom / effectiveTo・ratePercent・deductiblePercent・enabled）に持つ。インボイスなしの仕入は経過措置で 80%（〜2026-09-30）→ 70%（2026-10-01〜2028-09-30）→ 50%（〜2030-09-30）→ 30%（〜2031-09-30）→ 0%。期間が重なる行は開始が遅いものを優先する（飲食料品 1% は `enabled: false` の行として置き、成立したら有効にする）。
 
 ### Segment（セグメント）
 
@@ -174,6 +173,8 @@ Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上�
 - 行の借方合計 = 貸方合計。行は 2 本以上。各行の金額は正。
 - `posted` になった仕訳は行を書き換えない。DB のトリガーでも `posted` 行の UPDATE / DELETE を禁止し、貸借一致は deferred constraint で commit 時に検証する。訂正は `voidEntry(reason)` が反対仕訳（`kind=reversal`）を同日付で作り、必要なら新しい仕訳を作って `replacedById` で結ぶ。締めた期間の仕訳を訂正するときは反対仕訳と新仕訳を開いている最初の日付で作る。
 - `entryDate` が `FiscalYear.lockedThrough` 以前なら登録・取消とも拒否。`status=closed` の期は決算整理も不可。
+- 行は仕訳ヘッダと同じトランザクションで、ヘッダの INSERT の直後にだけ追加できる（DB トリガー）。登録済みの仕訳に後から行を足すことはできない。一括取込も「ヘッダ → その行」の順で書く。
+- 連番 `no` は `FiscalYear.nextEntryNo` を行ロックの下で `UPDATE ... RETURNING` して採る。DB が保証するのは一意だけで、欠番のなさはリポジトリ層（`postJournalEntry`）を通すことで守る。
 - 連番 `no` は登録時に採番し、取消しても欠番にしない（取消は別の仕訳として連番を消費する）。
 
 ### JournalLine（仕訳行）

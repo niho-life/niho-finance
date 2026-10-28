@@ -17,24 +17,41 @@ NIHO株式会社の自社用の会計システムです。複式簿記の台帳�
 
 これらは非公開側（`niho-finance-core`。当面はローカルフォルダ、必要になったら非公開リポ）と GCP の Secret Manager・DB・ストレージに置きます。詳細は [`docs/design/06-architecture.md`](docs/design/06-architecture.md) の「公開境界」を参照してください。
 
-## 構成（予定）
+## 構成
 
 ```
-apps/web          Next.js（画面・API route・ジョブの入口）
-packages/ledger   複式簿記のコア（仕訳・残高・税計算・締め）。DB やフレームワークに依存しない
-packages/importers 銀行・カードの CSV パーサと Stripe 同期
-packages/reports  試算表・月次推移・決算書・各種エクスポート
-packages/db       Prisma schema と migration
+apps/web           Next.js（画面・API route・ジョブの入口）
+packages/ledger    複式簿記のコア（仕訳の検証・残高と試算表・税計算・取消・連番）。DB やフレームワークに依存しない
+packages/importers 銀行・カードの CSV パーサと Stripe 同期（S4 で実装）
+packages/reports   試算表・月次推移・決算書・各種エクスポート（S7 で実装）
+packages/db        Prisma schema と migration、仕訳の登録・取消と監査ログ（[packages/db/README.md](packages/db/README.md)）
 ```
 
 ## 開発
 
+前提: Node.js 22 以上、Docker（`docker compose`）。
+
 ```sh
-npm ci
-npm run check   # typecheck + lint + unit
+npm ci                     # 依存の導入（Prisma Client も生成する）
+cp .env.example .env       # ローカルの接続先: docker compose の PostgreSQL 16（port 5433）
+npm run db:up              # PostgreSQL を起動して healthy まで待つ
+npm run db:migrate         # migration を適用（prisma migrate deploy）
+npm run db:seed            # 架空の会社「架空商会株式会社」の第 1 期・勘定科目・仕訳を投入（投入済みなら何もしない）
+npm run check              # typecheck + lint + unit
+npm run test:db            # DB のテスト（niho_finance_test を作り直し、migrate と seed をしてから実行）
+npm -C apps/web run dev    # http://localhost:3000 （/api/health で DB の疎通を確認できる）
 ```
 
-（実装の着手前。コマンドは実装とともに更新する）
+| コマンド | 内容 |
+| --- | --- |
+| `npm run db:down` | PostgreSQL を止める（データは volume に残る） |
+| `npm run db:reset` | DB を作り直して migration と seed をやり直す |
+| `npm run db:migrate:dev` | `schema.prisma` の変更から migration を作る（手順は [packages/db/README.md](packages/db/README.md)） |
+| `npm run format` | Prettier で整形する |
+
+- 設定はリポジトリ直下の `.env` から読みます。すでに環境変数があればそちらが優先です。ただし、シェルが別プロジェクトの DB（名前が `niho_finance` / `niho_finance_*` でないもの）を指す `DATABASE_URL` を export しているときは、`.env` の値に置き換えて警告を出します。CI と Cloud Run は `.env` を置かず、環境変数で渡します。
+- DB に触るコマンドとアプリは、DB 名が `niho_finance` か `niho_finance_*` でなければ止まります。別の DB で試すときは `DATABASE_URL=postgresql://.../niho_finance_try npm run db:migrate` のように渡します。
+- シードとテストのデータはすべて架空です。実データ・実在の口座や番号を足さないでください。
 
 ## ライセンス
 

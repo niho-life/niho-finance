@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (typecheck, lint, unit, prisma)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: prisma validate / format --check
+        working-directory: packages/db
+        env:
+          # `prisma validate` needs the variable to exist; nothing connects to it.
+          DATABASE_URL: postgresql://niho:unused@localhost:5432/niho_finance
+        run: |
+          npx prisma validate
+          npx prisma format --check
+
+  db:
+    name: db (migrate, test:db, seed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: niho_finance
+          POSTGRES_USER: niho
+          POSTGRES_PASSWORD: niho_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U niho -d niho_finance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Throwaway CI database (no secret).
+      DATABASE_URL: postgresql://niho:niho_ci_password@localhost:5432/niho_finance?schema=public
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run test:db
+      - run: npm run db:seed
+      - name: test:db against the seeded database
+        run: npm run test:db
