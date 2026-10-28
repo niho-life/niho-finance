@@ -20,9 +20,9 @@ import { lockSettings, runInTransaction } from "./transaction";
 /*
  * Tax and legal deadlines generated from the fiscal years (07-operations §4), and the reminder
  * mail selection (7 days before, on the due date, overdue). Dates are nominal: nothing is moved
- * for weekends or holidays, so a reminder is early rather than late. Monthly deadlines (withholding
- * tax without the special rule, resident tax, social insurance) are not generated in v1: whether
- * they apply depends on choices the books do not record yet.
+ * for weekends or holidays, so a reminder is early rather than late. The payments of a pay run
+ * (withholding tax, monthly or under the special rule; resident tax; social insurance) are not
+ * generated here: the payroll adds them when a run is confirmed (22-payroll §7.1).
  */
 
 export interface CalendarRuleInput {
@@ -191,12 +191,8 @@ export const CALENDAR_RULES: readonly CalendarRule[] = [
     title: "定時株主総会・決算公告（自社）",
     due: (input) => addMonths(input.fiscalYear.endDate, 3),
   },
-  {
-    key: "annual.withholding-special-jan",
-    kind: "payment",
-    title: "源泉所得税（納期の特例・7〜12 月分）（税務署）",
-    due: (input) => dayInFiscalYear(input.fiscalYear, 1, 20),
-  },
+  // The withholding tax under the special rule (1/20, and 7/10 before) is the payroll's
+  // (22-payroll §7.1): `annual.withholding-special-jan` is gone, and the sync deletes its open items.
   {
     key: "annual.legal-records",
     kind: "filing",
@@ -204,9 +200,11 @@ export const CALENDAR_RULES: readonly CalendarRule[] = [
     due: (input) => dayInFiscalYear(input.fiscalYear, 1, 31),
   },
   {
+    // The key predates 22-payroll §7.1 (it also carried the withholding tax then): kept, as keys are.
     key: "annual.withholding-special-jul",
-    kind: "payment",
-    title: "源泉所得税（納期の特例・1〜6 月分）・算定基礎届（税務署・年金事務所）",
+    kind: "filing",
+    title: "算定基礎届（年金事務所）",
+    note: "社会保険の適用事業所の場合",
     due: (input) => dayInFiscalYear(input.fiscalYear, 7, 10),
   },
   {
@@ -239,6 +237,8 @@ export function buildCalendarItems(input: CalendarRuleInput): BuiltCalendarItem[
 export interface SyncCalendarItemsResult {
   created: number;
   updated: number;
+  /** Open items whose rule no longer gives one, deleted. */
+  removed: number;
 }
 
 function itemKey(fiscalYearId: string | null, ruleKey: string | null): string {
@@ -256,8 +256,9 @@ function differs(row: CalendarItem, item: BuiltCalendarItem): boolean {
 
 /**
  * Brings the calendar in line with the rules for every fiscal year (idempotent, one transaction):
- * missing items are created; open items follow the rule's date, title, note and kind. Completed
- * items, and items whose rule no longer gives one, are left as they are.
+ * missing items are created; open items follow the rule's date, title, note and kind, and are
+ * deleted once their rule gives none (a generated reminder, not a book: the audit log keeps the
+ * row). Completed items are left as they are, and so are the items of no fiscal year (payroll).
  */
 export async function syncCalendarItems(
   db: Db,
@@ -267,7 +268,7 @@ export async function syncCalendarItems(
     // The same lock as fiscal year creation: the years read here stay put, and two runs queue.
     await lockSettings(tx, "fiscalYears");
     const company = await getCompany(tx);
-    if (!company) return { created: 0, updated: 0 };
+    if (!company) return { created: 0, updated: 0, removed: 0 };
     const fiscalYears = await listFiscalYears(tx);
     const existing = new Map(
       (
@@ -282,9 +283,11 @@ export async function syncCalendarItems(
 
     let created = 0;
     let updated = 0;
+    const given = new Set<string>();
     for (const fiscalYear of fiscalYears) {
       const items = buildCalendarItems({ company: { foundedOn: company.foundedOn }, fiscalYear });
       for (const item of items) {
+        given.add(itemKey(fiscalYear.id, item.ruleKey));
         const row = existing.get(itemKey(fiscalYear.id, item.ruleKey));
         if (!row) {
           const inserted = await tx.calendarItem.create({
@@ -329,7 +332,23 @@ export async function syncCalendarItems(
         updated += 1;
       }
     }
-    return { created, updated };
+
+    // A rule taken out (or no longer giving an item in that year): its open items would go on
+    // being mailed. Completed ones stay as the record of what was done.
+    let removed = 0;
+    for (const [key, row] of existing) {
+      if (given.has(key) || row.completedAt !== null) continue;
+      await tx.calendarItem.delete({ where: { id: row.id } });
+      await appendAuditLog(tx, {
+        actor: options.actor,
+        action: "calendar_item.delete",
+        entity: "calendar_item",
+        entityId: row.id,
+        before: row,
+      });
+      removed += 1;
+    }
+    return { created, updated, removed };
   });
 }
 

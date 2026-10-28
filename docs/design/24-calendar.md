@@ -1,11 +1,11 @@
 # 24. 期限（S8 の画面仕様）
 
-[07 運用](07-operations.md) §4 の暦と [05 画面と体験](05-ui-ux.md) §2.1 の「期限」の詳細。S8（Issue #9）で作る期限の一覧 `/calendar` と、完了の記録・取り消しを定めます。期限の生成（`CALENDAR_RULES`・`syncCalendarItems`）と通知（ジョブ `calendar-notify`）は [07 §4](07-operations.md) と [`docs/ops/deploy.md`](../ops/deploy.md) §6 のとおりで、ここでは変えません。手で足す期限、土日祝の繰り下げ、「対象外」という別の状態、1/20・7/10 の源泉所得税を S8 の生成から外すこと（[22 §7.1](22-payroll.md) の依頼。別の変更）は範囲外です。
+[07 運用](07-operations.md) §4 の暦と [05 画面と体験](05-ui-ux.md) §2.1 の「期限」の詳細。S8（Issue #9）で作る期限の一覧 `/calendar` と、完了の記録・取り消しを定めます。期限の生成（`CALENDAR_RULES`・`syncCalendarItems`）と通知（ジョブ `calendar-notify`）は [07 §4](07-operations.md) と [`docs/ops/deploy.md`](../ops/deploy.md) §6 のとおりで、ここでは変えません。手で足す期限、土日祝の繰り下げ、「対象外」という別の状態は範囲外です。
 
 ## 1. 期限の状態
 
 - `CalendarItem` の状態は「未完了」と「完了」の 2 つ。完了は `completedAt`（記録した日時）と `completedBy`（記録した人。Server Action の actor）で表す。migration はない（列は S1 の schema にある）。
-- 未完了の項目は、毎日の同期（`syncCalendarItems`）が規則に合わせて日付・内容・注記・種類を直す。完了した項目は同期も通知も触らない（07 §4 の約束のまま）。
+- 未完了の項目は、毎日の同期（`syncCalendarItems`）が規則に合わせて日付・内容・注記・種類を直し、規則から外れたら消す（監査ログ `calendar_item.delete`。07 §4）。完了した項目は同期も通知も触らない（07 §4 の約束のまま）。
 - 給与の確定が作る納付の期限（`ruleKey` が `payroll.` で始まり、会計期間なし。[22 §7](22-payroll.md)）は、給与の画面の「納付を登録」（仕訳を登録して完了）と「納付済みにする」で完了する。期限の画面は一覧に並べるが、完了にも未完了にもしない。ここで戻すと納付の仕訳が残ったまま予定に戻り、二重に納付を登録できてしまうため。
 - 「完了にする」は、提出・納付・開催を済ませたときのほか、自社に当てはまらない期限（例: 役員報酬を払わない期の「健康保険・厚生年金 新規適用届」）を片付けるときにも使う。対象外を別の状態にはしない（[決定](../decisions/2026-10-28-calendar-completion.md)）。
 - 「未完了に戻す」は完了の記録を消す。戻した項目は次の同期で規則に合わせ直され、まだ送っていない通知（当日・期限切れ）は届く。`lastNotifiedOn` は消さないので、送った通知を二度は送らない。
@@ -26,7 +26,7 @@
 - 監査ログ: `calendar_item.complete` / `calendar_item.reopen`（entity `calendar_item`、`before` / `after` は行全体）。actor は Server Action の `await actor()`（[10 §2](10-settings-and-setup.md)）。
 - すでにその状態なら何も書かない（監査ログも増えない）。2 つの画面から同時に押しても記録は 1 回。
 - 見つからない id は「この期限は見つかりません。画面を読み込み直してください」、給与の納付の期限は「「<内容>」は給与の画面で納付を記録します」（どちらも `SettingsError`）。
-- 監査ログの画面（[11 §8](11-transactions.md)）: 対象「期限」（絞り込みは給与〔22〕が足したもの）の行を「期限 第 n 期 <内容>」（給与の納付は「期限 <内容>」）と名付ける。action の表示名は `calendar_item.complete` → 完了にする（給与の「納付済みにする」と共通）、`.reopen` → 未完了に戻す、`.notify` → 期限の通知（`.create` / `.update` は共通の 追加 / 変更）。
+- 監査ログの画面（[11 §8](11-transactions.md)）: 対象「期限」（絞り込みは給与〔22〕が足したもの）の行を「期限 第 n 期 <内容>」（給与の納付は「期限 <内容>」）と名付ける。action の表示名は `calendar_item.complete` → 完了にする（給与の「納付済みにする」と共通）、`.reopen` → 未完了に戻す、`.notify` → 期限の通知、`.delete` → 期限の削除（`.create` / `.update` は共通の 追加 / 変更）。
 
 ## 3. 画面 `/calendar`
 

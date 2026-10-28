@@ -23,7 +23,7 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 
 | ファイル / コマンド | 内容 |
 | --- | --- |
-| `src/calendar.ts` | 期限の暦（07 §4）。規則 `CALENDAR_RULES` から会計期間ごとの `CalendarItem` を作る純粋関数 `buildCalendarItems`、冪等な同期 `syncCalendarItems`（未完了の項目だけ規則に合わせる。完了済みと規則から消えた項目は触らない）、通知の選択 `selectCalendarNotices`（7 日前・当日・超過を 1 回ずつ。`lastNotifiedOn` で抑止）と `markCalendarItemsNotified`。日付は名目（土日祝で動かさない）。期限の画面（24）の一覧 `listCalendarItems`（会計期間ごとに未完了と完了）、表示の状態 `calendarItemStatus`、完了の記録と取り消し `completeCalendarItem` / `reopenCalendarItem`（監査ログ `calendar_item.complete` / `.reopen`。給与の納付の期限は給与の画面で記録するので断る） |
+| `src/calendar.ts` | 期限の暦（07 §4）。規則 `CALENDAR_RULES` から会計期間ごとの `CalendarItem` を作る純粋関数 `buildCalendarItems`、冪等な同期 `syncCalendarItems`（未完了の項目を規則に合わせて作る・直す・規則から外れたら消す〔監査ログ `calendar_item.delete`〕。完了済みは触らない。源泉所得税などの納付は給与が作る）、通知の選択 `selectCalendarNotices`（7 日前・当日・超過を 1 回ずつ。`lastNotifiedOn` で抑止）と `markCalendarItemsNotified`。日付は名目（土日祝で動かさない）。期限の画面（24）の一覧 `listCalendarItems`（会計期間ごとに未完了と完了）、表示の状態 `calendarItemStatus`、完了の記録と取り消し `completeCalendarItem` / `reopenCalendarItem`（監査ログ `calendar_item.complete` / `.reopen`。給与の納付の期限は給与の画面で記録するので断る） |
 | `src/backup.ts` | 日次エクスポート。`exportBackupSnapshot`（全テーブルを表名・列名のキーで、主キー順。bigint は文字列、日付は ISO）、`trialBalancesForBackup`（会計期間ごとの試算表）、両方を 1 つの REPEATABLE READ で読む `exportBackup`、空の DB への `restoreBackupSnapshot`（台帳のガードを通す: 仕訳は posted で入れて同じトランザクションで行を足し、取消と差し替えのリンクは後から更新）。表の順は `BACKUP_TABLES`（外部キーの順）、列の名前と型は `Prisma.dmmf` から取る。モデルを足したら `BACKUP_TABLES` にも足す（足さないとエクスポートが失敗する） |
 | `npm run db:restore -- <フォルダ>`（ルートから） | `scripts/restore-snapshot.ts`。`snapshot.json`・`trial-balance.json`（・`manifest.json`）のあるフォルダを `DATABASE_URL` の空の DB に復元し、試算表を再計算して突き合わせる。一致すれば `restore: OK` で exit 0、違えば差分の要点を出して exit 1。`manifest.json` があれば SHA-256 を先に確かめる |
 
