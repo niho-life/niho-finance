@@ -15,16 +15,17 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /*
  * Server Actions of /entries (11 §4–§6). The repository validates every input with its Zod schemas
- * and posts through the ledger (numbering, the rules, the audit log as `NIHO_FINANCE_ACTOR`).
+ * and posts through the ledger (numbering, the rules, the audit log as the signed-in user,
+ * `lib/actor.ts`).
  * Expected failures come back as `{ ok: false }` with the field of each problem.
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -48,7 +49,8 @@ async function write<T, R>(
 /** 収入 / 支出 / 振替. */
 export async function postSimpleEntryAction(values: unknown): Promise<ActionResult<PostedEntry>> {
   return write(
-    () => postSimpleEntry(prisma(), valuesSchema.parse(values) as SimpleEntryFormInput, by()),
+    async () =>
+      postSimpleEntry(prisma(), valuesSchema.parse(values) as SimpleEntryFormInput, await by()),
     (entry) => ({ id: entry.id, no: entry.no }),
   );
 }
@@ -56,7 +58,8 @@ export async function postSimpleEntryAction(values: unknown): Promise<ActionResu
 /** 伝票. */
 export async function postVoucherEntryAction(values: unknown): Promise<ActionResult<PostedEntry>> {
   return write(
-    () => postVoucherEntry(prisma(), valuesSchema.parse(values) as VoucherEntryFormInput, by()),
+    async () =>
+      postVoucherEntry(prisma(), valuesSchema.parse(values) as VoucherEntryFormInput, await by()),
     (entry) => ({ id: entry.id, no: entry.no }),
   );
 }
@@ -74,12 +77,12 @@ export async function voidEntryAction(
   values: { reason: string },
 ): Promise<ActionResult<VoidedEntry>> {
   return write(
-    () =>
+    async () =>
       voidJournalEntryWithOpenDate(
         prisma(),
         parseId(id),
         { reason: valuesSchema.parse(values).reason },
-        by(),
+        await by(),
       ),
     ({ voided, reversal }) => ({
       no: voided.no,
@@ -99,13 +102,13 @@ export async function correctEntryAction(
   values: { reason: string; replacement: unknown },
 ): Promise<ActionResult<CorrectedEntry>> {
   const result = await write(
-    () => {
+    async () => {
       const input = valuesSchema.parse(values);
       return correctJournalEntry(
         prisma(),
         parseId(id),
         { reason: input.reason, replacement: input.replacement } as CorrectEntryInput,
-        by(),
+        await by(),
       );
     },
     ({ voided, replacement }) => ({ id: replacement.id, no: replacement.no, voidedNo: voided.no }),

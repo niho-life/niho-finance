@@ -1,0 +1,31 @@
+{
+  "displayName": "niho-finance: 5xx responses",
+  "documentation": {
+    "content": "The NIHO finance screens (web service) answered 5xx. Open the service's logs and docs/ops/deploy.md §8. Job failures (jobs service) alert through 'job failed' instead.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Cloud Run request_count 5xx > 0 (5 min)",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"5xx\" AND resource.labels.service_name=\"__WEB_SERVICE__\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["resource.labels.service_name"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "alertStrategy": { "autoClose": "86400s" },
+  "notificationChannels": ["__CHANNEL__"],
+  "enabled": true
+}

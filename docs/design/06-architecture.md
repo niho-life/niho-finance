@@ -11,7 +11,7 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 | `packages/ledger` | 仕訳の検証・登録・取消、残高と試算表の計算、税区分と消費税の計算、締め、連番。純粋な TypeScript。I/O なし | なし |
 | `packages/importers` | 銀行・カード CSV のパーサ（形式ごとに 1 モジュール＋ゴールデンテスト）、Stripe の balance transaction 取得と明細への変換、重複判定 | `ledger`（型） |
 | `packages/reports` | 仕訳帳・総勘定元帳・試算表・月次推移・セグメント PL・決算書・財務諸表 CSV・freee/弥生 CSV・beancount の生成 | `ledger` |
-| `packages/db` | Prisma schema、migration、リポジトリ層（仕訳の原子的な登録、監査ログの追記） | Prisma |
+| `packages/db` | Prisma schema、migration、リポジトリ層（仕訳の原子的な登録、監査ログの追記、明細の取込と Stripe の同期） | Prisma、`importers`（取込の判別と変換。[12](12-imports.md)） |
 | `apps/web` | Next.js（App Router）。画面、Server Actions、route handler（Stripe 同期・バックアップのジョブ入口）、PDF 生成 | 上の全部 |
 
 `ledger` は DB を知らない。`db` が「仕訳を 1 トランザクションで書き、監査ログを追記し、連番を採る」責務を持つ。画面から直接 Prisma を呼ばない。
@@ -22,10 +22,10 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 | --- | --- | --- |
 | 言語 / ランタイム | TypeScript strict、Node 22 | NIHO アプリと同じ |
 | Web | Next.js App Router、React、Tailwind | 画面と API を 1 つに。Server Actions で入力、route handler でジョブ |
-| DB | PostgreSQL 16（Cloud SQL）、Prisma | 既存の運用知識。bigint・トランザクション・部分索引 |
+| DB | PostgreSQL（ローカルは 16、本番は既存の Cloud SQL インスタンスの 15）、Prisma | 既存の運用知識。bigint・トランザクション・部分索引 |
 | 検証 | Zod | 入力の境界で型を固める |
 | PDF | `@react-pdf/renderer` または Playwright の印刷 | 請求書・決算書（v2）。日本語フォントを同梱 |
-| CSV | `papaparse` ＋ 形式ごとのスキーマ | 銀行・カードの取込 |
+| CSV | 自前の小さなパーサ（RFC 4180・BOM・Shift_JIS は `TextDecoder`）＋ 形式ごとのモジュール | 銀行・カードの取込。依存を増やさない（[12 §3.2](12-imports.md)） |
 | Stripe | `stripe` 公式 SDK、読み取り専用の制限付きキー | 2 アカウントを `Stripe-Account` ヘッダーまたは各アカウントのキーで読む |
 | 読み取り（v2） | Claude の vision（画像 → 構造化 JSON） | 領収書の日付・金額・税率別内訳・登録番号。確信度つき |
 | テスト | Vitest（単体・不変条件・ゴールデン）、Playwright（主要導線の最小限） | |
@@ -41,20 +41,20 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 ### 3.1 GCP の配置
 
 - プロジェクト: 既存の NIHO 本番プロジェクトに置く（請求先が同じ会社になるため）。将来分けたくなったら `pg_dump` と GCS のコピーで移せる。
-- Cloud Run: `niho-finance`（min 0 / max 1、同時実行 1 ユーザー想定）。コールドスタートは許容。
-- Cloud SQL: 既存インスタンスに新しいデータベース `niho_finance` と専用ロールを作る（追加の固定費なし）。アプリのロールには `audit_log` への UPDATE / DELETE を与えない。
-- GCS: `niho-finance-documents`（証憑。オブジェクトのバージョニング ON、削除保護）、`niho-finance-backups`（日次エクスポート）。
-- Secret Manager: Stripe の制限付きキー、DB 接続、銀行 API のキー。
+- Cloud Run: 同じイメージから `niho-finance`（画面。IAP）と `niho-finance-jobs`（ジョブ。IAP なし、Cloud Run の IAM で Scheduler のサービスアカウントだけ）の 2 サービス（どちらも min 0 / max 1、同時実行 1 ユーザー想定。[決定](../decisions/2026-10-28-jobs-service-without-iap.md)）。配備のたびに Cloud Run ジョブ `niho-finance-migrate` が migration を流す。コールドスタートは許容。
+- Cloud SQL: 既存インスタンス（PostgreSQL 15、private IP のみ）に新しいデータベース `niho_finance` と専用ロール 2 つ（migration 用とアプリ用）を作る（追加の固定費なし）。アプリのロールには `audit_log`・`journal_line` への UPDATE / DELETE を与えない（`scripts/db/grants.sql`）。
+- GCS: 証憑（オブジェクトのバージョニング ON、保持ポリシー 7 年）と日次エクスポート（保持ポリシー 10 年）の 2 バケット。名前はプロジェクトを前置するのでリポには書かない。アプリのサービスアカウントは作成と閲覧だけ（削除・上書き不可）。
+- Secret Manager: Stripe の制限付きキー、DB 接続（ロールごと）、メールのアプリパスワード、銀行 API のキー。発行と更新は `docs/ops/secrets.md`。
 - Cloud Scheduler: 日次の Stripe 同期、日次バックアップ、月次の登録番号照合、期限の通知。
 - 通知: 期限や取込の失敗はメール（Gmail API または SendGrid）。LINE は使わない。
 
 ### 3.2 認証
 
-Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウント（会社のアカウント）だけを通す。アプリはヘッダーのメールを actor として記録する。IAP が使えない構成なら Auth.js の Google ログインで許可メールを固定する。v3 の複数ユーザーも IAP の許可リストと DB の役割で足りる。
+Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウント（会社のアカウント）だけを通す。アプリは IAP の署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証し、そのメールを actor として記録する（`apps/web/lib/actor.ts`）。ジョブ用サービスは IAP を通さず（IAP は呼び出し元の ID を置き換えるため）、Cloud Run の IAM で Scheduler のサービスアカウントだけを通す。IAP が使えない構成なら Auth.js の Google ログインで許可メールを固定する。v3 の複数ユーザーも IAP の許可リストと DB の役割で足りる。
 
 ### 3.3 ドメイン
 
-v1 は `run.app` の URL をブックマークで使う。独自ドメイン（例: finance.niho.life）は証明書の失効を監視する運用が要るため、v2 以降で必要になったら付ける。
+画面サービスに Cloud Run のドメインマッピングで会社のドメインのサブドメインを付ける（[決定](../decisions/2026-10-28-custom-domain-mapping.md)。証明書は Google 管理で自動更新、追加費用なし）。ドメインマッピングはプレビュー機能なので、止まったときは `run.app` の URL で使い続ける。ジョブ用サービスは `run.app` のまま（Scheduler は `run.app` の URL でしか内部の呼び出しにならない）。
 
 ## 4. ジョブ
 
@@ -62,11 +62,11 @@ v1 は `run.app` の URL をブックマークで使う。独自ドメイン（�
 | --- | --- | --- |
 | `stripe-sync` | 毎日 06:00 JST | 2 アカウントの balance transactions をカーソルから取得して明細化。失敗はメール |
 | `bank-sync`（v2） | 毎日 | 銀行 API の入出金明細を取得 |
-| `backup-export` | 毎日 03:00 JST | 仕訳・明細・設定を CSV / JSON / beancount で GCS に書く。Cloud SQL の自動バックアップとは別 |
-| `calendar-notify` | 毎日 09:00 JST | 7 日以内・当日の期限をメール |
+| `backup-export` | 毎日 03:00 JST | 全テーブルの JSON スナップショット・会計期間ごとの試算表・manifest（SHA-256）を GCS に書き、S7 の CSV / beancount を同じフォルダに足す。Cloud SQL の自動バックアップとは別 |
+| `calendar-notify` | 毎日 09:00 JST | 会計期間から `CalendarItem` を生成（冪等）し、7 日前・当日・超過の期限を 1 通のメールで知らせる |
 | `invoice-registry-verify`（v2） | 毎月 | 取引先の登録番号を国税庁 API で照合 |
 
-ジョブは route handler（`/jobs/<name>`）で、Cloud Scheduler からの OIDC トークンだけを受け付ける。失敗しても throw せず記録して終える（再試行の嵐を避ける）。
+ジョブは route handler（`/api/jobs/<name>`）で、ジョブ用サービス（`NIHO_FINANCE_SERVICE=jobs`）でだけ動く。Cloud Run の IAM が Scheduler のサービスアカウント以外を弾き、アプリ側でも OIDC トークンを検証する（`apps/web/lib/jobs/`）。失敗しても throw せず、`event=job.finished ok=false` のログを 1 行残して HTTP 500 で終える。Scheduler は再試行しない（再試行の嵐を避ける）。
 
 ## 5. 公開境界と秘密
 
@@ -88,7 +88,7 @@ v1 は `run.app` の URL をブックマークで使う。独自ドメイン（�
 | 項目 | 方法 |
 | --- | --- |
 | バックアップ | Cloud SQL 自動バックアップ（7 日）＋ PITR。加えて日次エクスポート（`backup-export`）を GCS（バージョニング・保持 10 年）に保存 |
-| 復元訓練 | 年 1 回、local にエクスポートを読み込んで試算表が一致することを確認する |
+| 復元訓練 | 年 1 回、local にエクスポートを読み込んで試算表が一致することを確認する（`npm run db:restore`。手順と記録は `docs/ops/restore.md`） |
 | 証憑 | GCS のバージョニング ON、削除保護（保持ポリシーは「ロックしない」で 7 年）。アプリからの削除は論理削除のみ |
 | 改ざん検知 | 証憑は SHA-256、仕訳は監査ログ（追記のみ）。日次エクスポートの差分を非公開 git に積む |
 | 秘密 | Secret Manager。Stripe は読み取り専用の制限付きキー（Balance transactions / Payouts / Charges / Invoices の read） |
@@ -97,7 +97,7 @@ v1 は `run.app` の URL をブックマークで使う。独自ドメイン（�
 ## 7. CI と配備
 
 - CI（GitHub Actions、公開リポ）: typecheck、lint、unit、`prisma validate`、ゴールデンテスト。秘密は使わない。
-- 配備: v1 は Mac から `scripts/deploy.sh`（`gcloud run deploy` ＋ `prisma migrate deploy`）。公開リポの Actions に GCP の権限を持たせない。配備の記録は `docs/ops/deploy-log.md` ではなく Cloud Run のリビジョン履歴で足りる。
+- 配備: v1 は Mac から `scripts/deploy.sh`（Cloud Build でイメージを作り、Cloud Run ジョブで `prisma migrate deploy`、`gcloud run deploy` で 2 サービス。手順は `docs/ops/deploy.md`）。公開リポの Actions に GCP の権限を持たせない。配備の記録は `docs/ops/deploy-log.md` ではなく Cloud Run のリビジョン履歴で足りる。
 - migration は expand → contract（列の削除は配備の 1 つ後）。
 
 ## 8. コストの見積り
