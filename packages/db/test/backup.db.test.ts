@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BACKUP_TABLES,
   exportBackup,
@@ -20,14 +20,34 @@ function roundTrip<T>(value: T): T {
  * Export of the seeded test database, restored into the migrated-only restore database
  * (`<test db>_restore`, not shared with the setup wizard test). One test builds on the previous.
  */
+/** An imported CSV kept as bytes (`import_batch.file_bytes`, S4): written as base64. */
+const BYTES_BATCH_ID = "01JBACKUPBYTESTEST00000000";
+const CSV_TEXT = "日付,金額\n2026-11-20,1000\n";
+
 describe.skipIf(!hasTestDatabase)("backup export and restore", () => {
   let source: PrismaClient;
   let target: PrismaClient;
   let snapshot: BackupSnapshot;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     source = testPrisma();
     target = restoreTestPrisma();
+    const wallet = await source.wallet.findFirstOrThrow({ orderBy: { id: "asc" } });
+    await source.importBatch.create({
+      data: {
+        id: BYTES_BATCH_ID,
+        walletId: wallet.id,
+        source: "csv",
+        originalName: "fictional.csv",
+        fileBytes: Buffer.from(CSV_TEXT, "utf8"),
+        executedBy: "tester@example.com",
+      },
+    });
+  });
+
+  // The test database is shared by the files: take the batch out again.
+  afterAll(async () => {
+    await source?.importBatch.deleteMany({ where: { id: BYTES_BATCH_ID } });
   });
 
   it("exports every table with JSON-safe values and the applied migration", async () => {
@@ -43,6 +63,8 @@ describe.skipIf(!hasTestDatabase)("backup export and restore", () => {
     expect(snapshot.tables.company?.[0]?.founded_on).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
     expect(exported.trialBalances.length).toBe(await source.fiscalYear.count());
     expect(exported.extra).toBeUndefined();
+    const batch = snapshot.tables.import_batch?.find((row) => row.id === BYTES_BATCH_ID);
+    expect(batch?.file_bytes).toBe(Buffer.from(CSV_TEXT, "utf8").toString("base64"));
   });
 
   it("reads the extra source in the same view as the snapshot", async () => {
@@ -62,6 +84,8 @@ describe.skipIf(!hasTestDatabase)("backup export and restore", () => {
       expect(await delegate?.count(), table).toBe(snapshot.tables[table]?.length);
     }
     expect(await target.auditLog.count()).toBe(await source.auditLog.count());
+    const batch = await target.importBatch.findUniqueOrThrow({ where: { id: BYTES_BATCH_ID } });
+    expect(Buffer.from(batch.fileBytes ?? new Uint8Array()).toString("utf8")).toBe(CSV_TEXT);
     expect(await target.journalEntry.count({ where: { status: "voided" } })).toBeGreaterThan(0);
     expect(await trialBalancesForBackup(target)).toEqual(
       roundTrip(await trialBalancesForBackup(source)),

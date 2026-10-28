@@ -35,6 +35,8 @@ else
   TAG="${serving#"$IMAGE:"}"
 fi
 CONNECTION="$(cloudsql_connection_name)"
+SECRETS="DATABASE_URL=$SECRET_DATABASE_URL:latest,NIHO_FINANCE_SMTP_PASSWORD=$SECRET_SMTP_PASSWORD:latest"
+SECRETS+="$(stripe_key_secrets)"
 WEB_URL="$(service_url "$WEB_SERVICE")"
 JOBS_URL="$(service_url "$JOBS_SERVICE")"
 
@@ -69,7 +71,7 @@ deploy_service() {
     --cpu 1 --memory 1Gi --cpu-boost \
     --add-cloudsql-instances "$CONNECTION" \
     --network "$VPC_NETWORK" --subnet "$VPC_SUBNET" --vpc-egress private-ranges-only \
-    --set-secrets "DATABASE_URL=$SECRET_DATABASE_URL:latest,NIHO_FINANCE_SMTP_PASSWORD=$SECRET_SMTP_PASSWORD:latest" \
+    --set-secrets "$SECRETS" \
     --set-env-vars "$(service_env_vars "$role" "$TAG")" \
     --labels "$COST_LABEL" \
     "$@"

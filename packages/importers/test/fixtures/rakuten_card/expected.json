@@ -1,0 +1,163 @@
+{
+  "format": "rakuten_card",
+  "rows": [
+    {
+      "externalId": "7b607407bf189d9d7f82864f61166f5984dde10e7c83d24c0423b94f6614b535",
+      "txnDate": "2026-11-01",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-1200",
+      "descriptionRaw": "テストカフェ",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": [
+        "2026/11/01",
+        "テストカフェ",
+        "本人",
+        "1回払い",
+        "1200",
+        "0",
+        "1200",
+        "1200",
+        "0",
+        "*"
+      ]
+    },
+    {
+      "externalId": "4bc24e573a51dbf810e1281b3543ac00f2180af8dd7d931700b40de060cab1c3",
+      "txnDate": "2026-11-03",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-3980",
+      "descriptionRaw": "サンプルマート",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": [
+        "2026/11/03",
+        "サンプルマート",
+        "本人",
+        "1回払い",
+        "3980",
+        "0",
+        "3980",
+        "3980",
+        "0",
+        ""
+      ]
+    },
+    {
+      "externalId": "0cfd660d9b68a2aece715197a5519d58eb70f660cff4ae9dfaacf5a25baa94c4",
+      "txnDate": "2026-11-03",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-3980",
+      "descriptionRaw": "サンプルマート",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": [
+        "2026/11/03",
+        "サンプルマート",
+        "本人",
+        "1回払い",
+        "3980",
+        "0",
+        "3980",
+        "3980",
+        "0",
+        ""
+      ]
+    },
+    {
+      "externalId": "5965d013e1d28ec0d939ac115731e0ad5bc31b3de541e124723706e3e718bb02",
+      "txnDate": "2026-11-08",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-12800",
+      "descriptionRaw": "テスト,オンラインストア",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": [
+        "2026/11/08",
+        "テスト,オンラインストア",
+        "本人",
+        "1回払い",
+        "12,800",
+        "0",
+        "12,800",
+        "12,800",
+        "0",
+        "*"
+      ]
+    },
+    {
+      "externalId": "733424457d3dc87de18c7967a4de5fbd12692d106b9e1da88446c954da4f35e8",
+      "txnDate": "2026-11-12",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-2500",
+      "descriptionRaw": "テスト交通",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": ["2026/11/12", "テスト交通", "家族", "1回払い", "2500", "0", "2500", "2500", "0", ""]
+    },
+    {
+      "externalId": "36729fe1b4d51e05991ece5297016b197e727e43785c318bd2612c49fc66ba09",
+      "txnDate": "2026-11-15",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-33000",
+      "descriptionRaw": "テストクラウド サービス",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "2回払い",
+      "raw": [
+        "2026/11/15",
+        "テストクラウド サービス",
+        "本人",
+        "2回払い",
+        "33000",
+        "0",
+        "33000",
+        "16500",
+        "16500",
+        "*"
+      ]
+    },
+    {
+      "externalId": "75d826efbc74eb40b6f217953b9388d017e240f43e5e27328b22df37821e7da7",
+      "txnDate": "2026-11-20",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "3980",
+      "descriptionRaw": "サンプルマート（返品）",
+      "counterpartyRaw": null,
+      "balanceAfter": null,
+      "category": "1回払い",
+      "raw": [
+        "2026/11/20",
+        "サンプルマート（返品）",
+        "本人",
+        "1回払い",
+        "-3980",
+        "0",
+        "-3980",
+        "-3980",
+        "0",
+        ""
+      ]
+    }
+  ],
+  "failures": [],
+  "warnings": [],
+  "openingBalance": null,
+  "closingBalance": null,
+  "period": {
+    "from": "2026-11-01",
+    "to": "2026-11-20"
+  }
+}

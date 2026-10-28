@@ -91,8 +91,18 @@ export interface BackupTableSpec {
   selfReferences: string[];
 }
 
-/** Scalar types the JSON conversion does not round-trip. */
-const UNSUPPORTED_TYPES = new Set(["Bytes"]);
+/** Scalar types the JSON conversion does not round-trip (Bytes is written as base64). */
+const UNSUPPORTED_TYPES = new Set<string>();
+
+/** A column value before the JSON conversion: bytes (e.g. an imported file) become base64 text. */
+function columnValue(column: BackupColumn, value: unknown): unknown {
+  if (column.type === "Bytes" && value instanceof Uint8Array) {
+    return Buffer.from(value).toString("base64");
+  }
+  return value;
+}
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
 let tableSpecs: BackupTableSpec[] | undefined;
 
@@ -195,7 +205,9 @@ export async function exportBackupSnapshot(
       orderBy: spec.primaryKey.map((field) => ({ [field]: "asc" as const })),
     });
     const byColumn = rows.map((row) =>
-      Object.fromEntries(spec.columns.map((column) => [column.column, row[column.field]])),
+      Object.fromEntries(
+        spec.columns.map((column) => [column.column, columnValue(column, row[column.field])]),
+      ),
     );
     tables[spec.table] = toBackupJson(byColumn) as BackupRow[];
   }
@@ -273,6 +285,11 @@ function fromBackupValue(table: string, column: BackupColumn, value: BackupJson)
       break;
     case "DateTime":
       if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return new Date(value);
+      break;
+    case "Bytes":
+      if (typeof value === "string" && value.length % 4 === 0 && BASE64.test(value)) {
+        return Buffer.from(value, "base64");
+      }
       break;
     default:
       return value;

@@ -8,6 +8,7 @@ import {
   WALLET_KINDS,
   type WalletKind,
 } from "@niho-finance/ledger";
+import Link from "next/link";
 import { useId, useState, useTransition } from "react";
 import { InactiveToggle, useFormSubmit } from "@/components/settings/inline";
 import { FormError, OpenButton } from "@/components/settings/row-parts";
@@ -20,13 +21,19 @@ import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
 import { createWalletAction, setWalletActiveAction, updateWalletAction } from "../actions";
 
-/** A wallet as the page passes it (the opening balance as text: bigint stays on the server). */
-export type WalletRow = Omit<WalletSettings, "openingBalance"> & { openingBalance: string | null };
+/**
+ * A wallet as the page passes it (the opening balance as text: bigint stays on the server), with
+ * its 取込形式 (`null` for wallets that do not import: cash and 役員立替).
+ */
+export type WalletRow = Omit<WalletSettings, "openingBalance"> & {
+  openingBalance: string | null;
+  importerLabel: string | null;
+};
 
 type AccountOption = SelectOption & { code: string };
 
 const COLUMNS = {
-  columns: "minmax(0,1.3fr) 84px minmax(0,1.4fr) 110px 76px 110px 56px 76px",
+  columns: "minmax(0,1.3fr) 84px minmax(0,1.4fr) 110px 104px 110px 56px 76px",
   mobileColumns: "minmax(0,1fr) auto",
 };
 
@@ -213,7 +220,14 @@ function WalletSheet({
           />
         </FormField>
         <p className="text-[12px] text-muted">
-          取込形式（CSV・Stripe の接続）は明細の取込（準備中）で設定します。
+          取込形式（CSV・Stripe の接続）は{" "}
+          <Link
+            href={wallet ? `/imports/wallets/${wallet.id}` : "/imports"}
+            className="font-bold text-text underline underline-offset-4"
+          >
+            明細の取込 › 取込の設定
+          </Link>{" "}
+          で設定します。
         </p>
         {error && Object.keys(error.fieldErrors).length === 0 ? <FormError error={error} /> : null}
         {toggleError ? (
@@ -246,7 +260,14 @@ export function WalletsTable({
 
   return (
     <>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/imports"
+          className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[13px] font-bold text-muted hover:bg-black/5 hover:text-text"
+        >
+          明細の取込
+          <span aria-hidden="true">›</span>
+        </Link>
         <Button variant="primary" size="sm" onClick={() => setEditing("new")}>
           口座を追加
         </Button>
@@ -284,8 +305,18 @@ export function WalletsTable({
               <Td sm="hide" className="text-muted">
                 {wallet.defaultSegmentName ?? "—"}
               </Td>
-              <Td sm="hide" className="text-muted-2">
-                —
+              <Td sm="hide" className="truncate text-[13px]">
+                {wallet.importerLabel ? (
+                  <Link
+                    href={`/imports/wallets/${wallet.id}`}
+                    title={wallet.importerLabel}
+                    className="text-muted underline-offset-4 hover:text-text hover:underline"
+                  >
+                    {wallet.importerLabel}
+                  </Link>
+                ) : (
+                  <span className="text-muted-2">—</span>
+                )}
               </Td>
               <Td align="right" sm="hide">
                 {wallet.openingBalance ? formatYenInput(BigInt(wallet.openingBalance)) : "—"}

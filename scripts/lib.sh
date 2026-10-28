@@ -42,6 +42,18 @@ cloudsql_connection_name() {
 service_url() { printf 'https://%s-%s.%s.run.app' "$1" "$(project_number)" "$GCP_REGION"; }
 iap_audience() { printf '/projects/%s/locations/%s/services/%s' "$(project_number)" "$GCP_REGION" "$WEB_SERVICE"; }
 
+# Stripe keys (12-imports §6.4): every secret `niho-finance-stripe-key-<name>` that has an enabled
+# version is bound as `NIHO_FINANCE_STRIPE_KEY_<NAME>` (the "key name" a Stripe wallet refers to).
+# Prints `,ENV=secret:latest` pairs for --set-secrets (nothing when there is no key yet).
+stripe_key_secrets() {
+  local secret env_name
+  for secret in $(gcp secrets list --filter='name~niho-finance-stripe-key-' --format='value(name.basename())'); do
+    [[ -n "$(gcp secrets versions list "$secret" --filter='state=ENABLED' --format='value(name)' --limit 1)" ]] || continue
+    env_name="$(printf '%s' "$secret" | tr 'a-z-' 'A-Z_')"
+    printf ',%s=%s:latest' "$env_name" "$secret"
+  done
+}
+
 # Environment of the web and jobs services. `^|^` lets values contain commas (MAIL_TO).
 service_env_vars() {
   local service="$1" tag="$2"
@@ -58,10 +70,15 @@ service_env_vars() {
     "NIHO_FINANCE_SMTP_USER=$SMTP_USER"
     "NIHO_FINANCE_DOCUMENTS_BUCKET=$DOCUMENTS_BUCKET"
     "NIHO_FINANCE_BACKUP_BUCKET=$BACKUPS_BUCKET"
-    "NIHO_FINANCE_JOB_INVOKERS=$SCHEDULER_SA_EMAIL"
   )
   if [[ "$service" == web ]]; then
     vars+=("NIHO_FINANCE_IAP_AUDIENCE=$(iap_audience)")
+  else
+    # The scheduler's OIDC token (12-imports §5): its audience is the jobs service's URL.
+    vars+=(
+      "NIHO_FINANCE_JOB_AUDIENCE=$(service_url "$JOBS_SERVICE")"
+      "NIHO_FINANCE_JOB_SERVICE_ACCOUNT=$SCHEDULER_SA_EMAIL"
+    )
   fi
   local joined
   joined="$(IFS='|'; printf '%s' "${vars[*]}")"

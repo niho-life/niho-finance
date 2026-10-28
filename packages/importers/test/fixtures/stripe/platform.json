@@ -1,0 +1,209 @@
+[
+  {
+    "id": "txn_test_pf_01",
+    "object": "balance_transaction",
+    "amount": 10000,
+    "available_on": 1794182400,
+    "created": 1793581200,
+    "currency": "jpy",
+    "description": null,
+    "fee": 360,
+    "fee_details": [
+      {
+        "amount": 327,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      },
+      {
+        "amount": 33,
+        "application": null,
+        "currency": "jpy",
+        "description": "JCT",
+        "type": "tax"
+      }
+    ],
+    "net": 9640,
+    "reporting_category": "charge",
+    "source": "ch_test_pf_01",
+    "status": "available",
+    "type": "charge"
+  },
+  {
+    "id": "txn_test_pf_02",
+    "object": "balance_transaction",
+    "amount": 5500,
+    "available_on": 1794268800,
+    "created": 1793683800,
+    "currency": "jpy",
+    "description": "予約 テストルーム 2 泊",
+    "fee": 198,
+    "fee_details": [
+      {
+        "amount": 198,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": 5302,
+    "reporting_category": "charge",
+    "source": "ch_test_pf_02",
+    "status": "available",
+    "type": "charge"
+  },
+  {
+    "id": "txn_test_pf_03",
+    "object": "balance_transaction",
+    "amount": -5500,
+    "available_on": 1793844000,
+    "created": 1793844000,
+    "currency": "jpy",
+    "description": "REFUND FOR CHARGE (予約 テストルーム 2 泊)",
+    "fee": -198,
+    "fee_details": [
+      {
+        "amount": -198,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees refund",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": -5302,
+    "reporting_category": "refund",
+    "source": "re_test_pf_01",
+    "status": "available",
+    "type": "refund"
+  },
+  {
+    "id": "txn_test_pf_04",
+    "object": "balance_transaction",
+    "amount": 1200,
+    "available_on": 1794873600,
+    "created": 1794279600,
+    "currency": "jpy",
+    "description": null,
+    "fee": 0,
+    "fee_details": [],
+    "net": 1200,
+    "reporting_category": "platform_earning",
+    "source": "fee_test_pf_01",
+    "status": "available",
+    "type": "application_fee"
+  },
+  {
+    "id": "txn_test_pf_05",
+    "object": "balance_transaction",
+    "amount": -1100,
+    "available_on": 1794441600,
+    "created": 1794441600,
+    "currency": "jpy",
+    "description": "Billing - Usage Fee (2026-10-01 - 2026-10-31)",
+    "fee": 0,
+    "fee_details": [],
+    "net": -1100,
+    "reporting_category": "fee",
+    "source": null,
+    "status": "available",
+    "type": "stripe_fee"
+  },
+  {
+    "id": "txn_test_pf_06",
+    "object": "balance_transaction",
+    "amount": -3000,
+    "available_on": 1794715200,
+    "created": 1794715200,
+    "currency": "jpy",
+    "description": null,
+    "fee": 0,
+    "fee_details": [],
+    "net": -3000,
+    "reporting_category": "transfer",
+    "source": "tr_test_pf_01",
+    "status": "available",
+    "type": "transfer"
+  },
+  {
+    "id": "txn_test_pf_07",
+    "object": "balance_transaction",
+    "amount": 0,
+    "available_on": 1794981600,
+    "created": 1794981600,
+    "currency": "jpy",
+    "description": "テスト調整",
+    "fee": 0,
+    "fee_details": [],
+    "net": 0,
+    "reporting_category": "other_adjustment",
+    "source": "adj_test_pf_01",
+    "status": "available",
+    "type": "adjustment"
+  },
+  {
+    "id": "txn_test_pf_08",
+    "object": "balance_transaction",
+    "amount": 1000,
+    "available_on": 1795737600,
+    "created": 1795158000,
+    "currency": "usd",
+    "description": null,
+    "fee": 59,
+    "fee_details": [
+      {
+        "amount": 59,
+        "application": null,
+        "currency": "usd",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": 941,
+    "reporting_category": "charge",
+    "source": "ch_test_pf_03",
+    "status": "available",
+    "type": "charge"
+  },
+  {
+    "id": "txn_test_pf_09",
+    "object": "balance_transaction",
+    "amount": -50000,
+    "available_on": 1795564800,
+    "created": 1795564800,
+    "currency": "jpy",
+    "description": "STRIPE PAYOUT",
+    "fee": 0,
+    "fee_details": [],
+    "net": -50000,
+    "reporting_category": "payout",
+    "source": "po_test_pf_01",
+    "status": "available",
+    "type": "payout"
+  },
+  {
+    "id": "txn_test_pf_10",
+    "object": "balance_transaction",
+    "amount": 3300,
+    "available_on": 1796601600,
+    "created": 1796052600,
+    "currency": "jpy",
+    "description": null,
+    "fee": 119,
+    "fee_details": [
+      {
+        "amount": 119,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": 3181,
+    "reporting_category": "charge",
+    "source": "ch_test_pf_04",
+    "status": "pending",
+    "type": "charge"
+  }
+]

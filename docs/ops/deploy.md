@@ -54,6 +54,9 @@ Cloud SQL は private IP のみなので、サービスとジョブは Direct VP
 | `NIHO_FINANCE_DOCUMENTS_BUCKET` | ○ | ○ | 証憑（S6 #7 が使う） |
 | `NIHO_FINANCE_APP_URL` | ○ | ○ | メールに載せる画面の URL |
 | `NIHO_FINANCE_GIT_SHA` | ○ | ○ | 配備したコミット（バックアップの manifest とヘルスチェックに載る） |
+| `NIHO_FINANCE_JOB_AUDIENCE` / `_SERVICE_ACCOUNT` | — | ○ | Scheduler の OIDC トークンの `aud`（ジョブ用サービスの URL）と、そのサービスアカウントのメール（12 §5。`scripts/deploy.sh` が入れる） |
+| `NIHO_FINANCE_JOB_TOKEN` | — | ローカルだけ | 手元でジョブを `curl` するときの Bearer（`NIHO_FINANCE_ENV=prod` では無視） |
+| `NIHO_FINANCE_STRIPE_KEY_<NAME>` | Secret | Secret | Stripe の制限付きキー。Secret `niho-finance-stripe-key-<name>` に版があれば `scripts/deploy.sh` が結ぶ（[secrets.md](secrets.md)） |
 
 ## 3. 初回だけ（資源の作成）
 
@@ -86,7 +89,8 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 ## 5. 認証と actor
 
 - 画面: IAP が通した要求には `x-goog-iap-jwt-assertion` が付く。`apps/web/lib/actor.ts` が IAP の公開鍵（ES256）・発行者・audience を検証し、`email` を Server Action の actor（監査ログ）にする。`NIHO_FINANCE_ENV=prod` でヘッダーがない・検証に失敗したときは書き込みを拒む。ローカルは従来どおり `NIHO_FINANCE_ACTOR`（既定 `owner`）。
-- ジョブ: Cloud Run の IAM が Scheduler のサービスアカウント以外を弾く。アプリ側は `NIHO_FINANCE_SERVICE=jobs` 以外で 404、S4（#5）の `apps/web/lib/jobs/auth.ts`（OIDC の検証）が入ったら `apps/web/lib/jobs/run.ts` から呼んで二重にする。ジョブの書き込みの actor は `system`。
+- ジョブ: Cloud Run の IAM が Scheduler のサービスアカウント以外を弾き、アプリでも `runJob`（`apps/web/lib/jobs/run.ts`）が S4 の `verifyJobRequest`（`apps/web/lib/jobs/auth.ts`。Google の署名・`aud`・サービスアカウント）で確かめる。`NIHO_FINANCE_SERVICE=jobs` 以外では 404。ジョブの書き込みの actor は `system`（stripe-sync はサービスアカウントのメール）。
+- 手元でジョブを動かす: `.env` に `NIHO_FINANCE_SERVICE=jobs` と `NIHO_FINANCE_JOB_TOKEN=<任意の文字列>` を置いて dev を起動し、`curl -X POST -H "Authorization: Bearer <その文字列>" localhost:3000/api/jobs/backup`。
 - 許可するアカウントを足す・外す（将来の 2 人目など）: `scripts/deploy.env` の `IAP_MEMBERS` に `user:<email>` をカンマ区切りで足して `scripts/gcp-bootstrap.sh access` を流す（既存の許可はそのまま、足した人だけ増える）。外すときは `gcloud beta iap web remove-iam-policy-binding --resource-type=cloud-run --service=niho-finance --region=<リージョン> --member=user:<email> --role=roles/iap.httpsResourceAccessor`。いまの許可一覧は `gcloud beta iap web get-iam-policy --resource-type=cloud-run --service=niho-finance --region=<リージョン>`。
 - v1 は 1 ユーザーなので、許可された人は誰でも owner として書ける（役割の区別は v3）。監査ログには IAP のメールが actor として残る。
 
@@ -94,7 +98,7 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 
 | ジョブ | 周期（JST） | 内容 | 失敗のとき |
 | --- | --- | --- | --- |
-| `stripe-sync` | 06:00 | S4（#5）。2 アカウントの balance transactions を明細化 | 記録して 500（再試行なし） |
+| `stripe-sync` | 06:00 | 接続済みの Stripe 口座の balance transactions を明細化（12 §4） | 同期の失敗でも 200 を返し（12 §4.4）、`job.finished ok=false` を記録する |
 | `backup-export` | 03:00 | `exports/<日付>/<時刻>Z/` に、全テーブルの JSON スナップショット（復元用）・会計期間ごとの試算表・`book/`（S7 の書き出し: 設定と仕訳の JSON、仕訳 CSV、beancount、明細と証憑の索引。会社の登録後）・manifest（全ファイルの SHA-256）を、DB の同じ時点から書く | 同上 |
 | `calendar-notify` | 09:00 | 会計期間から `CalendarItem` を生成（冪等）し、7 日前・当日・超過の期限をメール。知らせる期限がない日も SMTP のログインまで確かめる（アプリパスワードの失効を期限の前に失敗として知らせる） | 同上 |
 | `mail-check` | 手動だけ | 「送信の確認」を 1 通送る（アプリパスワードを入れた・更新したとき） | 同上 |

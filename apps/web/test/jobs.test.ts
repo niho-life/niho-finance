@@ -12,13 +12,22 @@ vi.mock("@niho-finance/db", async (importOriginal) => ({
   getPrismaClient: () => ({}),
 }));
 
-const request = new Request("http://localhost/api/jobs/test", { method: "POST" });
+/** The local bearer `verifyJobRequest` accepts outside production (12-imports §5). */
+const JOB_TOKEN = "local-job-token-for-tests";
+const request = new Request("http://localhost/api/jobs/test", {
+  method: "POST",
+  headers: { authorization: `Bearer ${JOB_TOKEN}` },
+});
 const service = process.env.NIHO_FINANCE_SERVICE;
 
 beforeAll(async () => {
   // Read the repository .env first, so the values set below win over it.
   const { loadRootEnv } = await import("@niho-finance/db");
   loadRootEnv();
+  process.env.NIHO_FINANCE_ENV = "local";
+  process.env.NIHO_FINANCE_JOB_TOKEN = JOB_TOKEN;
+  delete process.env.NIHO_FINANCE_JOB_AUDIENCE;
+  delete process.env.NIHO_FINANCE_JOB_SERVICE_ACCOUNT;
 });
 
 afterEach(() => {
@@ -49,6 +58,24 @@ describe("runJob", () => {
       job: "test",
       ok: true,
       files: 3,
+    });
+  });
+
+  it("refuses a request without the job's token before running the job", async () => {
+    process.env.NIHO_FINANCE_SERVICE = "jobs";
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const handler = vi.fn();
+    const anonymous = new Request("http://localhost/api/jobs/test", { method: "POST" });
+    const response = await runJob(anonymous, "test", handler);
+    // Locally the OIDC check is not configured: without the local bearer the job is refused.
+    expect(response.status).toBe(503);
+    expect(handler).not.toHaveBeenCalled();
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+      severity: "ERROR",
+      event: "job.finished",
+      job: "test",
+      ok: false,
+      status: 503,
     });
   });
 

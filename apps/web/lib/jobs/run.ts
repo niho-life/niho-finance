@@ -2,16 +2,18 @@ import { getPrismaClient, todayInJapan, type PrismaClient } from "@niho-finance/
 import type { CalendarDate } from "@niho-finance/ledger";
 import { appEnv } from "../env";
 import { logEvent } from "../log";
+import { verifyJobRequest } from "./auth";
 
 /*
  * The entry of every job route (`/api/jobs/<name>`, called by Cloud Scheduler; docs/ops/deploy.md
  * §6). Jobs exist only on the jobs service (`NIHO_FINANCE_SERVICE=jobs`): the web service answers
- * 404. Who may call is enforced by Cloud Run IAM (`roles/run.invoker` for the scheduler's service
- * account only). When S4 (#5) adds `requireJobInvoker(request)` (`apps/web/lib/jobs/auth.ts`, the
- * OIDC check), call it right after the 404 check below so the check is made twice.
+ * 404. Who may call is checked twice: Cloud Run IAM (`roles/run.invoker` for the scheduler's service
+ * account only), then the scheduler's OIDC token (`verifyJobRequest`, 12-imports §5; locally the
+ * `NIHO_FINANCE_JOB_TOKEN` bearer).
  *
  * A job never throws: success and failure are one `job.finished` log line each (the alert filters
- * on `ok=false`) and the response is 200 or 500. Cloud Scheduler does not retry.
+ * on `ok=false`) and the response is 200, 401 / 403 / 503 (authentication) or 500. Cloud Scheduler
+ * does not retry.
  */
 
 /** The audit log actor of job writes. */
@@ -29,6 +31,31 @@ export type JobSummary = Record<string, unknown>;
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
+/** Whether this is the jobs service (`NIHO_FINANCE_SERVICE=jobs`); the screens have no jobs. */
+export function isJobsService(): boolean {
+  return appEnv().NIHO_FINANCE_SERVICE === "jobs";
+}
+
+/** The 404 of a job route on the web service. */
+export function notOnThisService(): Response {
+  return new Response(null, { status: 404, headers: NO_STORE });
+}
+
+/** The one log line of a finished job (`job.finished`; the alert filters on `ok=false`). */
+export function logJobFinished(
+  job: string,
+  ok: boolean,
+  startedAt: Date,
+  fields: Record<string, unknown> = {},
+): void {
+  logEvent(ok ? "INFO" : "ERROR", "job.finished", {
+    job,
+    ok,
+    durationMs: Date.now() - startedAt.getTime(),
+    ...fields,
+  });
+}
+
 export async function runJob(
   request: Request,
   name: string,
@@ -36,22 +63,25 @@ export async function runJob(
 ): Promise<Response> {
   const startedAt = new Date();
   try {
-    if (appEnv().NIHO_FINANCE_SERVICE !== "jobs") {
-      return new Response(null, { status: 404, headers: NO_STORE });
+    if (!isJobsService()) return notOnThisService();
+    const auth = await verifyJobRequest(request);
+    if (!auth.ok) {
+      logJobFinished(name, false, startedAt, { status: auth.status, error: auth.reason });
+      return Response.json(
+        { ok: false, job: name, error: auth.reason },
+        { status: auth.status, headers: NO_STORE },
+      );
     }
-    // S4 (#5): requireJobInvoker(request) goes here.
     const summary = await handler({
       prisma: getPrismaClient(),
       today: todayInJapan(startedAt),
       startedAt,
     });
-    const durationMs = Date.now() - startedAt.getTime();
-    logEvent("INFO", "job.finished", { job: name, ok: true, durationMs, ...summary });
+    logJobFinished(name, true, startedAt, summary);
     return Response.json({ ok: true, job: name, ...summary }, { headers: NO_STORE });
   } catch (error) {
-    const durationMs = Date.now() - startedAt.getTime();
     const message = error instanceof Error ? error.message : String(error);
-    logEvent("ERROR", "job.finished", { job: name, ok: false, durationMs, error: message });
+    logJobFinished(name, false, startedAt, { error: message });
     return Response.json(
       { ok: false, job: name, error: message },
       { status: 500, headers: NO_STORE },

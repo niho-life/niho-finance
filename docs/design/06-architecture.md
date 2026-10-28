@@ -11,7 +11,7 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 | `packages/ledger` | 仕訳の検証・登録・取消、残高と試算表の計算、税区分と消費税の計算、締め、連番。純粋な TypeScript。I/O なし | なし |
 | `packages/importers` | 銀行・カード CSV のパーサ（形式ごとに 1 モジュール＋ゴールデンテスト）、Stripe の balance transaction 取得と明細への変換、重複判定 | `ledger`（型） |
 | `packages/reports` | 仕訳帳・総勘定元帳・試算表・月次推移・セグメント PL・決算書・財務諸表 CSV・freee/弥生 CSV・beancount の生成 | `ledger` |
-| `packages/db` | Prisma schema、migration、リポジトリ層（仕訳の原子的な登録、監査ログの追記） | Prisma |
+| `packages/db` | Prisma schema、migration、リポジトリ層（仕訳の原子的な登録、監査ログの追記、明細の取込と Stripe の同期） | Prisma、`importers`（取込の判別と変換。[12](12-imports.md)） |
 | `apps/web` | Next.js（App Router）。画面、Server Actions、route handler（Stripe 同期・バックアップのジョブ入口）、PDF 生成 | 上の全部 |
 
 `ledger` は DB を知らない。`db` が「仕訳を 1 トランザクションで書き、監査ログを追記し、連番を採る」責務を持つ。画面から直接 Prisma を呼ばない。
@@ -25,7 +25,7 @@ npm workspaces。コマンドは `npm -C <dir> ...`。
 | DB | PostgreSQL（ローカルは 16、本番は既存の Cloud SQL インスタンスの 15）、Prisma | 既存の運用知識。bigint・トランザクション・部分索引 |
 | 検証 | Zod | 入力の境界で型を固める |
 | PDF | `@react-pdf/renderer` または Playwright の印刷 | 請求書・決算書（v2）。日本語フォントを同梱 |
-| CSV | `papaparse` ＋ 形式ごとのスキーマ | 銀行・カードの取込 |
+| CSV | 自前の小さなパーサ（RFC 4180・BOM・Shift_JIS は `TextDecoder`）＋ 形式ごとのモジュール | 銀行・カードの取込。依存を増やさない（[12 §3.2](12-imports.md)） |
 | Stripe | `stripe` 公式 SDK、読み取り専用の制限付きキー | 2 アカウントを `Stripe-Account` ヘッダーまたは各アカウントのキーで読む |
 | 読み取り（v2） | Claude の vision（画像 → 構造化 JSON） | 領収書の日付・金額・税率別内訳・登録番号。確信度つき |
 | テスト | Vitest（単体・不変条件・ゴールデン）、Playwright（主要導線の最小限） | |

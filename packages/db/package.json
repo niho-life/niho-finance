@@ -19,6 +19,7 @@
     "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
+    "@niho-finance/importers": "*",
     "@niho-finance/ledger": "*",
     "@niho-finance/reports": "*",
     "@prisma/client": "6.19.3",

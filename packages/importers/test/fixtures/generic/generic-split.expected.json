@@ -1,0 +1,85 @@
+{
+  "format": "generic",
+  "rows": [
+    {
+      "externalId": "8f40c049d70151ecd9e7ddc4e8495c861d4745d638e7c6a7d682a614f5608ed8",
+      "txnDate": "2026-11-02",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "120000",
+      "descriptionRaw": "振込 サンプル物産",
+      "counterpartyRaw": null,
+      "balanceAfter": "920000",
+      "category": null,
+      "raw": ["2026/11/02", "振込 サンプル物産", "", "120,000", "920,000"]
+    },
+    {
+      "externalId": "4fb64a3fae9f5f5a3afda8e2a373a74d26c88de316a2574e6b114054e6d6c187",
+      "txnDate": "2026-11-06",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-8800",
+      "descriptionRaw": "電気料金 テスト電力",
+      "counterpartyRaw": null,
+      "balanceAfter": "911200",
+      "category": null,
+      "raw": ["2026/11/06", "電気料金 テスト電力", "8,800", "", "911,200"]
+    },
+    {
+      "externalId": "ea7571e2506be4d63ee011dc1f57932f4271d8d5c6871cf50ce694bfe521c22d",
+      "txnDate": "2026-11-06",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-8800",
+      "descriptionRaw": "電気料金 テスト電力",
+      "counterpartyRaw": null,
+      "balanceAfter": "902400",
+      "category": null,
+      "raw": ["2026/11/06", "電気料金 テスト電力", "8,800", "", "902,400"]
+    },
+    {
+      "externalId": "04a731fada9d6a9c06624c72b60410e5cb3b122a71268656666a4f0a723b992a",
+      "txnDate": "2026-11-12",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-330",
+      "descriptionRaw": "手数料,振込",
+      "counterpartyRaw": null,
+      "balanceAfter": "902070",
+      "category": null,
+      "raw": ["2026/11/12", "手数料,振込", "330", "", "902,070"]
+    },
+    {
+      "externalId": "c4e6497b36cd4da0e9116e19d6b0e556ca254f5e5fe9637d4e30b1b522f6fbda",
+      "txnDate": "2026-11-18",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-150000",
+      "descriptionRaw": "家賃 テスト不動産",
+      "counterpartyRaw": null,
+      "balanceAfter": "752070",
+      "category": null,
+      "raw": ["2026/11/18", "家賃 テスト不動産", "150,000", "", "752,070"]
+    },
+    {
+      "externalId": "907251203bc7b3f6f351f752a12c4c5e9dd0aa89872ecfda52f497cb9c3eecfe",
+      "txnDate": "2026-11-28",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "66000",
+      "descriptionRaw": "振込 テスト商店",
+      "counterpartyRaw": null,
+      "balanceAfter": "818070",
+      "category": null,
+      "raw": ["2026/11/28", "振込 テスト商店", "", "66,000", "818,070"]
+    }
+  ],
+  "failures": [],
+  "warnings": [],
+  "openingBalance": null,
+  "closingBalance": null,
+  "period": {
+    "from": "2026-11-02",
+    "to": "2026-11-28"
+  }
+}

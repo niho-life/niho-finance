@@ -196,11 +196,14 @@ access() {
   gcp tasks queues describe "$TASKS_QUEUE" --location "$GCP_REGION" > /dev/null 2>&1 \
     || gcp tasks queues create "$TASKS_QUEUE" --location "$GCP_REGION" \
       --max-attempts 1 --max-concurrent-dispatches 1 > /dev/null
-  # stripe-sync is S4 (#5): the job stays paused until that route is deployed.
-  if [[ "$(ensure_scheduler_job niho-finance-stripe-sync "0 6 * * *" /api/jobs/stripe-sync)" == create ]]; then
-    gcp scheduler jobs pause niho-finance-stripe-sync --location "$GCP_REGION" > /dev/null
-    log "scheduler: niho-finance-stripe-sync created paused (resume after S4 is deployed)"
-  fi
+  ensure_scheduler_job niho-finance-stripe-sync "0 6 * * *" /api/jobs/stripe-sync > /dev/null
+  local job
+  for job in niho-finance-backup-export niho-finance-calendar-notify niho-finance-stripe-sync; do
+    if [[ "$(gcp scheduler jobs describe "$job" --location "$GCP_REGION" --format='value(state)')" == PAUSED ]]; then
+      gcp scheduler jobs resume "$job" --location "$GCP_REGION" > /dev/null
+      log "scheduler: resumed $job"
+    fi
+  done
 
   log "monitoring"
   local channel
