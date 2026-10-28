@@ -15,24 +15,24 @@
 | 2027-06 | M5 請求と連携 | 見積・納品・請求、入金消込、銀行 API、読み取り、資金繰り |
 | 2027 年度後半 | M6 v3 | 給与・社会保険・経費精算・複数ユーザー |
 
-## 2. v1 の Epic 分割
+## 2. v1 の Epic 分割（Epic [#1](https://github.com/niho-life/niho-finance/issues/1)）
 
 Issue は 1 セッションで終わる粒度に切ります。依存は上から下。
 
 | # | Issue | 内容 | 依存 |
 | --- | --- | --- | --- |
-| S1 | 基盤 | モノレポ、`packages/ledger` の骨格と不変条件テスト、Prisma schema（01 の全エンティティ）、ローカル起動、CI | — |
-| S2 | 設定と初期化 | 事業所・会計期間・勘定科目（標準テンプレート）・税区分・セグメント・口座・取引先の設定画面。設立時の開始仕訳ウィザード | S1 |
-| S3 | 台帳の操作 | 仕訳の登録・取消・訂正、連番、締め（月次ロック）、監査ログ、取引画面（収入・支出・振替・伝票） | S1, S2 |
-| S4 | 明細の取込 | CSV パーサ（銀行 2〜3 形式・カード 1〜2 形式、ゴールデンテスト）、取込画面、重複排除、Stripe 同期（2 アカウント、balance transaction → 明細） | S2 |
-| S5 | 明細の片付け | 明細画面（登録・振替・無視・一括・キーボード）、推定とルール、口座間振替の候補、Stripe 入金と銀行入金の照合 | S3, S4 |
-| S6 | 証憑 | アップロード（PC・スマホ）、GCS 保存、SHA-256、検索要件のメタデータ、仕訳・明細への紐づけ、無効化、事務処理規程のテンプレート | S3 |
-| S7 | 報告と書き出し | 試算表・月次推移・セグメント損益・現預金・仕訳帳・総勘定元帳、CSV / PDF、freee・弥生形式と beancount の書き出し、ホーム | S3, S5 |
-| S8 | 配備と運用 | Cloud Run・Cloud SQL・GCS・IAP・Secret Manager・Scheduler、日次バックアップ、期限通知、税務カレンダー、復元手順 | S1〜S7 |
+| S1 [#2](https://github.com/niho-life/niho-finance/issues/2) | 基盤 | モノレポ、`packages/ledger` の骨格と不変条件テスト、Prisma schema（01 の全エンティティ）、ローカル起動、CI | — |
+| S2 [#3](https://github.com/niho-life/niho-finance/issues/3) | 設定と初期化 | 事業所・会計期間・勘定科目（標準テンプレート）・税区分・セグメント・口座・取引先の設定画面。設立時の開始仕訳ウィザード | S1 |
+| S3 [#4](https://github.com/niho-life/niho-finance/issues/4) | 台帳の操作 | 仕訳の登録・取消・訂正、連番、締め（月次ロック）、監査ログ、取引画面（収入・支出・振替・伝票） | S1, S2 |
+| S4 [#5](https://github.com/niho-life/niho-finance/issues/5) | 明細の取込 | CSV パーサ（銀行 2〜3 形式・カード 1〜2 形式、ゴールデンテスト）、取込画面、重複排除、Stripe 同期（2 アカウント、balance transaction → 明細） | S2 |
+| S5 [#6](https://github.com/niho-life/niho-finance/issues/6) | 明細の片付け | 明細画面（登録・振替・無視・一括・キーボード）、推定とルール、口座間振替の候補、Stripe 入金と銀行入金の照合 | S3, S4 |
+| S6 [#7](https://github.com/niho-life/niho-finance/issues/7) | 証憑 | アップロード（PC・スマホ）、GCS 保存、SHA-256、検索要件のメタデータ、仕訳・明細への紐づけ、無効化、事務処理規程のテンプレート | S3 |
+| S7 [#8](https://github.com/niho-life/niho-finance/issues/8) | 報告と書き出し | 試算表・月次推移・セグメント損益・現預金・仕訳帳・総勘定元帳、CSV / PDF、freee・弥生形式と beancount の書き出し、ホーム | S3, S5 |
+| S8 [#9](https://github.com/niho-life/niho-finance/issues/9) | 配備と運用 | Cloud Run・Cloud SQL・GCS・IAP・Secret Manager・Scheduler、日次バックアップ、期限通知、税務カレンダー、復元手順 | S1〜S7 |
 
 S1 → S2 → S3 と S4 は並行可 → S5 → S6 と S7 は並行可 → S8。
 
-## 3. v2 の Epic
+## 3. v2 の Epic（[#10](https://github.com/niho-life/niho-finance/issues/10)）
 
 | Issue | 内容 |
 | --- | --- |
@@ -41,7 +41,7 @@ S1 → S2 → S3 と S4 は並行可 → S5 → S6 と S7 は並行可 → S8。
 | 請求 | 見積・納品・請求（適格請求書の様式）、PDF、メール送付、入金消込、Stripe 支払いリンク（任意） |
 | 連携の強化 | 銀行 API、領収書の読み取り（LLM）、登録番号の照合（国税庁 API）、定期取引と資金繰り予測 |
 
-## 4. v3 の Epic
+## 4. v3 の Epic（[#11](https://github.com/niho-life/niho-finance/issues/11)）
 
 | Issue | 内容 |
 | --- | --- |
