@@ -1,6 +1,7 @@
 import {
   countActiveRules,
   countAuditLog,
+  countUsers,
   getRecordsPolicy,
   getSettingsSummary,
   todayInJapan,
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
   const auditRows = await countAuditLog(prisma);
   const activeRules = await countActiveRules(prisma);
   const policy = await getRecordsPolicy(prisma);
+  const users = await countUsers(prisma);
   const { counts, fiscalYear } = summary;
   const sections: Section[] = [
     { label: "事業所", href: "/settings/company", summary: summary.companyName ?? "未登録" },
@@ -56,6 +58,7 @@ export default async function SettingsPage() {
       href: "/settings/audit-log",
       summary: `${auditRows.toLocaleString("ja-JP")} 件`,
     },
+    { label: "利用者", href: "/settings/users", summary: `有効 ${users.active} 人` },
     { label: "書き出しとバックアップ", href: "/settings/export", summary: "freee・弥生" },
   ];
 

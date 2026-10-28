@@ -21,6 +21,7 @@ import { z, ZodError } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { keepImportFileAsDocument } from "@/lib/documents/import-evidence";
 import type { CsvImported, CsvPreviewView, StripeSyncView } from "./_lib/types";
 
@@ -133,6 +134,8 @@ function toPreviewView(preview: CsvImportPreview): CsvPreviewView {
 export async function previewCsvImportAction(
   formData: FormData,
 ): Promise<ActionResult<CsvPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return attempt(async () =>
     toPreviewView(await previewCsvImport(prisma(), await csvInput(formData))),
   );
@@ -140,6 +143,8 @@ export async function previewCsvImportAction(
 
 /** 取り込む: the same fields as the preview, plus `rememberFormat`. */
 export async function importCsvAction(formData: FormData): Promise<ActionResult<CsvImported>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const input = await csvInput(formData);
@@ -172,6 +177,8 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
 
 /** 取込形式 of a bank / card / other wallet: `{ walletId, importer, importerConfig }`. */
 export async function updateWalletImporterAction(values: unknown): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateWalletImporter(prisma(), valuesSchema.parse(values) as WalletImporterInput, await by()),
@@ -181,6 +188,8 @@ export async function updateWalletImporterAction(values: unknown): Promise<Actio
 
 /** Stripe の接続: `{ walletId, stripeAccountId, secretName }` (the key's variable name, never the key). */
 export async function saveStripeAccountLinkAction(values: unknown): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       saveStripeAccountLink(
@@ -194,6 +203,8 @@ export async function saveStripeAccountLinkAction(values: unknown): Promise<Acti
 
 /** 接続を外す: the lines and the history stay; the cursor goes with the connection. */
 export async function removeStripeAccountLinkAction(walletId: string): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => removeStripeAccountLink(prisma(), { walletId: parseId(walletId) }, await by()),
     () => null,
@@ -205,6 +216,8 @@ export async function removeStripeAccountLinkAction(walletId: string): Promise<A
  * comes back as `ok: true` with `error`; a wallet that cannot sync at all is `ok: false`.
  */
 export async function syncStripeAction(walletId: string): Promise<ActionResult<StripeSyncView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       syncStripeWallet(

@@ -8,6 +8,7 @@ import { DOCUMENT_INDEX_COLUMNS, documentIndexCells, toCsv } from "@niho-finance
 import { assertSameOrigin, handleApi } from "@/lib/documents/api";
 import { actor } from "@/lib/actor";
 import { contentDisposition } from "@/lib/storage/keys";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export const dynamic = "force-dynamic";
  * defaults to all): UTF-8 CSV with a BOM and CRLF. Recorded as `document.export`.
  */
 export async function GET(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("accountant");
+  if (denied) return denied;
   return handleApi(async () => {
     assertSameOrigin(request);
     const filters = documentSearchSchema.parse(

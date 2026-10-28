@@ -36,6 +36,7 @@ import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of /closing (16-year-end §1.1, §3–§9) and of the fixed asset ledger (§5). The
@@ -89,6 +90,8 @@ export async function startYearEndAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       startYearEnd(
@@ -106,6 +109,8 @@ export async function cancelYearEndAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       cancelYearEnd(
@@ -122,6 +127,8 @@ export async function cancelYearEndAction(
 export async function closeYearAction(
   fiscalYearId: string,
 ): Promise<ActionResult<YearEndTransitionData>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () => closeYear(prisma(), parseId(fiscalYearId), {}, await by()),
     transitionData,
@@ -133,6 +140,8 @@ export async function reopenYearAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<YearEndTransitionData>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       reopenYear(
@@ -154,6 +163,8 @@ export async function setYearEndCheckAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<null>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setYearEndCheck(
@@ -174,6 +185,8 @@ export interface PostedEntryNo {
 export async function postDepreciationAction(
   fiscalYearId: string,
 ): Promise<ActionResult<{ count: number; total: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => postDepreciation(prisma(), parseId(fiscalYearId), {}, await by()),
     (posted) => ({
@@ -188,6 +201,8 @@ export async function postDeferredAmortizationAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postDeferredAmortization(
@@ -205,6 +220,8 @@ export async function postAccrualAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<{ no: number; reversalNo: number | null }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postAccrual(prisma(), parseId(fiscalYearId), values<AccrualEntryInput>(input), await by()),
@@ -217,6 +234,8 @@ export async function postConsumptionTaxSettlementAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postConsumptionTaxSettlement(
@@ -234,6 +253,8 @@ export async function postCorporateTaxAction(
   fiscalYearId: string,
   input: unknown,
 ): Promise<ActionResult<PostedEntryNo>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       postCorporateTax(
@@ -258,6 +279,8 @@ export async function voidYearEndEntryAction(
   entryId: string,
   input: unknown,
 ): Promise<ActionResult<VoidedYearEndEntryData>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       voidYearEndEntry(prisma(), parseId(entryId), values<YearEndVoidInput>(input), await by()),
@@ -277,6 +300,8 @@ export async function voidYearEndEntryAction(
 export async function registerFixedAssetAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string; name: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => registerFixedAsset(prisma(), values<FixedAssetRegisterInput>(input), await by()),
     (asset) => ({ id: asset.id, name: asset.name }),
@@ -288,6 +313,8 @@ export async function updateFixedAssetAction(
   id: string,
   input: unknown,
 ): Promise<ActionResult<{ name: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateFixedAsset(prisma(), parseId(id), values<FixedAssetUpdateInput>(input), await by()),
@@ -300,6 +327,8 @@ export async function voidFixedAssetAction(
   id: string,
   input: unknown,
 ): Promise<ActionResult<{ name: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       voidFixedAsset(prisma(), parseId(id), values<FixedAssetVoidInput>(input), await by()),
@@ -312,6 +341,8 @@ export async function disposeFixedAssetAction(
   id: string,
   input: unknown,
 ): Promise<ActionResult<{ entryNo: number | null; bookValue: string }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       disposeFixedAsset(prisma(), parseId(id), values<FixedAssetDisposeInput>(input), await by()),
