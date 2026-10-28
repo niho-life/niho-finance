@@ -49,6 +49,7 @@ describe("labels of entries and the audit log", () => {
     expect(auditActionLabel("wallet.deactivate")).toBe("無効化");
     expect(auditActionLabel("tax_rate_rule.enable")).toBe("有効化");
     expect(auditActionLabel("setup.skip")).toBe("初期設定を後回し");
+    expect(auditActionLabel("document.void")).toBe("証憑の無効化");
     expect(auditActionLabel("employee.create")).toBe("従業員の追加");
     expect(auditActionLabel("employee.update")).toBe("従業員の変更");
     expect(auditActionLabel("employee.deactivate")).toBe("無効化");

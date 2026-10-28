@@ -225,6 +225,11 @@ Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上�
 | journalEntryId | | 発行時に 売掛金 / 売上 を計上 |
 | payments | json | 入金の消込（明細 ID・日付・金額） |
 | stripePaymentLinkUrl | string? | Stripe で受けるときだけ |
+| pricesIncludeTax | boolean | 単価が税込か（既定は税抜）。[18 §3](18-invoicing.md) |
+| revenueAccountId, segmentId | | 請求書の売上の科目（既定 4040）とセグメント（既定 受託） |
+| note | string? | 備考（書類に印字） |
+| recipientSnapshot | json | 発行時の宛名（取引先名・住所） |
+| issuedAt, sentAt, sentTo, voidedAt, voidReason | | 発行・送付・無効の記録。発行後は本文を変えない（DB のトリガー） |
 
 ## 6. 固定資産（v2）
 

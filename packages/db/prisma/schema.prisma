@@ -285,6 +285,14 @@ model Company {
   setupWalletsSkippedAt     DateTime? @map("setup_wallets_skipped_at") @db.Timestamptz(6)
   /// Setup wizard: the 開始仕訳 step was postponed (「あとで」).
   setupOpeningSkippedAt     DateTime? @map("setup_opening_skipped_at") @db.Timestamptz(6)
+  /// 証憑の規程 (電子取引データの事務処理規程): 施行日. Set = the policy is in force.
+  recordsPolicyEffectiveOn  DateTime? @map("records_policy_effective_on") @db.Date
+  /// 証憑の規程: 管理責任者
+  recordsPolicyManager      String?   @map("records_policy_manager")
+  /// 証憑の規程: 処理責任者
+  recordsPolicyOperator     String?   @map("records_policy_operator")
+  /// 証憑の規程: version of the text that was put in force (POLICY_VERSION of the app)
+  recordsPolicyVersion      String?   @map("records_policy_version")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -349,6 +357,7 @@ model Account {
   partnerDefaults    Partner[]
   fixedAssets        FixedAsset[]
   recurringItems     RecurringItem[]
+  invoices           Invoice[]
 
   @@map("account")
 }
@@ -429,6 +438,7 @@ model Segment {
   partnerDefaults Partner[]
   fixedAssets     FixedAsset[]
   recurringItems  RecurringItem[]
+  invoices        Invoice[]
 
   @@map("segment")
 }
@@ -486,6 +496,8 @@ model Wallet {
   subAccountId       String?    @map("sub_account_id")
   /// CSV format key (e.g. a bank's CSV), `stripe`, or a bank API key
   importer           String?
+  /// Column mapping of the generic CSV format (`GenericCsvConfig`), when `importer` is `generic`
+  importerConfig     Json?      @map("importer_config")
   defaultSegmentId   String?    @map("default_segment_id")
   /// Balance on the statement at `openingBalanceDate` (a wallet that existed before the books)
   openingBalanceDate DateTime?  @map("opening_balance_date") @db.Date
@@ -529,11 +541,19 @@ model WalletTransaction {
   id              String                  @id
   walletId        String                  @map("wallet_id")
   txnDate         DateTime                @map("txn_date") @db.Date
+  /// 起算日 (全銀) or Stripe `available_on`, as a JST calendar date
+  valueDate       DateTime?               @map("value_date") @db.Date
+  /// Time of the transaction (Stripe `created`); null for CSV
+  occurredAt      DateTime?               @map("occurred_at") @db.Timestamptz(6)
   /// Signed: deposits into the wallet are positive
   amount          BigInt
   descriptionRaw  String                  @map("description_raw")
   counterpartyRaw String?                 @map("counterparty_raw")
   balanceAfter    BigInt?                 @map("balance_after")
+  /// The source's own classification (Stripe `reporting_category`, 全銀 取引区分, card 支払方法)
+  category        String?
+  /// The original row: CSV cells, or the Stripe balance transaction (`source` as its ID)
+  raw             Json?
   /// Unique within the wallet (CSV row hash or Stripe balance transaction ID)
   externalId      String                  @map("external_id")
   importBatchId   String?                 @map("import_batch_id")
@@ -559,14 +579,27 @@ model ImportBatch {
   walletId       String       @map("wallet_id")
   source         ImportSource
   importer       String?
+  /// Name of the imported file (CSV)
+  originalName   String?      @map("original_name")
   /// The imported file kept as evidence
   documentId     String?      @map("document_id")
   /// Re-importing the same file is rejected by this unique constraint
   fileSha256     String?      @unique @map("file_sha256")
+  /// The imported file itself, until S6 moves it to a document (`documentId`) and drops this column
+  fileBytes      Bytes?       @map("file_bytes")
+  /// First and last dates of the imported lines
+  periodFrom     DateTime?    @map("period_from") @db.Date
+  periodTo       DateTime?    @map("period_to") @db.Date
   rowCount       Int          @default(0) @map("row_count")
   importedCount  Int          @default(0) @map("imported_count")
   duplicateCount Int          @default(0) @map("duplicate_count")
   failedCount    Int          @default(0) @map("failed_count")
+  /// Rows that could not be read (`RowFailure[]`)
+  failures       Json?
+  /// Warnings such as a break in the statement balance (`string[]`)
+  warnings       Json?
+  /// Why the sync itself failed (no key, a Stripe API error); null when it completed
+  error          String?
   executedBy     String       @map("executed_by")
   executedAt     DateTime     @default(now()) @map("executed_at") @db.Timestamptz(6)
 
@@ -574,6 +607,7 @@ model ImportBatch {
   document     Document?           @relation(fields: [documentId], references: [id])
   transactions WalletTransaction[]
 
+  @@index([walletId, executedAt])
   @@map("import_batch")
 }
 
@@ -714,6 +748,10 @@ model Document {
   status                    DocumentStatus @default(inbox)
   /// A replacement points to the document it supersedes (the old one becomes `voided`)
   supersedesId              String?        @map("supersedes_id")
+  /// Set when voided (with the reason); never cleared (DB guard)
+  voidedAt                  DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason                String?        @map("void_reason")
+  note                      String?
   createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -757,6 +795,8 @@ model DocumentLink {
 // Invoices and fixed assets (v2: main columns only)
 // ---------------------------------------------------------------------------
 
+/// 見積書・納品書・請求書 (docs/design/18-invoicing.md). Only drafts change their body (DB trigger);
+/// deletion is logical (`void`).
 model Invoice {
   id                   String         @id
   docType              InvoiceDocType @map("doc_type")
@@ -771,7 +811,17 @@ model Invoice {
   subtotalByRate       Json           @map("subtotal_by_rate")
   taxByRate            Json           @map("tax_by_rate")
   total                BigInt
+  /// Unit prices include the tax (税込) instead of excluding it (税抜)
+  pricesIncludeTax     Boolean        @default(false) @map("prices_include_tax")
+  /// Revenue account of an invoice (default 4040 売上高 受託開発); null for quotes and delivery notes
+  revenueAccountId     String?        @map("revenue_account_id")
+  /// Segment of the revenue lines (default 受託); null for quotes and delivery notes
+  segmentId            String?        @map("segment_id")
+  /// 備考 printed on the document
+  note                 String?
   issuerSnapshot       Json?          @map("issuer_snapshot")
+  /// Recipient (name, address) copied on issue
+  recipientSnapshot    Json?          @map("recipient_snapshot")
   status               InvoiceStatus  @default(draft)
   /// Converted from (quote → delivery → invoice)
   sourceInvoiceId      String?        @map("source_invoice_id")
@@ -779,18 +829,30 @@ model Invoice {
   journalEntryId       String?        @map("journal_entry_id")
   payments             Json?
   stripePaymentLinkUrl String?        @map("stripe_payment_link_url")
+  /// When the number was given (発行)
+  issuedAt             DateTime?      @map("issued_at") @db.Timestamptz(6)
+  /// Last time it was marked sent (送付済み)
+  sentAt               DateTime?      @map("sent_at") @db.Timestamptz(6)
+  /// Where it was last sent (an email address or a note)
+  sentTo               String?        @map("sent_to")
+  /// When it was voided or its draft discarded
+  voidedAt             DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason           String?        @map("void_reason")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  partner       Partner        @relation(fields: [partnerId], references: [id])
-  sourceInvoice Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
-  convertedTo   Invoice[]      @relation("InvoiceConversion")
-  pdfDocument   Document?      @relation(fields: [pdfDocumentId], references: [id])
-  journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
-  documentLinks DocumentLink[]
+  partner        Partner        @relation(fields: [partnerId], references: [id])
+  revenueAccount Account?       @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
+  segment        Segment?       @relation(fields: [segmentId], references: [id])
+  sourceInvoice  Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
+  convertedTo    Invoice[]      @relation("InvoiceConversion")
+  pdfDocument    Document?      @relation(fields: [pdfDocumentId], references: [id])
+  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  documentLinks  DocumentLink[]
 
   @@unique([docType, number])
   @@index([partnerId])
+  @@index([status, dueDate])
   @@map("invoice")
 }
 

@@ -7,6 +7,7 @@ import {
   addDays,
   AUDIT_ENTITY_LABELS,
   displayDate,
+  DOCUMENT_KIND_LABELS,
   isAuditEntity,
   type AuditEntity,
   type CalendarDate,
@@ -14,6 +15,7 @@ import {
 import type { Prisma } from "@prisma/client";
 import type { Db } from "./audit";
 import { fromDbDate } from "./dates";
+import { invoiceAuditName } from "./invoices";
 import type { AuditLogFilter } from "./schemas";
 
 export const AUDIT_PAGE_SIZE = 50;
@@ -67,7 +69,8 @@ const key = (entity: string, id: string) => `${entity}:${id}`;
 
 /**
  * Names the targets of audit rows, one query per kind of target: journal entries by their number,
- * fiscal years as 第 n 期, the other rows by their name. Keys are `<entity>:<id>`.
+ * fiscal years as 第 n 期, documents by their number (「見積書（下書き）」 before the issue), the other
+ * rows by their name. Keys are `<entity>:<id>`.
  */
 export async function describeAuditTargets(
   db: Db,
@@ -145,6 +148,14 @@ export async function describeAuditTargets(
     for (const row of await db.partner.findMany({ where: { id: of("partner") }, select }))
       label("partner", row.id, row.name);
   }
+  if (ids.has("document")) {
+    const documents = await db.document.findMany({
+      where: { id: of("document") },
+      select: { id: true, kind: true, originalName: true },
+    });
+    for (const row of documents)
+      label("document", row.id, row.originalName ?? DOCUMENT_KIND_LABELS[row.kind]);
+  }
   if (ids.has("segment")) {
     for (const row of await db.segment.findMany({ where: { id: of("segment") }, select }))
       label("segment", row.id, row.name);
@@ -152,6 +163,13 @@ export async function describeAuditTargets(
   if (ids.has("memo_tag")) {
     for (const row of await db.memoTag.findMany({ where: { id: of("memo_tag") }, select }))
       label("memo_tag", row.id, row.name);
+  }
+  if (ids.has("invoice")) {
+    const invoices = await db.invoice.findMany({
+      where: { id: of("invoice") },
+      select: { id: true, docType: true, number: true },
+    });
+    for (const invoice of invoices) label("invoice", invoice.id, invoiceAuditName(invoice));
   }
   return names;
 }
@@ -178,7 +196,13 @@ export async function listAuditLog(
   return {
     rows: rows.map((row) => {
       const target = row.entityId ? (targets.get(key(row.entity, row.entityId)) ?? null) : null;
-      const standard = row.entity === "standard_data" ? AUDIT_ENTITY_LABELS.standard_data : null;
+      // Rows about a kind of target as a whole: 標準データ, and 索引簿の書き出し (証憑, no id).
+      const standard =
+        row.entity === "standard_data"
+          ? AUDIT_ENTITY_LABELS.standard_data
+          : row.entity === "document" && row.entityId === null
+            ? AUDIT_ENTITY_LABELS.document
+            : null;
       return {
         id: row.id,
         at: row.at,

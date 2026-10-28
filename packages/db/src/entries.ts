@@ -80,7 +80,7 @@ function toEntryRef(row: { id: string; no: number; entryDate: Date }): EntryRef 
   return { id: row.id, no: row.no, entryDate: fromDbDate(row.entryDate) };
 }
 
-/** The tax rate rules in the ledger's form (also used by the payroll entries). */
+/** Every tax rate rule (disabled ones too), as the ledger's `resolveTaxRule` reads them. */
 export async function loadTaxRules(db: Db): Promise<TaxRateRule[]> {
   const rows = await db.taxRateRule.findMany({
     orderBy: [{ taxCategoryCode: "asc" }, { effectiveFrom: "asc" }, { ratePercent: "desc" }],
@@ -295,7 +295,11 @@ function withFields(
 // Writes: 収入 / 支出 / 振替 / 伝票
 // ---------------------------------------------------------------------------
 
-async function loadSimpleEntryContext(tx: Tx, fiscalYear: FiscalYear): Promise<SimpleEntryContext> {
+/** The accounts, wallets and rules `buildSimpleEntry` (and the invoice entries) build from. */
+export async function loadSimpleEntryContext(
+  tx: Tx,
+  fiscalYear: FiscalYear,
+): Promise<SimpleEntryContext> {
   const accounts = await tx.account.findMany({
     select: {
       id: true,
