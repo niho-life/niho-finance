@@ -74,12 +74,14 @@ function recurringValues(item: RecurringItemSettings): RowValues {
 /** 「追加」: the start date is today unless the form says otherwise (21 §7). */
 export async function createRecurringItemAction(formData: FormData): Promise<ActionResult> {
   return write(
-    () =>
-      createRecurringItem(
+    () => {
+      const input = formInput<RecurringItemCreateInput>(formData);
+      return createRecurringItem(
         prisma(),
-        { startDate: todayInJapan(), ...formInput<RecurringItemCreateInput>(formData) },
+        { ...input, startDate: input.startDate || todayInJapan() },
         by(),
-      ),
+      );
+    },
     () => null,
   );
 }

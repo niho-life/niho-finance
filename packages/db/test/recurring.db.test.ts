@@ -6,6 +6,7 @@ import {
   countActiveRecurringItems,
   createRecurringItem,
   createWallet,
+  describeAuditTargets,
   listRecurringItems,
   loadCashflowInputs,
   setWalletActive,
@@ -103,6 +104,10 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
     expect(audit.map((row) => row.action)).toEqual(["recurring_item.create"]);
     expect(audit[0]?.before).toBeNull();
     expect(audit[0]?.after).toMatchObject({ name: "家賃", amount: "-110000" });
+    const targets = await describeAuditTargets(prisma, [
+      { entity: "recurring_item", entityId: item.id },
+    ]);
+    expect(targets.get(`recurring_item:${item.id}`)).toBe("定期取引 家賃");
   });
 
   it("takes the wallet's default segment, keeps no month for 毎月, and knows card payments", async () => {
