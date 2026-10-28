@@ -8,6 +8,7 @@ import {
   ACCOUNT_GROUPS,
   ACCOUNT_KINDS,
   ACCOUNTING_METHODS,
+  AUDIT_ENTITIES,
   CONSUMPTION_TAX_METHODS,
   corporateNumberProblem,
   defaultAccountingMethod,
@@ -25,9 +26,11 @@ import {
   normalizeInvoiceRegistrationNumber,
   parseYenInput,
   PARTNER_KINDS,
+  SIDES,
   WALLET_KINDS,
   type CalendarDate,
   type DocumentMime,
+  type EntryCounterpart,
   type Money,
 } from "@niho-finance/ledger";
 import { z } from "zod";
@@ -530,6 +533,205 @@ export const openingInputSchema = z.object({
 });
 export type OpeningInput = z.input<typeof openingInputSchema>;
 export type ParsedOpeningInput = z.output<typeof openingInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Journal entries (取引, 11-transactions §4–§6)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, 1 or more; empty or 0 → `null` (an optional amount such as a transfer fee). */
+export function optionalPositiveYen(label: string) {
+  return orNull(
+    fromText(label, (text): Conversion<Money | null> => {
+      if (text === "") return ok(null);
+      const amount = parseYenInput(text);
+      if (amount === null) return problem(`${label}は円の整数で入力してください`);
+      return ok(amount === 0n ? null : amount);
+    }),
+  );
+}
+
+/** 入金先 / 支払元: `wallet:<id>` or `account:<id>` (one select with two optgroups, 11 §4.1). */
+function counterpartField(label: string) {
+  return fromText(label, (text): Conversion<EntryCounterpart> => {
+    if (text === "") return problem(`${label}を選んでください`);
+    const match = /^(wallet|account):(\S{1,64})$/.exec(text);
+    const id = match?.[2];
+    if (!match || !id) return problem(`${label}が正しくありません`);
+    return ok(
+      match[1] === "wallet" ? { kind: "wallet", walletId: id } : { kind: "account", accountId: id },
+    );
+  });
+}
+
+/** Tag ids (a row of checkboxes): an array, one id or nothing. Duplicates are dropped. */
+const memoTagIdsField = z
+  .preprocess(
+    (value): unknown[] => {
+      if (value === undefined || value === null || value === "") return [];
+      if (!Array.isArray(value)) return [value];
+      const list: unknown[] = value;
+      return list;
+    },
+    z
+      .array(z.string({ error: "タグが正しくありません" }).min(1).max(64), {
+        error: "タグが正しくありません",
+      })
+      .max(30, { error: "タグは 30 個までにしてください" }),
+  )
+  .optional()
+  .transform((ids) => [...new Set(ids ?? [])]);
+
+const entryDateField = requiredDate("日付");
+const entryDescriptionField = requiredText("摘要", 200);
+
+/** 収入 (11 §4.1). The amount is tax-inclusive. */
+export const incomeEntrySchema = z.object({
+  type: z.literal("income"),
+  entryDate: entryDateField,
+  description: entryDescriptionField,
+  counterpart: counterpartField("入金先"),
+  accountId: idField("科目"),
+  amount: positiveYen("金額"),
+  taxCategoryCode: taxCategoryCodeField(),
+  segmentId: optionalIdField("セグメント"),
+  partnerId: optionalIdField("取引先"),
+  memoTagIds: memoTagIdsField,
+});
+
+/** 支出 (11 §4.2). */
+export const expenseEntrySchema = incomeEntrySchema.extend({
+  type: z.literal("expense"),
+  counterpart: counterpartField("支払元"),
+});
+
+/** 振替 (11 §4.3): between two wallets, with an optional fee. */
+export const transferEntrySchema = z.object({
+  type: z.literal("transfer"),
+  entryDate: entryDateField,
+  description: entryDescriptionField,
+  fromWalletId: idField("出金元の口座"),
+  toWalletId: idField("入金先の口座"),
+  amount: positiveYen("金額"),
+  fee: optionalPositiveYen("手数料"),
+  memoTagIds: memoTagIdsField,
+});
+
+/** 収入 / 支出 / 振替, told apart by `type`. */
+export const simpleEntrySchema = z.discriminatedUnion(
+  "type",
+  [incomeEntrySchema, expenseEntrySchema, transferEntrySchema],
+  { error: "取引の種類が正しくありません。画面を読み込み直してください" },
+);
+export type SimpleEntryFormInput = z.input<typeof simpleEntrySchema>;
+export type ParsedSimpleEntry = z.output<typeof simpleEntrySchema>;
+
+/** The kinds a new 伝票 can have (11 §4.4). */
+export const VOUCHER_KINDS = ["normal", "adjusting"] as const;
+/** A correction keeps the original's kind (振替・開始) or becomes 通常 / 決算整理 (11 §1). */
+export const CORRECTION_KINDS = ["normal", "adjusting", "transfer", "opening"] as const;
+
+export const voucherLineSchema = z.object({
+  side: enumField("貸借", SIDES),
+  accountId: idField("科目"),
+  subAccountId: optionalIdField("補助科目"),
+  amount: positiveYen("金額"),
+  taxCategoryCode: taxCategoryCodeField(),
+  segmentId: optionalIdField("セグメント"),
+  partnerId: optionalIdField("取引先"),
+  description: optionalText("摘要", 200),
+});
+export type VoucherLineFormInput = z.input<typeof voucherLineSchema>;
+
+function voucherSchema<const K extends readonly [string, ...string[]]>(kinds: K) {
+  return z.object({
+    kind: enumField("種類", kinds),
+    entryDate: entryDateField,
+    description: entryDescriptionField,
+    /** The partner of the rows left blank. */
+    partnerId: optionalIdField("取引先"),
+    memoTagIds: memoTagIdsField,
+    lines: z
+      .array(voucherLineSchema, { error: "行の形式が正しくありません" })
+      .min(2, { error: "行は 2 行以上にしてください" })
+      .max(100, { error: "行は 100 行までにしてください" }),
+  });
+}
+
+/** 伝票 (11 §4.4). */
+export const voucherEntrySchema = voucherSchema(VOUCHER_KINDS);
+export type VoucherEntryFormInput = z.input<typeof voucherEntrySchema>;
+export type ParsedVoucherEntry = z.output<typeof voucherEntrySchema>;
+
+/** 取消 (11 §1, §5): the reason is stored on the entry and in the audit log. */
+export const voidEntrySchema = z.object({ reason: requiredText("理由", 500) });
+export type VoidEntryInput = z.input<typeof voidEntrySchema>;
+
+/** 訂正 (11 §1, §6): 取消 with the reason, then the replacement written as a 伝票. */
+export const correctEntrySchema = z.object({
+  reason: requiredText("理由", 500),
+  replacement: voucherSchema(CORRECTION_KINDS),
+});
+export type CorrectEntryInput = z.input<typeof correctEntrySchema>;
+
+// ---------------------------------------------------------------------------
+// 締め (11 §7)
+// ---------------------------------------------------------------------------
+
+/** Empty → 締めない. The reason is required when the close moves back (checked by `closeFiscalYearThrough`). */
+export const closeFiscalYearSchema = z.object({
+  lockedThrough: optionalDate("締め日"),
+  reason: optionalText("理由", 500),
+});
+export type CloseFiscalYearInput = z.input<typeof closeFiscalYearSchema>;
+
+// ---------------------------------------------------------------------------
+// Filters of the lists (URL search parameters, 11 §3, §8)
+// ---------------------------------------------------------------------------
+
+/** A search parameter may repeat; the first value counts. */
+function firstValue(value: unknown): unknown {
+  return Array.isArray(value) ? (value as unknown[])[0] : value;
+}
+
+/** URL parameters are typed by hand: anything unexpected falls back to the default, never an error. */
+function lenient<T>(schema: z.ZodType<T>, fallback: T) {
+  return z.preprocess(firstValue, schema).catch(fallback);
+}
+
+const filterDate = lenient<CalendarDate | null>(z.string().refine(isCalendarDate), null);
+const filterId = lenient<string | null>(z.string().trim().min(1).max(64), null);
+const filterPage = lenient(z.coerce.number().int().min(1).max(100_000), 1);
+
+/**
+ * 状態 of the journal list: 登録済み (default: the entries in force, reversals left out) /
+ * 取消済み (the voided entries and their reversals) / すべて.
+ */
+export const ENTRY_STATUS_FILTERS = ["posted", "voided", "all"] as const;
+export type EntryStatusFilter = (typeof ENTRY_STATUS_FILTERS)[number];
+
+/** `/entries?from&to&account&partner&segment&tag&status&q&page` (11 §3). */
+export const entriesFilterSchema = z.object({
+  from: filterDate,
+  to: filterDate,
+  account: filterId,
+  partner: filterId,
+  segment: filterId,
+  tag: filterId,
+  status: lenient<EntryStatusFilter>(z.enum(ENTRY_STATUS_FILTERS), "posted"),
+  /** 摘要 and the lines' 摘要, partial match. */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  page: filterPage,
+});
+export type EntriesFilter = z.output<typeof entriesFilterSchema>;
+
+/** `/settings/audit-log?entity&from&to&page` (11 §8). */
+export const auditLogFilterSchema = z.object({
+  entity: lenient<(typeof AUDIT_ENTITIES)[number] | null>(z.enum(AUDIT_ENTITIES), null),
+  from: filterDate,
+  to: filterDate,
+  page: filterPage,
+});
+export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
 
 // ---------------------------------------------------------------------------
 // Documents (証憑, 13-documents §8.3)

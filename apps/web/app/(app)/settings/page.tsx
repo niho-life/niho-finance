@@ -1,4 +1,4 @@
-import { getSettingsSummary, todayInJapan } from "@niho-finance/db";
+import { countAuditLog, getSettingsSummary, todayInJapan } from "@niho-finance/db";
 import { CONSUMPTION_TAX_METHOD_LABELS } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -17,7 +17,9 @@ interface Section {
 
 /** The index of the settings: one row per section with its summary (10 §4). */
 export default async function SettingsPage() {
-  const summary = await getSettingsSummary(await db(), { today: todayInJapan() });
+  const prisma = await db();
+  const summary = await getSettingsSummary(prisma, { today: todayInJapan() });
+  const auditRows = await countAuditLog(prisma);
   const { counts, fiscalYear } = summary;
   const sections: Section[] = [
     { label: "事業所", href: "/settings/company", summary: summary.companyName ?? "未登録" },
@@ -37,8 +39,12 @@ export default async function SettingsPage() {
     { label: "ルール", href: null, summary: "準備中" },
     { label: "定期取引", href: null, summary: "準備中" },
     { label: "証憑の規程", href: null, summary: "準備中" },
+    {
+      label: "監査ログ",
+      href: "/settings/audit-log",
+      summary: `${auditRows.toLocaleString("ja-JP")} 件`,
+    },
     { label: "書き出しとバックアップ", href: null, summary: "準備中" },
-    { label: "監査ログ", href: null, summary: "準備中" },
   ];
 
   return (

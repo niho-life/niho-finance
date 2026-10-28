@@ -15,3 +15,4 @@ export * from "./identifiers";
 export * from "./yen-input";
 export * from "./master-data";
 export * from "./documents";
+export * from "./simple-entry";

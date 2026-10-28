@@ -5,16 +5,59 @@ import {
   ACCOUNT_GROUPS_BY_KIND,
   ACCOUNT_KINDS,
   accountKindForCode,
+  AUDIT_ENTITIES,
+  AUDIT_ENTITY_LABELS,
+  auditActionLabel,
   CHART_TEMPLATE,
   defaultAccountingMethod,
+  ENTRY_KIND_LABELS,
+  ENTRY_KINDS,
+  ENTRY_STATUS_LABELS,
+  ENTRY_STATUSES,
   findTemplateAccount,
   formatYenInput,
+  INPUT_TAX_ACCOUNT_CODE,
   isAccountGroupOf,
   isStandardSegmentCode,
+  OUTPUT_TAX_ACCOUNT_CODE,
   parseYenInput,
+  SOURCE_KIND_LABELS,
+  SOURCE_KINDS,
+  TRANSFER_FEE_ACCOUNT_CODE,
   WALLET_DEFAULT_ACCOUNT_CODES,
   WALLET_KINDS,
 } from "../src";
+
+describe("labels of entries and the audit log", () => {
+  it("name every kind, source and status without showing the enum values", () => {
+    for (const kind of ENTRY_KINDS) expect(ENTRY_KIND_LABELS[kind]).toMatch(/[^\x20-\x7e]/);
+    for (const source of SOURCE_KINDS) expect(SOURCE_KIND_LABELS[source]).toBeTruthy();
+    for (const status of ENTRY_STATUSES) expect(ENTRY_STATUS_LABELS[status]).toBeTruthy();
+    for (const entity of AUDIT_ENTITIES) expect(AUDIT_ENTITY_LABELS[entity]).toBeTruthy();
+    expect(SOURCE_KIND_LABELS.system).toBe("初期設定");
+  });
+
+  it("label audit actions by their own name or by the shared verb", () => {
+    expect(auditActionLabel("journal_entry.post")).toBe("仕訳の登録");
+    expect(auditActionLabel("journal_entry.void")).toBe("仕訳の取消");
+    expect(auditActionLabel("journal_entry.correct")).toBe("仕訳の訂正");
+    expect(auditActionLabel("fiscal_year.close")).toBe("締め");
+    expect(auditActionLabel("fiscal_year.reopen")).toBe("締めを戻す");
+    expect(auditActionLabel("account.create")).toBe("追加");
+    expect(auditActionLabel("fiscal_year.update")).toBe("変更");
+    expect(auditActionLabel("wallet.deactivate")).toBe("無効化");
+    expect(auditActionLabel("tax_rate_rule.enable")).toBe("有効化");
+    expect(auditActionLabel("setup.skip")).toBe("初期設定を後回し");
+    expect(auditActionLabel("seed.apply")).toBeNull();
+    expect(auditActionLabel("create")).toBeNull();
+  });
+
+  it("finds the accounts the transaction forms add in the standard chart", () => {
+    expect(findTemplateAccount(OUTPUT_TAX_ACCOUNT_CODE)?.name).toBe("仮受消費税");
+    expect(findTemplateAccount(INPUT_TAX_ACCOUNT_CODE)?.name).toBe("仮払消費税");
+    expect(findTemplateAccount(TRANSFER_FEE_ACCOUNT_CODE)?.name).toBe("支払手数料");
+  });
+});
 
 describe("account kinds and statement groups", () => {
   it("puts every statement group under exactly one kind", () => {

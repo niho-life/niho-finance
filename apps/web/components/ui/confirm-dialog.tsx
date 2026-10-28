@@ -45,10 +45,12 @@ export function ConfirmDialog({
       ref={ref}
       aria-labelledby={titleId}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         if (!pending) onCancel();
       }}
-      onClose={() => {
+      onClose={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (open) onCancel();
       }}
       className="m-auto w-[min(440px,calc(100vw-32px))] rounded-card border border-border bg-surface p-0 text-text shadow-float"

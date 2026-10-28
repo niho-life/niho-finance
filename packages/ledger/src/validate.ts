@@ -1,4 +1,4 @@
-import { isCalendarDate } from "./date";
+import { displayDate, isCalendarDate } from "./date";
 import { LedgerValidationError, type LedgerError } from "./errors";
 import { formatYen, type Money } from "./money";
 import { isLocked, isWithinFiscalYear } from "./period";
@@ -51,10 +51,10 @@ export function validateEntry(input: JournalEntryInput, ctx: ValidationContext):
         message: `日付 ${input.entryDate} が会計期間（${fiscalYear.startDate}〜${fiscalYear.endDate}）の外です`,
       });
     }
-    if (isLocked(input.entryDate, fiscalYear)) {
+    if (isLocked(input.entryDate, fiscalYear) && fiscalYear.lockedThrough !== null) {
       errors.push({
         code: "PERIOD_LOCKED",
-        message: `${fiscalYear.lockedThrough ?? ""} までは締め済みのため登録できません`,
+        message: `${displayDate(fiscalYear.lockedThrough)} までは締めています。登録するには 設定 › 会計期間 で締めを戻してください`,
       });
     }
   }

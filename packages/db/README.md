@@ -15,6 +15,16 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 
 書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
 
+## 取引（S3）
+
+| ファイル | 内容 |
+| --- | --- |
+| `src/entries.ts` | 収入・支出・振替（`postSimpleEntry`。`buildSimpleEntry` で税込の金額を経理方式に合わせて分け、税抜経理は仮受・仮払消費税の行を足す）と伝票（`postVoucherEntry`）の登録、締め済みなら開いている最初の日付で反対仕訳を作る取消（`voidJournalEntryWithOpenDate`）、取消 → 新仕訳 → `replacedById` を 1 トランザクションで行う訂正（`correctJournalEntry`）、一覧（`listJournalEntries`）・詳細（`getJournalEntryDetail`）・履歴（`loadEntryHistory`）・フォームの選択肢（`loadEntryFormOptions`） |
+| `src/closing.ts` | 締め（`closeFiscalYearThrough`。月末日か期の末日に進める / 戻す。戻すときは理由必須。監査ログ `fiscal_year.close` / `.reopen`）、候補の月末日（`listCloseOptions`）、影響する件数（`countEntriesBetween` / `previewFiscalYearClose`） |
+| `src/audit-query.ts` | 監査ログの一覧（`listAuditLog`。対象・期間で絞り込み、対象を「仕訳 No. 12」の形で名付ける）。読むだけで監査ログは増えない |
+
+台帳の規則に反すると `LedgerValidationError` を投げます。取引の書き込みは、各エラーにフォームの項目名（`field`。例: `entryDate`、`lines.0.segmentId`、訂正は `replacement.` 付き）を付けて返します。
+
 ## migration
 
 migration は 2 種類を併用します。
@@ -53,7 +63,7 @@ npm run test:db     # DB のテスト（test/**/*.db.test.ts）
 
 1. `DATABASE_URL`（リポジトリ直下の `.env` か環境変数）から、テスト用の DB `<DB 名>_test`（例: `niho_finance_test`）を決める。`TEST_DATABASE_URL` で上書きできる。`DATABASE_URL` がなければ DB のテストはすべて skip。
 2. テスト用の DB を DROP して作り直し、`prisma migrate deploy` をする。migrate しただけの状態を `<DB 名>_test_empty` に複製してから、テスト用の DB に seed をする。
-3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式、設定の読み書きと監査ログ）。`setup.db.test.ts` だけは空の DB（`emptyTestPrisma()`）でウィザードを最初から最後まで進める。
+3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式、設定の読み書きと監査ログ、取引の登録・訂正・一覧、締めと監査ログの一覧）。`setup.db.test.ts` だけは空の DB（`emptyTestPrisma()`）でウィザードを最初から最後まで進める。ファイルどうしは DB を共有するため、各テストは自分の会計期間（第 1 期から離れた年）で動かす。
 4. `DATABASE_URL` の DB は読むだけ。seed 済みなら、全会計期間で試算表の恒等式と連番を確かめる（未 seed なら skip）。
 5. 終わったら `<DB 名>_test_empty` を DROP する（`<DB 名>_test` は次の実行まで残る）。
 
