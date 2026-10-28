@@ -26,6 +26,12 @@ import {
   type EntryCounterpart,
   type Money,
 } from "@niho-finance/ledger";
+import {
+  SIMPLIFIED_TAX_CLASSES,
+  STATEMENT_OTHER_NOTES_MAX,
+  STATEMENT_TEXT_MAX_LENGTH,
+  type SimplifiedTaxClass,
+} from "@niho-finance/reports";
 import { z } from "zod";
 
 type Conversion<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -354,6 +360,8 @@ export const accountUpdateSchema = z.object({
   group: enumField("決算書の区分", ACCOUNT_GROUPS).optional(),
   defaultTaxCategoryCode: optionalTaxCategoryCodeField("既定の税区分").optional(),
   isCashLike: booleanField("現預金").optional(),
+  /** 勘定科目コードの上書き (17-financial-statements §6.4). Empty = back to the standard code. */
+  eTaxCode: optionalText("勘定科目コード", 30).optional(),
 });
 export type AccountUpdateInput = z.input<typeof accountUpdateSchema>;
 
@@ -725,3 +733,124 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 決算書の設定 (17-financial-statements §3.1, §11)
+// ---------------------------------------------------------------------------
+
+/**
+ * A text of the statements (注記・事業報告): line breaks become `\n`, the ends are trimmed, and an
+ * empty string is kept (a deliberate blank: the item is left out). `null` puts the 雛形 back. A
+ * missing key leaves the stored text as it is.
+ */
+function statementText(label: string, max = STATEMENT_TEXT_MAX_LENGTH) {
+  return z
+    .preprocess(
+      (value) => (typeof value === "string" ? value.replace(/\r\n?/g, "\n").trim() : value),
+      z
+        .string({ error: `${label}の形式が正しくありません` })
+        .max(max, { error: `${label}は ${max} 文字以内にしてください` })
+        .nullable(),
+    )
+    .optional();
+}
+
+const issuedSharesField = fromText("発行済株式の総数", (text): Conversion<number | null> => {
+  const normalized = toHalfWidthDigits(text).replace(/[,，]/g, "");
+  if (normalized === "") return ok(null);
+  if (!/^\d+$/.test(normalized)) {
+    return problem("発行済株式の総数は株数の整数で入力してください");
+  }
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    return problem("発行済株式の総数は 1 株以上の整数にしてください");
+  }
+  return ok(value);
+});
+
+const announcementUrlField = fromText("決算公告の URL", (text): Conversion<string | null> => {
+  if (text === "") return ok(null);
+  if (text.length > 500) return problem("決算公告の URL は 500 文字以内にしてください");
+  if (!/^https?:\/\/[^\s]+$/.test(text)) {
+    return problem("決算公告の URL は https:// から始まる形で入力してください");
+  }
+  return ok(text);
+});
+
+const simplifiedTaxClassField = fromText(
+  "簡易課税の事業区分",
+  (text): Conversion<SimplifiedTaxClass | null> => {
+    if (text === "") return ok(null);
+    const value = Number(toHalfWidthDigits(text));
+    return (SIMPLIFIED_TAX_CLASSES as readonly number[]).includes(value)
+      ? ok(value as SimplifiedTaxClass)
+      : problem("簡易課税の事業区分は第 1 種〜第 6 種から選んでください");
+  },
+);
+
+const otherNoteSchema = z
+  .object({
+    title: statementText("その他の注記の項目名", 100),
+    body: statementText("その他の注記の内容"),
+  })
+  .transform((note) => ({ title: note.title ?? "", body: note.body ?? "" }))
+  .superRefine((note, ctx) => {
+    if (note.title === "" && note.body !== "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["title"],
+        message: "その他の注記の項目名を入力してください",
+      });
+    }
+    if (note.title !== "" && note.body === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["body"],
+        message: "その他の注記の内容を入力してください",
+      });
+    }
+  });
+
+/**
+ * 決算書の設定 of one fiscal year (`FiscalYear.statementSettings`): the shape of
+ * `StatementSettings` of `@niho-finance/reports`. Every key is optional: a missing key leaves the
+ * stored value as it is (the form sends every key). その他の注記 left blank are dropped. The checks
+ * against the fiscal year and between the dates are `saveStatementSettings`'s.
+ */
+export const statementSettingsSchema = z.object({
+  issuedShares: issuedSharesField.optional(),
+  shareholdersMeetingOn: optionalDate("株主総会の日").optional(),
+  announcementPublishedOn: optionalDate("決算公告の掲載日").optional(),
+  announcementUrl: announcementUrlField.optional(),
+  notes: z
+    .object({
+      depreciation: statementText("固定資産の減価償却の方法"),
+      revenueRecognition: statementText("収益及び費用の計上基準"),
+      otherSignificant: statementText("その他の重要な事項"),
+      accountingPolicyChanges: statementText("会計方針の変更"),
+      presentationChanges: statementText("表示方法の変更"),
+      errorCorrections: statementText("誤謬の訂正"),
+      otherNotes: z
+        .array(otherNoteSchema)
+        .transform((notes) => notes.filter((note) => note.title !== "" || note.body !== ""))
+        .pipe(
+          z
+            .array(z.object({ title: z.string(), body: z.string() }))
+            .max(STATEMENT_OTHER_NOTES_MAX, {
+              error: `その他の注記は ${STATEMENT_OTHER_NOTES_MAX} 項目までにしてください`,
+            }),
+        )
+        .optional(),
+    })
+    .optional(),
+  businessReport: z
+    .object({
+      progress: statementText("事業の経過及びその成果"),
+      issues: statementText("対処すべき課題"),
+      otherMatters: statementText("事業報告のその他の重要な事項"),
+    })
+    .optional(),
+  simplifiedTaxClass: simplifiedTaxClassField.optional(),
+});
+export type StatementSettingsInput = z.input<typeof statementSettingsSchema>;
+export type StatementSettingsPatch = z.output<typeof statementSettingsSchema>;
