@@ -1429,6 +1429,12 @@ export async function listPartners(
   return rows.map(toPartnerSettings);
 }
 
+/** One partner (取引先の詳細, 14-reports §15.5); `null` for an unknown id. */
+export async function getPartner(db: Db, id: string): Promise<PartnerSettings | null> {
+  const row = await db.partner.findUnique({ where: { id } });
+  return row ? toPartnerSettings(row) : null;
+}
+
 async function assertPartnerReferences(
   tx: Tx,
   data: {

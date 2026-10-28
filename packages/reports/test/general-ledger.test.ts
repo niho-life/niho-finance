@@ -116,6 +116,59 @@ describe("buildGeneralLedger", () => {
     ).toBe(true);
   });
 
+  it("narrows to a partner as 集計 decides it, the opening included (§15.3)", () => {
+    // e17's 支払手数料 has no partner: it counts for the partner of the entry's 売掛金 line.
+    const fee = buildGeneralLedger(BOOK, FY1_YEAR, {
+      accountId: "acc:5400",
+      partnerId: "p:design",
+    });
+    expect(fee.rows.map((r) => r.no)).toEqual([17]);
+    expect(fee.closing).toBe(440n);
+    expect(fee.partnerFilter).toEqual({
+      value: "p:design",
+      name: "取引先",
+      label: "架空デザイン合同会社",
+    });
+    const unattributed = buildGeneralLedger(BOOK, FY1_YEAR, {
+      accountId: "acc:5400",
+      partnerId: "none",
+    });
+    expect(unattributed.rows.map((r) => r.no)).toEqual([7, 11]);
+    expect(unattributed.partnerFilter?.label).toBe("取引先なし");
+    const march = buildGeneralLedger(
+      BOOK,
+      { ...FY1_YEAR, preset: "custom", from: "2027-03-01", to: "2027-03-31" },
+      { accountId: "acc:5300", partnerId: "p:realty" },
+    );
+    expect([march.opening, march.closing]).toEqual([176_000n, 264_000n]);
+    // Balance-sheet lines take only their own (or their sub-account's) partner.
+    const receivable = buildGeneralLedger(BOOK, FY1_YEAR, {
+      accountId: "acc:1200",
+      partnerId: "p:design",
+    });
+    expect(receivable.rows.map((r) => r.no)).toEqual([15, 17]);
+    const bank = buildGeneralLedger(BOOK, FY1_YEAR, {
+      accountId: "acc:1100",
+      partnerId: "p:design",
+    });
+    expect(bank.empty).toBe(true);
+  });
+
+  it("narrows to a tag (or to lines without one)", () => {
+    const tagged = buildGeneralLedger(BOOK, FY1_YEAR, {
+      accountId: "acc:5320",
+      tagId: "tag:recurring",
+    });
+    expect(tagged.rows.map((r) => r.no)).toEqual([3, 20]);
+    expect(tagged.tagFilter?.label).toBe("定期");
+    expect(tagged.partnerFilter).toBeNull();
+    const untagged = buildGeneralLedger(BOOK, FY1_YEAR, { accountId: "acc:5320", tagId: "none" });
+    expect(untagged.empty).toBe(true);
+    expect(untagged.tagFilter?.label).toBe("タグなし");
+    const plain = buildGeneralLedger(BOOK, FY1_YEAR, { accountId: "acc:5320" });
+    expect([plain.partnerFilter, plain.tagFilter]).toEqual([null, null]);
+  });
+
   it("writes CSV with the opening and the totals", () => {
     const rows = ledgerCsvRows(buildGeneralLedger(BOOK, FY1_YEAR, { accountId: "acc:1100" }));
     expect(rows[1]).toEqual(["2026/11/02", "", "繰越", "", "", "", 0n]);

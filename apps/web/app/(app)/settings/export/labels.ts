@@ -3,6 +3,7 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   "trial-balance": "試算表",
   monthly: "月次推移",
   segments: "セグメント損益",
+  breakdown: "集計",
   cash: "現預金",
   cashflow: "資金繰り",
   journal: "仕訳帳",
