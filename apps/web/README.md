@@ -23,7 +23,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/settings/partners` | 取引先（検索・直接編集） |
 | `/settings/segments` | セグメント |
 | `/settings/memo-tags` | タグ |
-| `/api/health` | 死活と DB の疎通、`service`（`web` / `jobs`）と `gitSha` |
+| `/api/health` | 死活と DB の疎通、`service`（`web` / `jobs`）、`gitSha`、`iap`（IAP の署名ヘッダーの検証結果: `verified` / `missing` / `invalid` / `not-configured`。誰かは返さない） |
 | `/api/jobs/backup` | POST。日次エクスポート（`backup-export`）。`NIHO_FINANCE_SERVICE=jobs` のときだけ動き、画面のサービスでは 404 |
 | `/api/jobs/calendar` | POST。期限の暦の生成と通知メール（`calendar-notify`）。同上 |
 | `/api/jobs/mail-check` | POST。「送信の確認」を 1 通送る（手動。`scripts/run-job.sh mail-check`）。同上 |

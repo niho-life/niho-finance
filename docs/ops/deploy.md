@@ -79,7 +79,7 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 1. `gcloud builds submit --config cloudbuild.yaml`（イメージのタグは git の SHA）
 2. `niho-finance-migrate` を新しいイメージで実行し、終わるまで待つ（失敗したら配備を止める）
 3. `niho-finance` と `niho-finance-jobs` を新しいイメージで配備（env と Secret も毎回渡す）
-4. `/api/health` で DB の疎通を確認する
+4. ブラウザで画面の `/api/health` を開き、`db: true` と `iap: "verified"`（IAP の署名を検証できた = 書き込みが通る）と `gitSha` を確かめる
 
 配備の記録は Cloud Run のリビジョン履歴で足ります（06 §7）。migration は expand → contract（列の削除は配備の 1 つ後）。
 

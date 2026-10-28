@@ -58,6 +58,25 @@ function reject(reason: string, cause?: unknown): never {
   throw new ActorError(undefined, { cause });
 }
 
+export type IapAssertionStatus = "verified" | "missing" | "invalid" | "not-configured";
+
+/**
+ * Whether the current request carries a valid IAP assertion, without saying whose (the health
+ * check: after a deploy it shows that writes will be accepted, without writing anything).
+ */
+export async function iapAssertionStatus(): Promise<IapAssertionStatus> {
+  const audience = appEnv().NIHO_FINANCE_IAP_AUDIENCE;
+  if (!audience) return "not-configured";
+  const assertion = (await headers()).get(IAP_ASSERTION_HEADER);
+  if (!assertion) return "missing";
+  try {
+    await verifyIapAssertion(assertion, { audience, getKey: iapKeys });
+    return "verified";
+  } catch {
+    return "invalid";
+  }
+}
+
 /** The actor of the current request (Server Actions). Throws `ActorError` when it is not known. */
 export async function actor(): Promise<string> {
   const env = appEnv();
