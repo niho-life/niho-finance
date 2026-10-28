@@ -74,6 +74,15 @@ function blankToNull(value: string | null | undefined): string | null {
   return value.trim() === "" ? null : value;
 }
 
+/**
+ * 代表者 as a name: the statements print 「代表取締役」 themselves, so a title typed into the
+ * company settings (「代表取締役 架空 太郎」) is dropped rather than printed twice.
+ */
+function representativeName(value: string | null | undefined): string | null {
+  const name = blankToNull(value);
+  return name === null ? null : blankToNull(name.replace(/^\s*代表取締役[\s\u3000]*/, ""));
+}
+
 /** Builds the source from S7's `ReportSource` and the extra columns, so the loader stays thin. */
 export function toFinancialStatementsSource(
   base: ReportSource,
@@ -85,7 +94,7 @@ export function toFinancialStatementsSource(
     company: {
       ...base.company,
       address: blankToNull(extras.company.address),
-      representative: blankToNull(extras.company.representative),
+      representative: representativeName(extras.company.representative),
       invoiceRegisteredOn: extras.company.invoiceRegisteredOn,
     },
     fiscalYears: base.fiscalYears.map((fiscalYear) => {

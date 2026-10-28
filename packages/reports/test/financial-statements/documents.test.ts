@@ -145,6 +145,18 @@ describe("toFinancialStatementsSource", () => {
     expect(source.fiscalYears[0]?.statementSettings?.issuedShares).toBe(10000);
     expect(source.fiscalYears[1]?.statementSettings).toBeNull();
   });
+
+  it("keeps the representative's name without the title the statements add", () => {
+    const representative = (value: string) =>
+      toFinancialStatementsSource(BOOK, {
+        company: { address: null, representative: value, invoiceRegisteredOn: null },
+        taxRules: BOOK.taxRules,
+      }).company.representative;
+    expect(representative("代表取締役 架空 太郎")).toBe("架空 太郎");
+    expect(representative("代表取締役　架空 太郎")).toBe("架空 太郎");
+    expect(representative("架空 太郎")).toBe("架空 太郎");
+    expect(representative("代表取締役")).toBeNull();
+  });
 });
 
 describe("個別注記表", () => {
