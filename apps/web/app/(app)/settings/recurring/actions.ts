@@ -46,6 +46,7 @@ const RECURRING_FIELDS = [
   "endDate",
   "walletId",
   "accountId",
+  "transferWalletId",
   "partnerId",
   "segmentId",
   "taxCategoryCode",
@@ -65,11 +66,22 @@ function recurringValues(item: RecurringItemSettings): RowValues {
     endDate: item.endDate ?? "",
     walletId: item.walletId ?? "",
     accountId: item.accountId,
+    transferWalletId: item.transferWalletId ?? "",
     partnerId: item.partnerId ?? "",
     segmentId: item.segmentId ?? "",
     taxCategoryCode: item.taxCategoryCode ?? "",
     note: item.note ?? "",
   };
+}
+
+/** The 科目 select's value: an account, or `wallet:<id>` of 「口座（振替）」 (21 §10.1). */
+const TRANSFER_PREFIX = "wallet:";
+
+function accountChoice(value: unknown): { accountId: string; transferWalletId: string } {
+  const text = typeof value === "string" ? value : "";
+  return text.startsWith(TRANSFER_PREFIX)
+    ? { accountId: "", transferWalletId: text.slice(TRANSFER_PREFIX.length) }
+    : { accountId: text, transferWalletId: "" };
 }
 
 /** 「追加」: the start date is today unless the form says otherwise (21 §7). */
@@ -81,7 +93,11 @@ export async function createRecurringItemAction(formData: FormData): Promise<Act
       const input = formInput<RecurringItemCreateInput>(formData);
       return createRecurringItem(
         prisma(),
-        { ...input, startDate: input.startDate || todayInJapan() },
+        {
+          ...input,
+          ...accountChoice(input.accountId),
+          startDate: input.startDate || todayInJapan(),
+        },
         await by(),
       );
     },

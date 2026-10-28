@@ -1,5 +1,6 @@
-import { daysBetween, type CalendarDate } from "./date";
+import { addDays, daysBetween, type CalendarDate } from "./date";
 import { abs, formatYen, type Money } from "./money";
+import { recurringMonth, recurringOccurrences, type RecurringSchedule } from "./recurring";
 import { isReservedAccount, walletAccountIdsOf } from "./simple-entry";
 import { getTaxCategory } from "./tax-categories";
 import type { AccountKind } from "./types";
@@ -317,6 +318,30 @@ export interface TransferCandidate {
   entryNo: number | null;
 }
 
+/**
+ * An active recurring item (21-cashflow §10.6) as the 定期取引 stage reads it: the entry it would
+ * register and the months already registered (§10.2), which the stage leaves out.
+ */
+export interface SuggestRecurringItem extends RecurringSchedule {
+  id: string;
+  name: string;
+  walletId: string;
+  /** Signed from the wallet's point of view: deposits are positive. */
+  amount: Money;
+  /** 振替: the other wallet; `null` for 収入 / 支出. */
+  transferWalletId: string | null;
+  /** 収入 / 支出: the account of the entry (`null` for 振替). */
+  accountId: string | null;
+  taxCategoryCode: string | null;
+  partnerId: string | null;
+  segmentId: string | null;
+  /** `YYYY-MM` of the occurrences already registered (§10.2 (a)・(b)). */
+  bookedMonths: ReadonlySet<string>;
+}
+
+/** An occurrence is looked for this many days before and after the line's date (§10.6). */
+export const RECURRING_MATCH_DAYS = 7;
+
 export interface SuggestContext {
   /** The active rules (any order: `compareRules` decides). */
   rules: readonly SuggestRule[];
@@ -327,9 +352,12 @@ export interface SuggestContext {
   wallets: ReadonlyMap<string, SuggestWallet>;
   /** The transfer candidates of this line. */
   candidates: readonly TransferCandidate[];
+  /** The active recurring items (§10.6); absent = the 定期取引 stage is skipped. */
+  recurring?: readonly SuggestRecurringItem[];
 }
 
-export type SuggestionSource = "rule" | "candidate" | "history" | "partner" | "default";
+export type SuggestionSource =
+  "rule" | "candidate" | "recurring" | "history" | "partner" | "default";
 
 export interface Suggestion {
   /** The primary action of the row. */
@@ -348,6 +376,8 @@ export interface Suggestion {
   transferToWalletId: string | null;
   candidate: { kind: "txn" | "entry"; id: string } | null;
   ignoredReason: string | null;
+  /** The recurring item the 定期取引 stage matched (21-cashflow §10.6), else `null`. */
+  recurringItemId: string | null;
   /** Where each chip came from: a rule's are drawn solid, the others dotted. */
   sources: {
     account: SuggestionSource | null;
@@ -449,6 +479,7 @@ function emptySuggestion(): Suggestion {
     transferToWalletId: null,
     candidate: null,
     ignoredReason: null,
+    recurringItemId: null,
     sources: { account: null, taxCategory: null, partner: null, segment: null, transfer: null },
   };
 }
@@ -557,6 +588,72 @@ function applyRule(
   }
 }
 
+/**
+ * The recurring item of a line (21-cashflow §10.6): of the line's wallet, the same signed amount,
+ * an occurrence within ±7 days of the line's date whose month is not registered yet. The nearest
+ * occurrence wins, then the name, then the id. A 振替 needs its other wallet to be active, and a
+ * 収入 / 支出 an account the line can take (the stage must decide its chips).
+ */
+function matchRecurring(
+  line: StatementLine,
+  context: SuggestContext,
+  walletAccountIds: ReadonlySet<string>,
+): SuggestRecurringItem | null {
+  const items = context.recurring ?? [];
+  if (items.length === 0) return null;
+  const direction = statementDirection(line.amount);
+  const range = {
+    after: addDays(line.txnDate, -(RECURRING_MATCH_DAYS + 1)),
+    through: addDays(line.txnDate, RECURRING_MATCH_DAYS),
+  };
+  let best: { item: SuggestRecurringItem; distance: number } | null = null;
+  for (const item of items) {
+    if (item.walletId !== line.walletId || item.amount !== line.amount) continue;
+    if (item.transferWalletId !== null) {
+      if (!transferTarget(item.transferWalletId, line, context)) continue;
+    } else {
+      const account = item.accountId ? context.accounts.get(item.accountId) : undefined;
+      if (!account || !allowedStatementAccount(account, direction, walletAccountIds)) continue;
+    }
+    for (const date of recurringOccurrences(item, range)) {
+      if (item.bookedMonths.has(recurringMonth(date))) continue;
+      const gap = distance(line.txnDate, date);
+      if (
+        !best ||
+        gap < best.distance ||
+        (gap === best.distance &&
+          (item.name < best.item.name || (item.name === best.item.name && item.id < best.item.id)))
+      ) {
+        best = { item, distance: gap };
+      }
+    }
+  }
+  return best?.item ?? null;
+}
+
+function applyRecurring(
+  suggestion: Suggestion,
+  item: SuggestRecurringItem,
+  line: StatementLine,
+  context: SuggestContext,
+  walletAccountIds: ReadonlySet<string>,
+): void {
+  suggestion.source = "recurring";
+  suggestion.recurringItemId = item.id;
+  if (item.transferWalletId !== null) {
+    suggestion.mode = "transfer";
+    suggestion.transferToWalletId = transferTarget(item.transferWalletId, line, context);
+    suggestion.sources.transfer = "recurring";
+    const nearest = suggestion.transferToWalletId
+      ? bestTransferCandidate(context.candidates, line.txnDate, suggestion.transferToWalletId)
+      : null;
+    suggestion.candidate = nearest ? { kind: nearest.kind, id: nearest.id } : null;
+    return;
+  }
+  // 摘要 stays the line's own (§10.6).
+  fill(suggestion, item, "recurring", line, context, walletAccountIds);
+}
+
 /** The settled line to copy: the newest of the same wallet, else the newest of any wallet. */
 function historyItem(line: StatementLine, context: SuggestContext): SuggestHistoryItem | null {
   const key = descriptionKey(line.descriptionRaw);
@@ -569,10 +666,12 @@ function historyItem(line: StatementLine, context: SuggestContext): SuggestHisto
  * The initial chips and primary action of a statement line (15 §4), in a fixed order where a later
  * stage never overwrites an earlier one:
  * 1. the first matching rule (`compareRules`); 2. else the nearest transfer candidate; 3. else the
- * newest settled line with the same `descriptionKey`; then, for a registration, 4. the partner named
- * in the description or counterparty (its defaults fill the empty fields), and 5. the account's
+ * recurring item due around the line's date (21-cashflow §10.6, `matchRecurring`); 4. else the
+ * newest settled line with the same `descriptionKey`; then, for a registration, 5. the partner named
+ * in the description or counterparty (its defaults fill the empty fields), and 6. the account's
  * default tax category (when it fits the direction) and default segment, then the wallet's segment.
- * A line of 0 yen can only be ignored.
+ * A line of 0 yen can only be ignored. The 定期取引 stage never settles a line on import: only a
+ * rule's `autoPost` does (15 §11).
  */
 export function suggest(line: StatementLine, context: SuggestContext): Suggestion {
   const suggestion = emptySuggestion();
@@ -584,6 +683,7 @@ export function suggest(line: StatementLine, context: SuggestContext): Suggestio
 
   const rule = [...context.rules].sort(compareRules).find((item) => matchesRule(item, line));
   const candidate = rule ? null : bestTransferCandidate(context.candidates, line.txnDate);
+  const recurring = rule || candidate ? null : matchRecurring(line, context, walletAccountIds);
   if (rule) {
     applyRule(suggestion, rule, line, context, walletAccountIds);
   } else if (candidate) {
@@ -592,6 +692,8 @@ export function suggest(line: StatementLine, context: SuggestContext): Suggestio
     suggestion.transferToWalletId = candidate.walletId;
     suggestion.candidate = { kind: candidate.kind, id: candidate.id };
     suggestion.sources.transfer = "candidate";
+  } else if (recurring) {
+    applyRecurring(suggestion, recurring, line, context, walletAccountIds);
   } else {
     const item = historyItem(line, context);
     if (item?.mode === "transfer") {
@@ -611,7 +713,7 @@ export function suggest(line: StatementLine, context: SuggestContext): Suggestio
   }
   if (suggestion.mode !== "register") return suggestion;
 
-  // 4. 取引先の既定: the partner chosen so far, else the one named in the text.
+  // 5. 取引先の既定: the partner chosen so far, else the one named in the text.
   const partner =
     (suggestion.partnerId
       ? context.partners.find((item) => item.id === suggestion.partnerId)
@@ -634,7 +736,7 @@ export function suggest(line: StatementLine, context: SuggestContext): Suggestio
     if (!before && hasAnyField(suggestion)) suggestion.source = "partner";
   }
 
-  // 5. 科目の既定, then the wallet's segment.
+  // 6. 科目の既定, then the wallet's segment.
   const before = hasAnyField(suggestion);
   const account = suggestion.accountId ? context.accounts.get(suggestion.accountId) : undefined;
   const wallet = context.wallets.get(line.walletId);

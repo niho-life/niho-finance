@@ -307,6 +307,25 @@ export {
   type RecurringItemSettings,
 } from "./recurring";
 export {
+  countDueRecurringOccurrences,
+  describeRecurringSource,
+  listDueRecurringOccurrences,
+  listRecurringEntries,
+  listRecurringEntryTemplates,
+  loadRecurringSuggestItems,
+  postRecurringOccurrence,
+  RECURRING_DUE_DAYS,
+  RECURRING_ENTRY_HISTORY_LIMIT,
+  recurringDueTodo,
+  recurringEntryTemplate,
+  recurringScheduleOf,
+  type RecurringDueMode,
+  type RecurringDueOccurrence,
+  type RecurringEntryRow,
+  type RecurringEntryTemplate,
+  type RecurringPostResult,
+} from "./recurring-post";
+export {
   confirmPayrollRun,
   createEmployee,
   EMPLOYEE_WARNING_CODES,
