@@ -1,102 +1,144 @@
-import { loadCashPosition, loadCurrentFiscalYear, todayInJapan } from "@niho-finance/db";
-import { WALLET_KIND_LABELS } from "@niho-finance/ledger";
+import { loadHomeTodos, loadReportSource, loadWalletStatus, todayInJapan } from "@niho-finance/db";
+import {
+  buildCashReport,
+  buildSegmentReport,
+  buildTrialBalance,
+  fiscalYearOn,
+  periodSearchParams,
+  resolveReportPeriod,
+  type ReportPeriod,
+} from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db, loadSetupProgress, loadShell, requireSetupReady } from "@/lib/data";
 import { formatAmount, formatDate, formatMonth, formatPeriod } from "@/lib/format";
+import { HomeCard } from "./_home/card";
+import { profitFigures, segmentBars } from "./_home/figures";
+import { ProfitCard } from "./_home/profit-card";
+import { TodoCard, type TodoRow } from "./_home/todo-card";
+import { owedSummary, WalletCards } from "./_home/wallet-cards";
 
 export const metadata: Metadata = { title: "ホーム" };
 
-/** Home until S7: company, 第 n 期, 現預金 (derived) and the way to the settings (10 §1). */
+/**
+ * ホーム (14-reports §9): how much money there is now, how this month and this year go, and what
+ * to do. Everything is derived from the posted entries on the day of today (the first day of the
+ * books before they start).
+ */
 export default async function HomePage() {
   await requireSetupReady();
   const prisma = await db();
   const shell = await loadShell();
   const progress = await loadSetupProgress();
+  const source = await loadReportSource(prisma);
   const today = todayInJapan();
-  const fiscalYear = await loadCurrentFiscalYear(prisma, today);
-  // Before the founding date there is nothing to show "today": show the first day of the books.
+  const fiscalYear = fiscalYearOn(source.fiscalYears, today);
   const asOf = fiscalYear && today < fiscalYear.startDate ? fiscalYear.startDate : today;
-  const cash = await loadCashPosition(prisma, asOf);
+  const resolve = (query: Parameters<typeof resolveReportPeriod>[0]) =>
+    resolveReportPeriod(query, source.fiscalYears, asOf);
+
+  // 現預金 on `asOf`: the cash tab with this period shows the same total.
+  const cashPeriod: ReportPeriod | null = fiscalYear
+    ? resolve({ fy: fiscalYear.no, period: "custom", from: fiscalYear.startDate, to: asOf })
+    : null;
+  const cash = cashPeriod
+    ? buildCashReport(source, cashPeriod, await loadWalletStatus(prisma, { through: asOf }))
+    : null;
+  const month = resolve({ period: "month" });
+  const year = resolve({ period: "year" });
+  const todos = await loadHomeTodos(prisma, today);
+
+  const rows: TodoRow[] = todos.map((todo) => ({
+    key: todo.key,
+    badge: todo.badge,
+    tone: todo.tone,
+    label: todo.label,
+    href: todo.href,
+  }));
+  if (progress.skipped.wallets) {
+    rows.push({
+      key: "setup-wallets",
+      badge: null,
+      tone: "warn",
+      label: "口座がまだありません。銀行や役員立替を登録します",
+      href: "/settings/wallets",
+    });
+  }
+  if (progress.skipped.opening) {
+    rows.push({
+      key: "setup-opening",
+      badge: null,
+      tone: "warn",
+      label: "開始仕訳（資本金の払込・創立費）がまだありません",
+      href: "/setup?step=opening",
+    });
+  }
+  const owed = cash ? owedSummary(cash.otherWallets) : null;
 
   return (
     <>
-      <PageHeader title="ホーム" meta={formatMonth(asOf)} />
-      <div className="grid gap-3.5 md:grid-cols-[1.2fr_2fr]">
-        <section className="rounded-card border border-border bg-surface px-5 py-[18px]">
-          <h2 className="mb-2.5 text-[13px] font-bold text-muted">現預金</h2>
+      <PageHeader
+        title="ホーム"
+        meta={`${formatMonth(asOf)}${shell.fiscalYearNo ? ` · 第${shell.fiscalYearNo}期` : ""}`}
+      />
+      <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <HomeCard
+          id="home-cash"
+          title="現預金"
+          href={
+            cashPeriod
+              ? `/reports/cash?${new URLSearchParams(periodSearchParams(cashPeriod)).toString()}`
+              : undefined
+          }
+        >
           <p className="num text-[32px] leading-tight font-extrabold tracking-tight">
-            {formatAmount(cash.total)}
+            {formatAmount(cash?.total ?? 0n)}
             <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
           </p>
-          <p className="mt-1.5 text-[12px] text-muted">
-            {formatDate(cash.asOf)} 時点 · 仕訳から導出
-          </p>
-        </section>
-        <section className="rounded-card border border-border bg-surface px-5 py-[18px]">
-          <h2 className="mb-2.5 text-[13px] font-bold text-muted">事業所</h2>
-          <p className="text-[18px] font-extrabold">{shell.companyName}</p>
-          <p className="mt-1 text-[13px] text-muted">
-            {fiscalYear
-              ? `第${fiscalYear.no}期 ${formatPeriod(fiscalYear.startDate, fiscalYear.endDate)}`
-              : "会計期間がありません"}
-          </p>
-          {cash.wallets.length > 0 ? (
-            <ul className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-              {cash.wallets.map((wallet) => (
-                <li
-                  key={wallet.id}
-                  className="flex min-w-0 flex-col gap-0.5 rounded-[10px] border border-border px-3.5 py-3"
-                >
-                  <span className="truncate text-[12px] text-muted">
-                    {wallet.name}
-                    <span className="ml-1 text-muted-2">{WALLET_KIND_LABELS[wallet.kind]}</span>
-                  </span>
-                  <span className="num text-[18px] font-extrabold">
-                    {formatAmount(wallet.balance)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
+          <p className="mt-1.5 text-[12px] text-muted">{formatDate(asOf)} 時点 · 仕訳から導出</p>
+          {owed ? <p className="num mt-3 text-[12px] text-muted">{owed}</p> : null}
+        </HomeCard>
+        <HomeCard id="home-wallets" title="口座">
+          {cash && cash.wallets.length > 0 ? (
+            <WalletCards wallets={cash.wallets} />
+          ) : (
+            <p className="text-[14px] text-muted">現預金の口座はまだありません。</p>
+          )}
+        </HomeCard>
       </div>
 
-      {progress.skipped.wallets || progress.skipped.opening ? (
-        <section className="mt-3.5 rounded-card border border-border bg-surface px-5 py-[18px]">
-          <h2 className="mb-1 text-[13px] font-bold text-muted">やること</h2>
-          <ul className="flex flex-col">
-            {progress.skipped.wallets ? (
-              <li className="flex flex-wrap items-center gap-3 border-b border-border py-2.5 last:border-b-0">
-                <span className="flex-1 text-[14px]">
-                  口座がまだありません。銀行や役員立替を登録します
-                </span>
-                <ButtonLink href="/settings/wallets" size="sm">
-                  口座を追加
-                </ButtonLink>
-              </li>
-            ) : null}
-            {progress.skipped.opening ? (
-              <li className="flex flex-wrap items-center gap-3 border-b border-border py-2.5 last:border-b-0">
-                <span className="flex-1 text-[14px]">
-                  開始仕訳（資本金の払込・創立費）がまだありません
-                </span>
-                <ButtonLink href="/setup?step=opening" size="sm">
-                  開始仕訳を登録
-                </ButtonLink>
-              </li>
-            ) : null}
-          </ul>
-        </section>
-      ) : null}
+      <div className="mt-3.5 grid gap-3.5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-3.5">
+          {month ? (
+            <ProfitCard
+              id="home-month"
+              title="今月の損益"
+              href="/reports/trial-balance?period=month"
+              periodLabel={formatPeriod(month.from, month.to)}
+              figures={profitFigures(buildTrialBalance(source, month), source)}
+              bars={segmentBars(buildSegmentReport(source, month))}
+            />
+          ) : null}
+          {year ? (
+            <ProfitCard
+              id="home-year"
+              title="今期の損益"
+              href="/reports/trial-balance?period=year"
+              periodLabel={`第${year.fiscalYear.no}期 ${formatPeriod(year.from, year.to)}`}
+              figures={profitFigures(buildTrialBalance(source, year), source)}
+              bars={segmentBars(buildSegmentReport(source, year))}
+            />
+          ) : null}
+        </div>
+        <TodoCard rows={rows} className="lg:self-start" />
+      </div>
 
       <p className="mt-6 text-[13px] text-muted">
         <Link href="/entries" className="font-bold text-text underline underline-offset-4">
           取引
         </Link>
-        は登録できます。明細・報告は準備中です。勘定科目や口座は{" "}
+        の登録・証憑の保存・報告が使えます。明細は準備中です。勘定科目や口座は{" "}
         <Link href="/settings" className="font-bold text-text underline underline-offset-4">
           設定
         </Link>{" "}

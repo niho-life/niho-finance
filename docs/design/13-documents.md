@@ -27,7 +27,7 @@
 
 - 左ナビの「証憑」を `/documents` に有効化する。スマホの下タブ中央（カメラ）は `/documents` へのリンク（primary の丸いボタン、`aria-label="証憑"`）。
 - 設定の索引の「証憑の規程」を `/settings/documents-policy` に有効化する（要約は「未制定」か「施行日 yyyy/mm/dd」）。
-- ホームの「未紐づけの証憑 n 件」は S7 が `countInboxDocuments` で出す。S6 ではホームを触らない。
+- ホームの「やること」の「受信箱の証憑 n 件」は、S7 の差し込み口 `inboxDocumentsTodo` が `countInboxDocuments` で数えて `/documents` へ結ぶ（S7 が先に入ったので S6 で結線した）。
 
 ## 3. 一覧 `/documents`
 
@@ -148,7 +148,7 @@
 - S5（#6）: `linkDocument` / `unlinkDocument` / `listDocumentLinks` / `findLinkCandidates`。明細からのアップロードは `Uploader`（`_components/uploader.tsx`）に `link={{ kind: "wallet_transaction", id }}` を渡すと `complete` で同時に紐づく。
 - #16 請求: `registerDocument({ source: "generated", kind: "invoice_out" })` と `kind: "invoice"` の紐づけ。
 - #18 読み取り: `updateDocument` と `Document.extraction`。詳細の項目の欄に「提案」を足す。
-- S7（#8）: `countInboxDocuments`（ホーム）、`loadDocumentIndex` と `storage.read`（証憑 zip）。
+- S7（#8）: ホームの「やること」（`inboxDocumentsTodo` → `countInboxDocuments`）と書き出しの証憑一式（`buildDocumentsArchive` の `fetchFile` → `getDocumentStorage().read`）は S6 で結線済み。zip は今はメモリ上で作るので、年に数百件・1 件 1 MB を超える量になったら書き出しを分割するかストリームにする。
 
 ## 10. 文書
 

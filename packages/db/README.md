@@ -13,6 +13,12 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 | `src/setup.ts` | ウィザードの進捗を DB から導出（`getSetupProgress`）。保存する状態は「あとで」の 2 列だけ |
 | `src/documents.ts` | 証憑（S6）の登録・項目の変更・無効化・差し替え・紐づけ・検索・紐づけの候補・索引簿・証憑の規程。同じ SHA-256 の再登録は既存を返す。削除はなく無効化（理由つき）と差し替え |
 
+## 報告と書き出し（S7）
+
+| ファイル | 内容 |
+| --- | --- |
+| `src/reports-query.ts` | 報告の入力（`loadReportSource`: 設定と全仕訳）、口座の明細の状態（`loadWalletStatus`）、ホームの「やること」（`loadHomeTodos` と `HOME_TODO_SOURCES`。S5・S6・S8 が関数を足す）、書き出しの監査ログ（`recordExport` / `listRecentExports`）、証憑の索引とバックアップの入力（`loadDocumentsForArchive` / `loadBackupSource`）。集計そのものは `@niho-finance/reports` が行う |
+
 書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
 
 ## 取引（S3）

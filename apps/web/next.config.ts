@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Workspace packages ship TypeScript source.
-  transpilePackages: ["@niho-finance/db", "@niho-finance/ledger"],
+  transpilePackages: ["@niho-finance/db", "@niho-finance/ledger", "@niho-finance/reports"],
   // The GCS client (evidence files, lib/storage/gcs.ts) is Node-only and loaded on first use:
   // keep it out of the server bundle and load it from node_modules.
   serverExternalPackages: ["@google-cloud/storage"],

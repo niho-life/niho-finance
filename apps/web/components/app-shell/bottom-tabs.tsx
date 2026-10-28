@@ -67,7 +67,7 @@ export function BottomTabs() {
           <NavIcon name="camera" className="size-[22px]" />
         </span>
       </Link>
-      <Tab href={null} label="報告">
+      <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>
       <Tab href="/more" active={inMore} label="その他">

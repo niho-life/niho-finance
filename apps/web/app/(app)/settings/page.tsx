@@ -54,7 +54,7 @@ export default async function SettingsPage() {
       href: "/settings/audit-log",
       summary: `${auditRows.toLocaleString("ja-JP")} 件`,
     },
-    { label: "書き出しとバックアップ", href: null, summary: "準備中" },
+    { label: "書き出しとバックアップ", href: "/settings/export", summary: "freee・弥生" },
   ];
 
   return (
