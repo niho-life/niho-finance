@@ -56,6 +56,7 @@ import {
   type PartnerKind,
   type SalesTaxCategoryCode,
   type TaxRateRule,
+  type WalletKind,
 } from "@niho-finance/ledger";
 import { Prisma, type Account, type FiscalYear, type Invoice } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
@@ -866,6 +867,11 @@ function issueDateProblem(
   return null;
 }
 
+/** An invoice whose 売掛金 entry was voided on the transaction screen takes no payment. */
+function voidedReceivableMessage(no: number): string {
+  return `売掛金の仕訳 No. ${no} が取消済みです。書類を無効にして、必要なら複製して発行し直してください`;
+}
+
 function invoiceActions(input: {
   docType: InvoiceDocType;
   status: InvoiceStatus;
@@ -873,6 +879,8 @@ function invoiceActions(input: {
   balance: Money | null;
   activePayments: number;
   issueProblem: string | null;
+  /** The number of the 売掛金 entry when it was voided elsewhere (the transaction screen). */
+  voidedReceivableNo: number | null;
 }): InvoiceActions {
   const { docType, status } = input;
   const draft = status === "draft";
@@ -890,6 +898,8 @@ function invoiceActions(input: {
   if (docType !== "invoice") pay = "入金を登録できるのは請求書だけです";
   else if (draft) pay = "下書きには入金を登録できません。先に発行してください";
   else if (isVoid) pay = "無効の書類には入金を登録できません";
+  else if (input.voidedReceivableNo !== null)
+    pay = voidedReceivableMessage(input.voidedReceivableNo);
   else if (status === "paid" || (input.balance ?? 0n) <= 0n) pay = "入金済みのため残高はありません";
 
   let voidBlocked: string | null = null;
@@ -1097,6 +1107,7 @@ export async function getInvoiceDetail(
       balance,
       activePayments: inForce.length,
       issueProblem,
+      voidedReceivableNo: row.journalEntry?.status === "voided" ? row.journalEntry.no : null,
     }),
   };
 }
@@ -1147,6 +1158,14 @@ export interface InvoiceFormOptions {
     status: FiscalYearStatus;
     consumptionTax: ConsumptionTaxMethod;
     accountingMethod: AccountingMethod;
+  }[];
+  /** 入金先: active wallets on an asset account (bank, cash, Stripe …). */
+  wallets: {
+    id: string;
+    name: string;
+    kind: WalletKind;
+    accountName: string;
+    subAccountName: string | null;
   }[];
   /** For the checklist (`invoiceChecklist`); `null` before the company is registered. */
   issuer: InvoiceIssuerInfo | null;
@@ -1204,6 +1223,11 @@ export async function loadInvoiceFormOptions(
     select: { code: true, name: true, isActive: true },
   });
   const fiscalYears = await db.fiscalYear.findMany({ orderBy: { no: "asc" } });
+  const wallets = await db.wallet.findMany({
+    where: { isActive: true, account: { kind: "asset", isActive: true } },
+    orderBy: { id: "asc" },
+    include: { account: { select: { name: true } }, subAccount: { select: { name: true } } },
+  });
   const issuer = await loadIssuer(db);
   const defaultAccount = await db.account.findUnique({
     where: { code: CONTRACT_REVENUE_ACCOUNT_CODE },
@@ -1230,6 +1254,13 @@ export async function loadInvoiceFormOptions(
       status: year.status,
       consumptionTax: year.consumptionTax,
       accountingMethod: year.accountingMethod,
+    })),
+    wallets: wallets.map((wallet) => ({
+      id: wallet.id,
+      name: wallet.name,
+      kind: wallet.kind,
+      accountName: wallet.account.name,
+      subAccountName: wallet.subAccount?.name ?? null,
     })),
     issuer: issuer
       ? {
@@ -2032,6 +2063,15 @@ export async function recordInvoicePayment(
       case "issued":
       case "sent":
         break;
+    }
+    if (current.journalEntryId) {
+      const receivable = await tx.journalEntry.findUnique({
+        where: { id: current.journalEntryId },
+        select: { no: true, status: true },
+      });
+      if (receivable?.status === "voided") {
+        throw new SettingsError(voidedReceivableMessage(receivable.no));
+      }
     }
 
     let { paidOn, walletId, amount } = data;

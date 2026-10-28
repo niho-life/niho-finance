@@ -24,6 +24,7 @@ import {
   updateInvoiceDraft,
   updateInvoiceSettings,
   voidInvoice,
+  voidJournalEntryWithOpenDate,
   type InvoiceDraftInput,
   type InvoiceLineFormInput,
   type InvoicePaymentInput,
@@ -843,6 +844,44 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
     await expect(voidInvoice(prisma, invoice.id, { reason: " " }, options)).rejects.toBeInstanceOf(
       ZodError,
     );
+  });
+
+  it("takes no payment once the 売掛金 entry was voided on the transaction screen, but voids", async () => {
+    const invoice = await issued({ issueDate: "2051-07-05" });
+    const entry = await prisma.journalEntry.findUniqueOrThrow({
+      where: { id: invoice.journalEntryId ?? "" },
+    });
+    await voidJournalEntryWithOpenDate(prisma, entry.id, { reason: "取引画面で取消" }, options);
+    const message = `売掛金の仕訳 No. ${entry.no} が取消済みです。書類を無効にして、必要なら複製して発行し直してください`;
+    expect(
+      settingsError(
+        await rejectionOf(
+          recordInvoicePayment(prisma, invoice.id, payment({ paidOn: "2051-07-10" }), options),
+        ),
+      ),
+    ).toEqual({ message, field: undefined });
+    const detail = await getInvoiceDetail(prisma, invoice.id, { today: "2051-07-10" });
+    expect(detail?.actions).toMatchObject({
+      canPay: false,
+      canVoid: true,
+      blocked: { pay: message },
+    });
+
+    // Voiding the document keeps the reversal made on the transaction screen.
+    const voided = await voidInvoice(
+      prisma,
+      invoice.id,
+      { reason: "仕訳の取消に合わせる" },
+      options,
+    );
+    expect(voided.status).toBe("void");
+    const reversals = await prisma.journalEntry.findMany({ where: { reversalOfId: entry.id } });
+    expect(reversals).toHaveLength(1);
+    const history = await loadInvoiceHistory(prisma, invoice.id);
+    expect(history.at(-1)?.after).toMatchObject({
+      status: "void",
+      reversalEntryId: reversals[0]?.id,
+    });
   });
 
   it("converts an issued quote into an invoice and a delivery note; refuses other sources", async () => {
