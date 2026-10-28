@@ -1,11 +1,13 @@
 import type { InvoiceBankAccount, InvoiceDetail, InvoiceRateRow } from "@niho-finance/db";
 import {
   BANK_ACCOUNT_TYPE_LABELS,
+  dateParts,
   displayDate,
   formatYen,
   INVOICE_DOC_TYPE_LABELS,
   INVOICE_DUE_DATE_LABELS,
   invoiceNumberLabel,
+  type CalendarDate,
   type InvoiceDocType,
 } from "@niho-finance/ledger";
 import { Document, Page, Text, View } from "@react-pdf/renderer";
@@ -55,12 +57,20 @@ const LEAD_LINES: Readonly<Record<InvoiceDocType, string>> = {
   delivery: "下記のとおり納品いたしました。",
 };
 
-const QUANTITY_WIDTH = 40;
-const UNIT_WIDTH = 32;
+const QUANTITY_WIDTH = 64;
 const PRICE_WIDTH = 72;
 const RATE_WIDTH = 68;
 const AMOUNT_WIDTH = 78;
 const DATE_WIDTH = 54;
+
+/**
+ * `2026年12月15日`: the date style of the documents customers receive, the same as the NIHO app's
+ * receipts (`formatReceiptJapaneseDate`). Line dates stay compact (`2026/12/01`).
+ */
+export function japaneseDate(date: CalendarDate): string {
+  const { year, month, day } = dateParts(date);
+  return `${year}年${month}月${day}日`;
+}
 
 function Small({ children, muted = false }: { children: ReactNode; muted?: boolean }) {
   return <Text style={[pdfStyles.small, muted ? pdfStyles.muted : {}]}>{children}</Text>;
@@ -238,17 +248,17 @@ export function InvoicePdf({
               }}
             >
               <Text style={{ fontWeight: 700 }}>{TOTAL_LABELS[invoice.docType]}（税込）</Text>
-              <Text style={{ fontSize: 16, fontWeight: 700 }}>{formatYen(invoice.total)} 円</Text>
+              <Text style={{ fontSize: 16, fontWeight: 700 }}>¥ {formatYen(invoice.total)} -</Text>
             </View>
           </View>
 
           <View style={{ width: "40%" }}>
             <MetaRow label="番号" value={number} />
-            <MetaRow label="発行日" value={displayDate(invoice.issueDate)} />
+            <MetaRow label="発行日" value={japaneseDate(invoice.issueDate)} />
             {dueLabel ? (
               <MetaRow
                 label={dueLabel}
-                value={invoice.dueDate ? displayDate(invoice.dueDate) : "—"}
+                value={invoice.dueDate ? japaneseDate(invoice.dueDate) : "—"}
               />
             ) : null}
             <View style={{ marginTop: 10, alignItems: "flex-end" }}>
@@ -272,7 +282,6 @@ export function InvoicePdf({
               <PdfCell width={QUANTITY_WIDTH} align="right">
                 数量
               </PdfCell>
-              <PdfCell width={UNIT_WIDTH}>単位</PdfCell>
               <PdfCell width={PRICE_WIDTH} align="right">
                 単価（円）
               </PdfCell>
@@ -293,9 +302,8 @@ export function InvoicePdf({
                   {line.reduced ? " ※" : ""}
                 </PdfCell>
                 <PdfCell width={QUANTITY_WIDTH} align="right">
-                  {line.quantity}
+                  {line.unit ? `${line.quantity} ${line.unit}` : line.quantity}
                 </PdfCell>
-                <PdfCell width={UNIT_WIDTH}>{line.unit ?? ""}</PdfCell>
                 <PdfCell width={PRICE_WIDTH} align="right">
                   {formatYen(line.unitPrice)}
                 </PdfCell>
@@ -371,9 +379,30 @@ export async function renderInvoicePdf(
   );
 }
 
-/** `INV-2026-0001.pdf` (ASCII) and `請求書_INV-2026-0001_<取引先>.pdf` (UTF-8). */
+/** Characters a file name cannot carry on Windows / macOS (the NIHO app's receipts drop the same). */
+const FILE_NAME_FORBIDDEN = /[\\/:*?"<>|\r\n]/g;
+/** The recipient is shortened so that the whole UTF-8 name stays short (the receipts keep 120 bytes). */
+const RECIPIENT_MAX_UTF8_BYTES = 60;
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  let result = "";
+  for (const char of value) {
+    bytes += encoder.encode(char).byteLength;
+    if (bytes > maxBytes) break;
+    result += char;
+  }
+  return result;
+}
+
+/**
+ * File names (18 §11): ASCII `INV-2026-0001.pdf` (`invoice-draft.pdf` for a draft) and UTF-8
+ * `20261215-<宛名>御中_請求書_INV-2026-0001.pdf`, the rule of the NIHO app's receipts
+ * (`発行日-宛名様_領収書_拠点名.pdf`) so that a customer's folder sorts our documents by date.
+ */
 export function invoicePdfFileNames(
-  invoice: Pick<InvoicePdfData, "docType" | "number" | "recipient">,
+  invoice: Pick<InvoicePdfData, "docType" | "number" | "recipient" | "issueDate">,
 ): {
   fileName: string;
   utf8FileName: string;
@@ -381,8 +410,13 @@ export function invoicePdfFileNames(
   const number = invoiceNumberLabel(invoice.number);
   const ascii = number === invoice.number ? number : `${invoice.docType}-draft`;
   const typeLabel = INVOICE_DOC_TYPE_LABELS[invoice.docType];
+  const recipient = truncateUtf8(
+    invoice.recipient.name.replace(FILE_NAME_FORBIDDEN, "").replace(/\s+/g, ""),
+    RECIPIENT_MAX_UTF8_BYTES,
+  );
+  const date = invoice.issueDate.replaceAll("-", "");
   return {
     fileName: `${ascii}.pdf`,
-    utf8FileName: `${typeLabel}_${number}_${invoice.recipient.name}.pdf`,
+    utf8FileName: `${date}-${recipient}御中_${typeLabel}_${number}.pdf`,
   };
 }
