@@ -11,7 +11,8 @@ import { unlinkDocumentAction } from "../actions";
 
 /** One link of a document, summarized on the server (no bigint crosses to the client). */
 export interface LinkView {
-  kind: DocumentLinkKind;
+  /** `import_batch`: the import that read this file (S4); it cannot be unlinked here. */
+  kind: DocumentLinkKind | "import_batch";
   id: string;
   /** 仕訳 / 明細 / 請求書 */
   label: string;
@@ -48,8 +49,8 @@ export function DocumentLinks({
   }
 
   function unlink() {
-    if (!asking) return;
-    const target = asking;
+    if (!asking || asking.kind === "import_batch") return;
+    const target = { ...asking, kind: asking.kind };
     startTransition(async () => {
       const result = await unlinkDocumentAction({
         kind: target.kind,
@@ -93,7 +94,7 @@ export function DocumentLinks({
                 )}
                 {link.note ? <span className="ml-1 text-muted">（{link.note}）</span> : null}
               </span>
-              {canUnlink ? (
+              {canUnlink && link.kind !== "import_batch" ? (
                 <Button
                   size="sm"
                   variant="ghost"

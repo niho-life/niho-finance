@@ -109,7 +109,9 @@ export const DOCUMENT_MAX_BYTES = 20 * 1024 * 1024;
 /**
  * 未整理: one of the three items that 規程 第10条 requires to be recorded is still empty — the
  * transaction date, the amount, or the partner (neither a partner of the master nor a free-text
- * name). Such a document stays in the inbox even when linked, until all three are recorded.
+ * name). Such a document stays in the inbox even when linked, until all three are recorded. A file
+ * an import read (a bank or card CSV, `backsImport`) is never 未整理: its transactions are its
+ * statement lines, each with its own date, amount and counterparty.
  * Empty dates and amounts never match a search on that item (13 §3.2).
  */
 export function isUnsortedDocument(document: {
@@ -117,7 +119,9 @@ export function isUnsortedDocument(document: {
   amount: Money | null;
   partnerId: string | null;
   partnerName: string | null;
+  backsImport?: boolean;
 }): boolean {
+  if (document.backsImport) return false;
   return (
     document.txnDate === null ||
     document.amount === null ||

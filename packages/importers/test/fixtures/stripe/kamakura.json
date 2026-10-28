@@ -1,0 +1,121 @@
+[
+  {
+    "id": "txn_test_km_01",
+    "object": "balance_transaction",
+    "amount": 22000,
+    "available_on": 1794096000,
+    "created": 1793523600,
+    "currency": "jpy",
+    "description": "宿泊 テスト拠点 1 泊",
+    "fee": 792,
+    "fee_details": [
+      {
+        "amount": 720,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      },
+      {
+        "amount": 72,
+        "application": null,
+        "currency": "jpy",
+        "description": "JCT",
+        "type": "tax"
+      }
+    ],
+    "net": 21208,
+    "reporting_category": "charge",
+    "source": "ch_test_km_01",
+    "status": "available",
+    "type": "charge"
+  },
+  {
+    "id": "txn_test_km_02",
+    "object": "balance_transaction",
+    "amount": 22000,
+    "available_on": 1794700800,
+    "created": 1794132000,
+    "currency": "jpy",
+    "description": "宿泊 テスト拠点 1 泊",
+    "fee": 792,
+    "fee_details": [
+      {
+        "amount": 792,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": 21208,
+    "reporting_category": "charge",
+    "source": "ch_test_km_02",
+    "status": "available",
+    "type": "charge"
+  },
+  {
+    "id": "txn_test_km_03",
+    "object": "balance_transaction",
+    "amount": -22000,
+    "available_on": 1794616200,
+    "created": 1794616200,
+    "currency": "jpy",
+    "description": "Chargeback withdrawal for ch_test_km_02",
+    "fee": 1500,
+    "fee_details": [
+      {
+        "amount": 1500,
+        "application": null,
+        "currency": "jpy",
+        "description": "Dispute fee",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": -23500,
+    "reporting_category": "dispute",
+    "source": "dp_test_km_01",
+    "status": "available",
+    "type": "adjustment"
+  },
+  {
+    "id": "txn_test_km_04",
+    "object": "balance_transaction",
+    "amount": -20000,
+    "available_on": 1795132800,
+    "created": 1795132800,
+    "currency": "jpy",
+    "description": "STRIPE PAYOUT",
+    "fee": 0,
+    "fee_details": [],
+    "net": -20000,
+    "reporting_category": "payout",
+    "source": "po_test_km_01",
+    "status": "available",
+    "type": "payout"
+  },
+  {
+    "id": "txn_test_km_05",
+    "object": "balance_transaction",
+    "amount": 11000,
+    "available_on": 1796515200,
+    "created": 1795996799,
+    "currency": "jpy",
+    "description": null,
+    "fee": 396,
+    "fee_details": [
+      {
+        "amount": 396,
+        "application": null,
+        "currency": "jpy",
+        "description": "Stripe processing fees",
+        "type": "stripe_fee"
+      }
+    ],
+    "net": 10604,
+    "reporting_category": "charge",
+    "source": "ch_test_km_03",
+    "status": "pending",
+    "type": "charge"
+  }
+]

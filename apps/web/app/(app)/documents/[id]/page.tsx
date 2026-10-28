@@ -20,7 +20,7 @@ import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatPeriod } from "@/lib/format";
 import { Band } from "../_components/band";
 import { DocumentHistory } from "../_components/document-history";
 import { DocumentLinks, type LinkView } from "../_components/document-links";
@@ -76,6 +76,20 @@ function linkView(link: DocumentLinkEntry): LinkView {
     case "invoice":
       return { kind: link.kind, id: link.id, label, summary: link.number, href: null, note: null };
   }
+}
+
+/** 「取込 · 架空カード · 2026/11/01 – 2026/11/30 · 12 件」: the import that read this CSV (S4). */
+function importLinkView(batch: DocumentDetail["importBatches"][number]): LinkView {
+  const period =
+    batch.periodFrom && batch.periodTo ? formatPeriod(batch.periodFrom, batch.periodTo) : null;
+  return {
+    kind: "import_batch",
+    id: batch.id,
+    label: "取込",
+    summary: [batch.walletName, period, `${batch.importedCount} 件`].filter(Boolean).join(" · "),
+    href: `/imports/${batch.id}`,
+    note: null,
+  };
 }
 
 /** 「この証憑から取引を登録」: the 支出 form with the document's items (empty ones left out). */
@@ -234,7 +248,7 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
           />
           <DocumentLinks
             documentId={detail.id}
-            links={detail.links.map(linkView)}
+            links={[...detail.importBatches.map(importLinkView), ...detail.links.map(linkView)]}
             canUnlink={!voided}
           />
           {candidates ? (

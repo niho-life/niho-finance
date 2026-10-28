@@ -10,11 +10,13 @@ import type { FiscalYear, Partner, PrismaClient, Wallet } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
+  attachImportBatchDocument,
   countDocuments,
   countInboxDocuments,
   documentSearchSchema,
   exportDocumentIndex,
   findDocumentBySha256,
+  findImportBatchDocument,
   findLinkCandidates,
   getDocumentDetail,
   getDocumentFile,
@@ -1359,6 +1361,130 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
           saveRecordsPolicy(prisma, { effectiveOn: "", version: "2026-10" }, { actor }),
         ),
       ).toBeInstanceOf(ZodError);
+    });
+  });
+
+  describe("files of imports (S4)", () => {
+    async function importBatch(wallet: Wallet, periodTo: CalendarDate | null) {
+      return prisma.importBatch.create({
+        data: {
+          id: newId(),
+          walletId: wallet.id,
+          source: "csv",
+          importer: "generic",
+          originalName: "statement.csv",
+          fileSha256: newSha256(),
+          fileBytes: Buffer.from("日付,金額\n2040-09-15,-500\n"),
+          periodFrom: periodTo ? toDbDate(addDays(periodTo, -29)) : null,
+          periodTo: periodTo ? toDbDate(periodTo) : null,
+          executedBy: actor,
+        },
+      });
+    }
+
+    const csvFile = (): Partial<DocumentRegisterInput> => ({
+      storageKey: `documents/2040/10/${newId()}.csv`,
+      mime: "text/csv",
+      kind: "statement",
+      originalName: "statement.csv",
+    });
+
+    it("keeps an import's CSV as a linked document, out of the inbox", async () => {
+      const batch = await importBatch(card, "2040-09-30");
+      const document = await register(csvFile());
+      const before = await countInboxDocuments(prisma);
+
+      const attached = await attachImportBatchDocument(
+        prisma,
+        { batchId: batch.id, documentId: document.id },
+        { actor },
+      );
+      expect(attached).toMatchObject({
+        status: "linked",
+        txnDate: "2040-09-30",
+        amount: null,
+        partnerId: null,
+        partnerName: "架空カード",
+        unsorted: false,
+      });
+      expect(attached.importBatches).toEqual([
+        {
+          id: batch.id,
+          walletName: "架空カード",
+          periodFrom: "2040-09-01",
+          periodTo: "2040-09-30",
+          importedCount: 0,
+        },
+      ]);
+      expect(await countInboxDocuments(prisma)).toBe(before - 1);
+      expect(await prisma.importBatch.findUniqueOrThrow({ where: { id: batch.id } })).toMatchObject(
+        { documentId: document.id, fileBytes: null },
+      );
+      expect(await findImportBatchDocument(prisma, batch.id)).toMatchObject({ id: document.id });
+      const link = attached.history.find((entry) => entry.action === "document.link");
+      expect(link?.after).toMatchObject({ kind: "import_batch", id: batch.id });
+      const fill = attached.history.find((entry) => entry.action === "document.update");
+      expect(fill).toMatchObject({ reason: "取込の明細から補完" });
+
+      // Attaching the same file again changes nothing; another file for the batch is refused.
+      await attachImportBatchDocument(
+        prisma,
+        { batchId: batch.id, documentId: document.id },
+        { actor },
+      );
+      expect(await actionsOf(document.id)).toEqual([
+        "document.create",
+        "document.link",
+        "document.update",
+      ]);
+      const other = await register();
+      expect(
+        await rejectionOf(
+          attachImportBatchDocument(prisma, { batchId: batch.id, documentId: other.id }, { actor }),
+        ),
+      ).toBeInstanceOf(SettingsError);
+
+      // Removing its last statement-line link keeps it linked: the import still holds it.
+      const line = await statementLine(card, "2040-09-15", -500n);
+      const target = { kind: "wallet_transaction" as const, id: line.id, documentId: document.id };
+      await linkDocument(prisma, target, { actor });
+      expect((await unlinkDocument(prisma, target, { actor })).status).toBe("linked");
+    });
+
+    it("moves an import's file to its replacement", async () => {
+      const batch = await importBatch(bank, null);
+      const document = await register(csvFile());
+      const attached = await attachImportBatchDocument(
+        prisma,
+        { batchId: batch.id, documentId: document.id },
+        { actor },
+      );
+      expect(attached).toMatchObject({ txnDate: null, partnerName: "架空銀行 普通" });
+
+      const { document: replacement } = await replaceDocument(
+        prisma,
+        {
+          id: document.id,
+          reason: "取り直した明細",
+          replacement: {
+            storageKey: `documents/2040/10/${newId()}.csv`,
+            sha256: newSha256(),
+            mime: "text/csv",
+            byteSize: 40,
+            source: "upload",
+          },
+        },
+        { actor },
+      );
+      expect(replacement).toMatchObject({ status: "linked", kind: "statement", unsorted: false });
+      expect(replacement.importBatches.map((item) => item.id)).toEqual([batch.id]);
+      expect(await findImportBatchDocument(prisma, batch.id)).toMatchObject({
+        id: replacement.id,
+      });
+      expect(await getDocumentDetail(prisma, document.id)).toMatchObject({
+        status: "voided",
+        importBatches: [],
+      });
     });
   });
 

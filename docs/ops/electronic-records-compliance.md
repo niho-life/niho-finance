@@ -31,7 +31,7 @@
 | ダウンロードの求めに応じる | 規則 2 条 7 項・4 条 1 項 | 索引簿 CSV（証憑 ID・取引年月日・金額・取引先・登録番号・種別・状態・無効の理由・仕訳番号・ファイル名・SHA-256 …）と、証憑一式の zip（S7 の書き出し） | `/api/documents/index.csv`（監査ログ `document.export`）、S7 #8 |
 | 新設法人の第 1 期・第 2 期は検索要件が不要、以後も売上高 5,000 万円以下なら不要 | 規則 4 条 1 項ただし書 | 要件の有無にかかわらず v1 から実装し、運用もする | [03 §3.2](../design/03-compliance.md) |
 | 保存期間 7 年（欠損金の期は 10 年） | 法人税法施行規則 59 条・67 条 | アプリからの削除はなく、GCS の保持ポリシー（7 年・ロックしない）、日次エクスポートと Cloud SQL のバックアップ | [06 §6](../design/06-architecture.md)、S8 #9 |
-| 保存対象の網羅: メール添付・Web ダウンロードの請求書等、カード・銀行の明細データ、決済代行の請求書 | 一問一答（電子取引）問 2〜4 | 種別 `statement`（明細書）・`invoice_in`・`receipt` など。取込に使った CSV は S4 が `saveBytesAsDocument` で証憑に保存し、`ImportBatch.documentId` で結ぶ。Stripe の月次請求書は毎月ダウンロードして保存する（操作説明書 §6） | [13 §9](../design/13-documents.md)、[操作説明書](documents-operations.md) |
+| 保存対象の網羅: メール添付・Web ダウンロードの請求書等、カード・銀行の明細データ、決済代行の請求書 | 一問一答（電子取引）問 2〜4 | 種別 `statement`（明細書）・`invoice_in`・`receipt` など。取込に使った CSV は取込の直後に明細書の証憑として保存し、`ImportBatch.documentId` で結ぶ（取引は明細の各行で、日付・金額・相手で検索できる）。Stripe の月次請求書は毎月ダウンロードして保存する（操作説明書 §6） | [13 §9](../design/13-documents.md)、[操作説明書](documents-operations.md) |
 | 出力書面での保存は不可（データのまま保存） | 法 7 条 | 原本のファイル（画像・PDF・CSV）をそのまま保存し、画面は参照だけ | `DocumentStorage`（`apps/web/lib/storage/`） |
 
 ## 3. 電子帳簿等保存（法 4 条、規則 2 条・5 条。優良の届出）

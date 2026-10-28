@@ -137,8 +137,19 @@ export interface DocumentDetail {
   /** The document that replaced this one. */
   supersededBy: DocumentRef | null;
   links: DocumentLinkEntry[];
+  /** Imports that read this file (a bank or card CSV): its statement lines are its transactions. */
+  importBatches: DocumentImportBatch[];
   /** The audit log of this document, oldest first. */
   history: DocumentHistoryEntry[];
+}
+
+/** An import (S4) whose file is this document. */
+export interface DocumentImportBatch {
+  id: string;
+  walletName: string;
+  periodFrom: CalendarDate | null;
+  periodTo: CalendarDate | null;
+  importedCount: number;
 }
 
 export interface DocumentRegistration {
@@ -535,6 +546,16 @@ const detailInclude = {
   partner: { select: { id: true, name: true, isActive: true } },
   supersedes: { select: documentRefSelect },
   supersededBy: { select: documentRefSelect, orderBy: { createdAt: "asc" } },
+  importBatches: {
+    select: {
+      id: true,
+      periodFrom: true,
+      periodTo: true,
+      importedCount: true,
+      wallet: { select: { name: true } },
+    },
+    orderBy: [{ executedAt: "asc" }, { id: "asc" }],
+  },
   links: {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
@@ -586,10 +607,18 @@ function toDocumentDetail(row: DetailRow, history: DocumentHistoryEntry[]): Docu
       amount: row.amount,
       partnerId: row.partnerId,
       partnerName: row.partnerName,
+      backsImport: row.importBatches.length > 0,
     }),
     supersedes: row.supersedes,
     supersededBy: row.supersededBy[0] ?? null,
     links: row.links.map(toLinkEntry),
+    importBatches: row.importBatches.map((batch) => ({
+      id: batch.id,
+      walletName: batch.wallet.name,
+      periodFrom: fromDbDateOrNull(batch.periodFrom),
+      periodTo: fromDbDateOrNull(batch.periodTo),
+      importedCount: batch.importedCount,
+    })),
     history,
   };
 }
@@ -797,6 +826,7 @@ export async function replaceDocument(
       where: { documentId: original.id },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
+    const importCount = await tx.importBatch.count({ where: { documentId: original.id } });
     const voidReason = `差し替え: ${data.reason}`;
     const row = await tx.document.create({
       data: {
@@ -817,7 +847,7 @@ export async function replaceDocument(
             ? original.invoiceRegistrationNumber
             : file.invoiceRegistrationNumber,
         note: file.note === undefined ? original.note : file.note,
-        status: links.length > 0 ? "linked" : "inbox",
+        status: links.length > 0 || importCount > 0 ? "linked" : "inbox",
         supersedesId: original.id,
       },
     });
@@ -840,6 +870,18 @@ export async function replaceDocument(
       });
       const target = await loadLinkTargetOf(tx, link);
       await audit(tx, options, { action: "document.link", entityId: row.id, after: target });
+    }
+    // An import's file moves to the replacement too (the batch keeps pointing at a valid file).
+    for (const batch of await tx.importBatch.findMany({
+      where: { documentId: original.id },
+      select: importBatchTargetSelect,
+    })) {
+      await tx.importBatch.update({ where: { id: batch.id }, data: { documentId: row.id } });
+      await audit(tx, options, {
+        action: "document.link",
+        entityId: row.id,
+        after: importBatchTarget(batch),
+      });
     }
     await voidRow(tx, original, voidReason, options);
     return { document: await requireDocumentDetail(tx, row.id), duplicate: false };
@@ -947,7 +989,9 @@ export async function unlinkDocument(
 
     const target = await loadLinkTargetOf(tx, link);
     await tx.documentLink.delete({ where: { id: link.id } });
-    const remaining = await tx.documentLink.count({ where: { documentId: current.id } });
+    const remaining =
+      (await tx.documentLink.count({ where: { documentId: current.id } })) +
+      (await tx.importBatch.count({ where: { documentId: current.id } }));
     if (remaining === 0 && current.status === "linked") {
       await tx.document.update({ where: { id: current.id }, data: { status: "inbox" } });
     }
@@ -958,6 +1002,103 @@ export async function unlinkDocument(
     });
     return requireDocumentDetail(tx, current.id);
   });
+}
+
+// ---------------------------------------------------------------------------
+// The file of an import (S4 → S6, 12-imports §308)
+// ---------------------------------------------------------------------------
+
+const importBatchTargetSelect = {
+  id: true,
+  periodFrom: true,
+  periodTo: true,
+  wallet: { select: { name: true } },
+} satisfies Prisma.ImportBatchSelect;
+
+type ImportBatchTargetRow = Prisma.ImportBatchGetPayload<{
+  select: typeof importBatchTargetSelect;
+}>;
+
+/** The audit log's summary of an import a file belongs to. */
+function importBatchTarget(batch: ImportBatchTargetRow) {
+  return {
+    kind: "import_batch" as const,
+    id: batch.id,
+    walletName: batch.wallet.name,
+    periodFrom: fromDbDateOrNull(batch.periodFrom),
+    periodTo: fromDbDateOrNull(batch.periodTo),
+  };
+}
+
+/**
+ * Makes `documentId` the evidence of an import (`ImportBatch.documentId`) and drops the bytes the
+ * batch kept until then (`fileBytes`: they are now the document's file). The document counts as
+ * linked (its statement lines are its transactions); an empty date becomes the last day of the
+ * statement and an empty partner the wallet's name, as a separate `document.update`. Linking the
+ * same file twice changes nothing; a batch that already has another file is refused.
+ */
+export async function attachImportBatchDocument(
+  db: Db,
+  input: { batchId: string; documentId: string },
+  options: WriteOptions,
+): Promise<DocumentDetail> {
+  return runInTransaction(db, async (tx) => {
+    const current = await lockDocument(tx, input.documentId);
+    if (current.status === "voided") {
+      throw new SettingsError("無効にした証憑は取込に結べません。有効な証憑を選んでください");
+    }
+    const batch = await tx.importBatch.findUnique({
+      where: { id: input.batchId },
+      select: { ...importBatchTargetSelect, documentId: true },
+    });
+    if (!batch) throw new SettingsError("取込が見つかりません。画面を読み込み直してください");
+    if (batch.documentId === current.id) return requireDocumentDetail(tx, current.id);
+    if (batch.documentId !== null) {
+      throw new SettingsError("この取込にはすでに証憑が結ばれています");
+    }
+    await tx.importBatch.update({
+      where: { id: batch.id },
+      data: { documentId: current.id, fileBytes: null },
+      select: { id: true },
+    });
+    await audit(tx, options, {
+      action: "document.link",
+      entityId: current.id,
+      after: importBatchTarget(batch),
+    });
+
+    const patch: Prisma.DocumentUncheckedUpdateInput = {};
+    if (current.status === "inbox") patch.status = "linked";
+    if (current.txnDate === null && batch.periodTo !== null) patch.txnDate = batch.periodTo;
+    if (current.partnerId === null && current.partnerName === null) {
+      patch.partnerName = batch.wallet.name;
+    }
+    if (Object.keys(patch).length > 0) {
+      const filled = await tx.document.update({ where: { id: current.id }, data: patch });
+      if (patch.txnDate !== undefined || patch.partnerName !== undefined) {
+        await audit(tx, options, {
+          action: "document.update",
+          entityId: current.id,
+          before: current,
+          after: filled,
+          reason: "取込の明細から補完",
+        });
+      }
+    }
+    return requireDocumentDetail(tx, current.id);
+  });
+}
+
+/** The document an import's file became (`attachImportBatchDocument`), or `null`. */
+export async function findImportBatchDocument(
+  db: Db,
+  batchId: string,
+): Promise<DocumentRef | null> {
+  const batch = await db.importBatch.findUnique({
+    where: { id: batchId },
+    select: { document: { select: documentRefSelect } },
+  });
+  return batch?.document ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -992,10 +1133,12 @@ export async function listDocumentLinks(
 
 /**
  * 受信箱 (13 §3.2): the documents that still need work — not linked yet, or linked while 未整理
- * (`isUnsortedDocument`: the date, the amount or the partner is empty). Never voided ones. The
- * inbox tab and both counts use this one condition.
+ * (`isUnsortedDocument`: the date, the amount or the partner is empty). Never voided ones, and
+ * never the file of an import (its statement lines are its transactions). The inbox tab and both
+ * counts use this one condition.
  */
 const INBOX_WHERE: Prisma.DocumentWhereInput = {
+  importBatches: { none: {} },
   OR: [
     { status: "inbox" },
     {
@@ -1052,6 +1195,7 @@ function documentOrder(tab: DocumentTab): Prisma.DocumentOrderByWithRelationInpu
 const listInclude = {
   partner: { select: { name: true } },
   links: { select: { journalEntryId: true, walletTransactionId: true, invoiceId: true } },
+  importBatches: { select: { id: true } },
 } satisfies Prisma.DocumentInclude;
 
 type ListRow = Prisma.DocumentGetPayload<{ include: typeof listInclude }>;
@@ -1074,6 +1218,7 @@ function toListRow(row: ListRow): DocumentListRow {
       amount: row.amount,
       partnerId: row.partnerId,
       partnerName: row.partnerName,
+      backsImport: row.importBatches.length > 0,
     }),
     linkCounts: {
       journalEntries: row.links.filter((link) => link.journalEntryId !== null).length,

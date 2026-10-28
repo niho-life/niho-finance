@@ -4,11 +4,11 @@ import { defineConfig } from "vitest/config";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 
-// Unit tests of the server-side libraries (storage, policy). Pages are not rendered here.
+// Unit tests of server-side helpers (lib/**, test/**): no database and no Next.js runtime.
 export default defineConfig({
   resolve: { alias: [{ find: /^@\//, replacement: `${appDir}/` }] },
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["lib/**/*.test.ts", "test/**/*.test.ts"],
     environment: "node",
   },
 });

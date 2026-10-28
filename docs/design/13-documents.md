@@ -7,7 +7,7 @@
 - 証憑は電子取引データ（電子帳簿保存法 7 条）の保存庫。ファイル本体は GCS（本番）またはローカルのフォルダ（開発）に置き、`Document` 行がメタデータ（検索の 3 項目・SHA-256・形式・大きさ・保存者・保存日時）を持つ。
 - 追記のみ。`Document` は DELETE できず、`storage_key` / `sha256` / `byte_size` / `mime` は変えられない（S1 のガード）。誤った証憑は「無効」（理由と日時を残し、ファイルも紐づけも残す）、差し替えは新しい行＋ `supersedesId`。無効は戻せない。
 - 真実性の措置は事務処理規程方式。タイムスタンプは使わない（[03 §3.2](03-compliance.md)）。システム側は SHA-256 の記録・追記のみ・監査ログで規程を裏づける。
-- 検索要件（取引年月日・取引金額・取引先。日付と金額は範囲、2 項目以上の組み合わせ）は v1 から満たす。3 項目は保存時には任意にし、どれかが空のものを「未整理」と呼ぶ。受信箱は「手を入れる必要がある証憑」= 紐づけがないもの、または未整理のもの（無効を除く）で、月次で空にする（[07 §2](07-operations.md)、規程 第 10 条）。
+- 検索要件（取引年月日・取引金額・取引先。日付と金額は範囲、2 項目以上の組み合わせ）は v1 から満たす。3 項目は保存時には任意にし、どれかが空のものを「未整理」と呼ぶ。受信箱は「手を入れる必要がある証憑」= 紐づけがないもの、または未整理のもの（無効と、取込の CSV を除く）で、月次で空にする（[07 §2](07-operations.md)、規程 第 10 条）。取込の CSV（S4 の `ImportBatch.documentId`）は、取引が明細の各行（日付・金額・相手）なので未整理にも数えない。
 - 同じファイル（SHA-256 が同じ）の再アップロードは新しい行を作らず、無効でない既存の証憑に結ぶ。
 - 監査ログの action: `document.create` / `document.update` / `document.link` / `document.unlink` / `document.void` / `document.export` / `records_policy.save`。
 - 金額は税込の整数円（`BigInt`）、日付は暦日。内部の識別子は画面に出さないが、証憑 ID（ULID）だけは索引簿と詳細の脚注に出す。紙の原本（封筒）と電子の証憑を対応づける鍵になるため。
@@ -61,7 +61,7 @@
 - 配置: PC は 2 列（左にプレビュー、右 380px に項目と操作）。スマホは縦（プレビューは高さ 50vh まで）。
 - プレビュー: 画像は `<img>`、PDF は `<iframe>`、それ以外（HEIC・CSV）は「この形式はプレビューできません」。下に「ファイルを開く」（新しいタブ。`/api/documents/[id]/file`）、大きさ、形式、SHA-256（`<code>` で小さく。改ざん検知の根拠として見せる）、証憑 ID。
 - 項目（一覧の中の直接編集と同じ部品。blur / Enter で保存、右上に 保存中 / 保存済み / エラー）: 種別（select）、取引年月日（date）、金額（`MoneyInput`。0 以上）、取引先（select: 有効な取引先＋「その他（名前を入力）」）、取引先名（「その他」のときだけ。文字）、登録番号（T + 13 桁。形式と検査用数字を検証）、メモ。無効の証憑は読み取り専用で、帯に「無効にした証憑は変えられません。正しいファイルは新しい証憑として保存します」（無効の証憑は差し替えられない）。
-- 紐づけ: 「仕訳 No. 12 · 2026/11/05 · クラウドサービス利用料 · 1,650」（`/entries/[id]` へのリンク）、「明細 架空カード · 2026/11/07 · AMAZON · 3,980」、「請求書 INV-2026-0001」。各行に「外す」（ConfirmDialog。理由なし）。
+- 紐づけ: 「取込 · 架空カード · 2026/11/01 – 2026/11/30 · 12 件」（`/imports/[id]` へのリンク。取込の CSV のとき。外せない）、「仕訳 No. 12 · 2026/11/05 · クラウドサービス利用料 · 1,650」（`/entries/[id]` へのリンク）、「明細 架空カード · 2026/11/07 · AMAZON · 3,980」、「請求書 INV-2026-0001」。各行に「外す」（ConfirmDialog。理由なし）。
 - 候補「同じ金額・近い日付」: 金額があるとき、|金額| が同じで日付が取引年月日 ±7 日（取引年月日が空なら保存日の 30 日前〜保存日）の 明細（未処理を先に、登録済みも）と 仕訳（登録済み。反対仕訳と取消済みを除く。金額は借方合計）を各 10 件まで、日付の近い順。すでに紐づく相手は除き、ほかの証憑（無効を除く）がすでに紐づく相手は「証憑あり」と示して後ろに並べる。行に「紐づける」（primary・sm）。
 - 金額が空のとき（撮ったばかりの領収書）: 候補「近い日付の未処理の明細」として、取引年月日 ±7 日（空なら保存日の 7 日前〜翌日）の未処理の明細を金額を問わず日付の近い順に 10 件出す（仕訳は出さない）。見出しの下に「金額を入れると、同じ金額の明細と取引に絞り込めます」。紐づけると日付・金額が明細から埋まる。これで「カメラのタブ → 撮影 → 紐づける」の 3 操作で明細に結べる（受け入れ条件）。
 - 紐づけると、証憑の取引年月日・金額・取引先が空なら相手から埋める（明細: 日付と |金額|、振込人名があれば取引先名。仕訳: 日付と借方合計、行の取引先が 1 つならその取引先）。埋めた項目は `document.update` として別に監査ログに残る。
@@ -128,6 +128,7 @@
 | `listDocumentLinks(db, { kind, id })` | 対象に紐づく証憑（無効も理由つきで）。`entries/[id]` と S5 の行が使う |
 | `searchDocuments(db, filters, { page, pageSize = 50 })` | §3.2 の条件。`{ rows, total, page, pageSize }`。行: id・種別・取引年月日・金額・取引先名・ファイル名・形式・状態・無効の理由・紐づけの件数（仕訳 / 明細 / 請求書）・保存日時 |
 | `countDocuments(db)` / `countInboxDocuments(db)` | タブの件数 `{ inbox, all, voided }` / ホーム用。受信箱は §3.2 の定義 |
+| `attachImportBatchDocument(db, { batchId, documentId }, { actor })` / `findImportBatchDocument(db, batchId)` | 取込の CSV を証憑にして `ImportBatch.documentId` を結び、`fileBytes` を空にする。証憑は紐づけ済みになり、空の日付は明細の最終日、空の取引先は口座名で埋める（`document.update`）。差し替えでは新しい証憑に移る |
 | `getDocumentFile(db, id)` | `GET /api/documents/[id]/file` が使う保存先・形式・ファイル名（無効も） |
 | `getDocumentDetail(db, id)` | 項目・取引先名・紐づけ（仕訳: 期・No.・日付・摘要・金額・状態。明細: 口座・日付・金額・摘要・状態。請求書: 番号）・差し替えの前後（id・ファイル名）・履歴（監査ログの at / actor / action / reason / before / after） |
 | `findLinkCandidates(db, { documentId })` | §4 の候補 `{ basis: "amount" \| "date", walletTransactions, journalEntries }`。金額があれば同額（`amount`）、なければ近い日付の未処理の明細だけ（`date`）。すでに紐づく相手を除く |
@@ -144,7 +145,7 @@
 
 ## 9. 他レーンに渡すもの
 
-- S4（#5）: `saveBytesAsDocument(db, { bytes, mime, originalName, kind: "statement", source: "upload" }, { actor })`（`lib/storage/save.ts`。キーを作り `write` → `registerDocument`。重複なら既存）。戻り値の `documentId` を `ImportBatch.documentId` に入れる。
+- S4（#5）: S4 が先に入ったので S6 で結線した。CSV の取込（`importCsvAction`）の直後に `keepImportFileAsDocument`（`lib/documents/import-evidence.ts`: `saveBytesAsDocument` → `attachImportBatchDocument`）で明細書の証憑にし、`ImportBatch.fileBytes` を空にする。失敗しても取込は成り立ち、バイト列は `fileBytes` に残る。`file_bytes` の列は、本番で空になったのを確かめてから後の migration で落とす（expand → contract）。
 - S5（#6）: `linkDocument` / `unlinkDocument` / `listDocumentLinks` / `findLinkCandidates`。明細からのアップロードは `Uploader`（`_components/uploader.tsx`）に `link={{ kind: "wallet_transaction", id }}` を渡すと `complete` で同時に紐づく。
 - #16 請求: `registerDocument({ source: "generated", kind: "invoice_out" })` と `kind: "invoice"` の紐づけ。
 - #18 読み取り: `updateDocument` と `Document.extraction`。詳細の項目の欄に「提案」を足す。
