@@ -235,3 +235,19 @@
     }
   }
 }
+
+/* Printing 証憑の規程 (13 §5): only the policy text (`[data-print-root]`) is printed. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-print-root],
+  [data-print-root] * {
+    visibility: visible;
+  }
+  [data-print-root] {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+}

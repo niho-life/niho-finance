@@ -1,7 +1,7 @@
 /**
  * 証憑一式 (14-reports §10): a zip with an index CSV (the search keys of 電子帳簿保存法 and the
- * entry numbers) and the files. The files come from S6's storage through `fetchFile`; until then
- * the zip holds the index only.
+ * entry numbers) and the files. The files come from S6's storage through `fetchFile`; a file that
+ * cannot be fetched stays in the index and is left out of the zip (`missing`).
  */
 import type { CalendarDate, Money } from "@niho-finance/ledger";
 import { csvText } from "../csv";

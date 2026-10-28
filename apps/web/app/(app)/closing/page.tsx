@@ -349,11 +349,21 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
             />
           ),
         };
-      case "statements":
       case "documents":
+        // 受信箱 of S6: the documents screen is where they are linked or voided.
+        return step.state === "done"
+          ? {}
+          : {
+              actions: (
+                <ButtonLink href="/documents" variant="secondary" size="sm">
+                  証憑の受信箱
+                </ButtonLink>
+              ),
+            };
+      case "statements":
       case "statements_report":
       case "export":
-        // 準備中 (S5, S6, #15): the summary says why; no entry point yet.
+        // 準備中 (S5, #15): the summary says why; no entry point yet.
         return {};
     }
   }

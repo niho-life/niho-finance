@@ -66,6 +66,7 @@ import {
   type YearEndAccount,
 } from "./closing";
 import { fromDbDate, todayInJapan, toDbDate } from "./dates";
+import { countInboxDocuments } from "./documents";
 import { voidJournalEntryWithOpenDate, type EntryRef } from "./entries";
 import { SettingsError } from "./errors";
 import {
@@ -839,6 +840,7 @@ export async function loadYearEndChecklist(
     select: refSelect,
   });
   const adjustingEntries = await loadAdjustingEntries(db, year);
+  const inboxDocuments = await countInboxDocuments(db);
   const checks = readChecks(year.yearEndChecks);
 
   const depreciationTargets = depreciation.filter((row) => row.amount > 0n);
@@ -854,14 +856,19 @@ export async function loadYearEndChecklist(
       no: 1,
       label: "未処理の明細",
       state: "pending",
-      summary: "明細の取込が入ると、期末日までの未処理の件数を確かめられます",
+      summary: "明細の片付けの画面ができると、期末日までの未処理の件数を確かめられます",
     },
     {
+      // 受信箱 of S6 (13-documents §3.2): not linked yet, or linked without a date, an amount or a
+      // partner. The same count the monthly close and the home use.
       key: "documents",
       no: 2,
       label: "未紐づけの証憑",
-      state: "pending",
-      summary: "証憑の保管が入ると、未紐づけの件数を確かめられます",
+      state: inboxDocuments === 0 ? "done" : "todo",
+      summary:
+        inboxDocuments === 0
+          ? "受信箱の証憑はありません"
+          : `受信箱の証憑 ${inboxDocuments} 件（未紐づけか未整理）を片付けます`,
     },
     {
       key: "balances",
