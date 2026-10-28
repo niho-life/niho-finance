@@ -1,4 +1,4 @@
-import type { DocumentLinkCounts, DocumentListRow } from "@niho-finance/db";
+import type { DocumentLinkCounts, DocumentListRow, ReadingState } from "@niho-finance/db";
 import {
   DOCUMENT_KIND_LABELS,
   DOCUMENT_STATUS_LABELS,
@@ -40,6 +40,14 @@ export function statusText(document: {
   return document.voidReason ? `無効（${document.voidReason}）` : DOCUMENT_STATUS_LABELS.voided;
 }
 
+/** The reading after the state (20-reader §10.2); a saved proposal says nothing. */
+const READING_STATE_LABELS: Readonly<Record<ReadingState, string | null>> = {
+  proposed: "提案あり",
+  needs_review: "要確認",
+  failed: "読み取れず",
+  saved: null,
+};
+
 function orUnsorted(value: ReactNode | null): ReactNode {
   return value === null ? <Unsorted /> : value;
 }
@@ -48,7 +56,14 @@ function orUnsorted(value: ReactNode | null): ReactNode {
  * The documents (13 §3.3): 取引年月日 ・ 種別 ・ 取引先 ・ 金額 ・ ファイル ・ 紐づけ ・ 状態 on PC, two
  * lines on phones (ファイル名・取引年月日 / 取引先・金額). Each row is one link to the detail.
  */
-export function DocumentsTable({ rows }: { rows: readonly DocumentListRow[] }) {
+export function DocumentsTable({
+  rows,
+  readingStates,
+}: {
+  rows: readonly DocumentListRow[];
+  /** 提案あり / 要確認 / 読み取れず after 状態 (muted like the state: no red in the list). */
+  readingStates?: ReadonlyMap<string, ReadingState>;
+}) {
   return (
     <Table label="証憑" minWidth={880}>
       <TableHead {...COLUMNS}>
@@ -65,6 +80,9 @@ export function DocumentsTable({ rows }: { rows: readonly DocumentListRow[] }) {
         const date = orUnsorted(row.txnDate ? formatDate(row.txnDate) : null);
         const partner = orUnsorted(row.partnerName);
         const amount = orUnsorted(row.amount === null ? null : formatYen(row.amount));
+        const readingState = readingStates?.get(row.id);
+        const reading = readingState === undefined ? null : READING_STATE_LABELS[readingState];
+        const phoneStatus = [voided ? statusText(row) : null, reading].filter(Boolean).join(" · ");
         return (
           <TableRow
             key={row.id}
@@ -91,8 +109,10 @@ export function DocumentsTable({ rows }: { rows: readonly DocumentListRow[] }) {
               >
                 {documentTitle(row)}
               </Link>
-              {voided ? (
-                <span className="block truncate text-[11px] md:hidden">{statusText(row)}</span>
+              {phoneStatus ? (
+                <span className="block truncate text-[11px] text-muted md:hidden">
+                  {phoneStatus}
+                </span>
               ) : null}
             </Td>
             <Td sm="hide" className="truncate text-[13px] text-muted">
@@ -100,7 +120,10 @@ export function DocumentsTable({ rows }: { rows: readonly DocumentListRow[] }) {
             </Td>
             <Td sm="hide" className="text-[12px] text-muted">
               {/* The clamp sets `display`: keep it off the cell, which phones hide. */}
-              <span className="line-clamp-2">{statusText(row)}</span>
+              <span className="line-clamp-2">
+                {statusText(row)}
+                {reading ? ` · ${reading}` : null}
+              </span>
             </Td>
             {/* Phones: 取引年月日 beside the file name, then 取引先・金額. */}
             <span role="cell" className="num text-[12px] text-muted md:hidden">
