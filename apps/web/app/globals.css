@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Color and shape tokens of docs/design/mock/v1.html (values only; components come in S2). */
+:root {
+  --bg: #fffcf5;
+  --surface: #ffffff;
+  --text: #1c1c1a;
+  --muted: #6f6e68;
+  --muted-2: #9a9892;
+  --border: #e7e4db;
+  --border-2: #d9d6cc;
+  --primary: #4b9e5e;
+  --primary-ink: #2f7a41;
+  --primary-soft: #e9f4ec;
+  --accent: #b2d67c;
+  --danger: #c8463c;
+  --danger-soft: #fbecea;
+  --warn: #b7791f;
+  --warn-soft: #fbf3e3;
+  --radius: 12px;
+  --radius-s: 8px;
+  --shadow: 0 1px 2px rgba(28, 28, 26, 0.06);
+  --shadow-2: 0 8px 24px rgba(28, 28, 26, 0.1);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}

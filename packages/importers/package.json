@@ -1,0 +1,17 @@
+{
+  "name": "@niho-finance/importers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bank/card CSV parsers and Stripe sync (S4).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@niho-finance/ledger": "*"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@niho-finance/reports",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Trial balance, monthly trends, statements and exports (S7).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@niho-finance/ledger": "*"
+  }
+}

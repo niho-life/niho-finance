@@ -1,0 +1,30 @@
+{
+  "name": "@niho-finance/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prisma schema, migrations and the repository layer (atomic posting, numbering, audit log).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:reset": "prisma migrate reset --force",
+    "seed": "prisma db seed",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts"
+  },
+  "dependencies": {
+    "@niho-finance/ledger": "*",
+    "@prisma/client": "6.19.3",
+    "ulid": "^3.0.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3",
+    "tsx": "^4.23.15"
+  }
+}
