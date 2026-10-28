@@ -98,7 +98,7 @@ export default async function NewPayrollRunPage({
         wallets={walletOptions}
         premiumTimings={PREMIUM_TIMINGS.map((timing) => ({
           value: timing,
-          label: `${PREMIUM_TIMING_LABELS[timing]}（${yearMonthLabel(premiumMonthFor(draft.payMonth, timing))}分を控除）`,
+          label: `${PREMIUM_TIMING_LABELS[timing]}（${yearMonthLabel(premiumMonthFor(draft.payMonth, timing))}分）`,
         }))}
         premiumTimingLocked={draft.premiumTimingLocked}
         initialDraft={initialDraft}
