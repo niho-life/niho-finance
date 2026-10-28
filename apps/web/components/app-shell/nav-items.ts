@@ -14,6 +14,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "entries", label: "取引", href: "/entries" },
   { key: "documents", label: "証憑", href: null },
   { key: "reports", label: "報告", href: "/reports" },
+  { key: "payroll", label: "給与", href: "/payroll" },
   { key: "settings", label: "設定", href: "/settings" },
 ];
 
