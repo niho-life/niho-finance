@@ -28,9 +28,19 @@ import { redirect } from "next/navigation";
 import { actor } from "@/lib/actor";
 import { csvResponse, textResponse, zipResponse } from "@/lib/pdf/download";
 import { getDocumentStorage, StoredFileNotFoundError } from "@/lib/storage";
+import { authorizeRoute, type MinimumRole } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * freee・弥生・beancount are the exports of the books, open to 閲覧 too; the documents' archive and
+ * the backup need 経理 (23-users-and-expenses §3.2). An unknown kind needs 経理 as well.
+ */
+function downloadMinimum(request: Request): MinimumRole {
+  const kind = new URL(request.url).searchParams.get("kind");
+  return kind === "freee" || kind === "yayoi" || kind === "beancount" ? "viewer" : "accountant";
+}
 
 const KINDS = ["freee", "yayoi", "beancount", "documents", "backup"] as const;
 type Kind = (typeof KINDS)[number];
@@ -110,6 +120,8 @@ function encodingOf(params: URLSearchParams, fallback: CsvEncoding): CsvEncoding
  * is written to the audit log (`export.download`).
  */
 export async function GET(request: Request): Promise<Response> {
+  const denied = await authorizeRoute(downloadMinimum(request));
+  if (denied) return denied;
   const prisma = getPrismaClient();
   if (!(await getSetupProgress(prisma)).ready) redirect("/setup");
 

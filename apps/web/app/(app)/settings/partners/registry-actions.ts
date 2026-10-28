@@ -11,6 +11,7 @@ import { attempt } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { getNtaLookup } from "@/lib/reader/config";
+import { authorizeAction } from "@/lib/authz";
 
 const NOT_CONFIGURED = "国税庁の照合が設定されていません";
 
@@ -23,6 +24,8 @@ const NOT_CONFIGURED = "国税庁の照合が設定されていません";
 export async function checkPartnerRegistrationsAction(): Promise<
   ActionResult<RegistryCheckResult>
 > {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(async () => {
     const lookup = getNtaLookup();
     if (!lookup) throw new SettingsError(NOT_CONFIGURED);

@@ -562,7 +562,8 @@ export function StatementsList({
         { label: "ルールにする", onSelect: () => openRule(row, draftOf(row)) },
       ];
     }
-    // A payment of an invoice is cancelled on the invoice (請求, decision 2026-10-29).
+    // A payment of an invoice is cancelled on the invoice (請求, decision 2026-10-29), and one of
+    // 立替精算 on 立替精算 (23-users-and-expenses §5.2).
     const invoiceId = row.entry?.invoiceId ?? null;
     return [
       ...(row.entry ? [{ label: "取引を開く", href: `/entries/${row.entry.id}` }] : []),
@@ -571,9 +572,17 @@ export function StatementsList({
             { label: "請求書を開く", href: `/invoices/${invoiceId}` },
             { label: "未処理に戻す", disabled: true as const, note: "請求で入金を取消" },
           ]
-        : [
-            { label: "未処理に戻す", onSelect: () => setDialog({ kind: "reopen", rowId: row.id }) },
-          ]),
+        : row.entry?.expensePayment
+          ? [
+              { label: "立替精算を開く", href: "/expenses" },
+              { label: "未処理に戻す", disabled: true as const, note: "立替精算で支払を取消" },
+            ]
+          : [
+              {
+                label: "未処理に戻す",
+                onSelect: () => setDialog({ kind: "reopen", rowId: row.id }),
+              },
+            ]),
       { label: "証憑を紐づける", onSelect: () => setDialog({ kind: "documents", rowId: row.id }) },
       { label: "メモ", onSelect: () => setDialog({ kind: "note", rowId: row.id }) },
     ];
