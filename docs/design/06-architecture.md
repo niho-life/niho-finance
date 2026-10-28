@@ -1,0 +1,117 @@
+# 06. 技術構成
+
+NIHO アプリと同じ技術（TypeScript / Next.js / Prisma / PostgreSQL / GCP Cloud Run）で、1 社・1〜数人向けの小さな Web アプリとして作ります。台帳のコアはフレームワークに依存しないパッケージに分け、単体テストで不変条件を守ります。
+
+## 1. モノレポ
+
+npm workspaces。コマンドは `npm -C <dir> ...`。
+
+| パス | 役割 | 依存 |
+| --- | --- | --- |
+| `packages/ledger` | 仕訳の検証・登録・取消、残高と試算表の計算、税区分と消費税の計算、締め、連番。純粋な TypeScript。I/O なし | なし |
+| `packages/importers` | 銀行・カード CSV のパーサ（形式ごとに 1 モジュール＋ゴールデンテスト）、Stripe の balance transaction 取得と明細への変換、重複判定 | `ledger`（型） |
+| `packages/reports` | 仕訳帳・総勘定元帳・試算表・月次推移・セグメント PL・決算書・財務諸表 CSV・freee/弥生 CSV・beancount の生成 | `ledger` |
+| `packages/db` | Prisma schema、migration、リポジトリ層（仕訳の原子的な登録、監査ログの追記） | Prisma |
+| `apps/web` | Next.js（App Router）。画面、Server Actions、route handler（Stripe 同期・バックアップのジョブ入口）、PDF 生成 | 上の全部 |
+
+`ledger` は DB を知らない。`db` が「仕訳を 1 トランザクションで書き、監査ログを追記し、連番を採る」責務を持つ。画面から直接 Prisma を呼ばない。
+
+## 2. 主要な技術
+
+| 領域 | 採用 | 理由 |
+| --- | --- | --- |
+| 言語 / ランタイム | TypeScript strict、Node 22 | NIHO アプリと同じ |
+| Web | Next.js App Router、React、Tailwind | 画面と API を 1 つに。Server Actions で入力、route handler でジョブ |
+| DB | PostgreSQL 16（Cloud SQL）、Prisma | 既存の運用知識。bigint・トランザクション・部分索引 |
+| 検証 | Zod | 入力の境界で型を固める |
+| PDF | `@react-pdf/renderer` または Playwright の印刷 | 請求書・決算書（v2）。日本語フォントを同梱 |
+| CSV | `papaparse` ＋ 形式ごとのスキーマ | 銀行・カードの取込 |
+| Stripe | `stripe` 公式 SDK、読み取り専用の制限付きキー | 2 アカウントを `Stripe-Account` ヘッダーまたは各アカウントのキーで読む |
+| 読み取り（v2） | Claude の vision（画像 → 構造化 JSON） | 領収書の日付・金額・税率別内訳・登録番号。確信度つき |
+| テスト | Vitest（単体・不変条件・ゴールデン）、Playwright（主要導線の最小限） | |
+| ログ | pino → Cloud Logging | |
+
+## 3. 実行環境
+
+| 環境 | 場所 | 用途 |
+| --- | --- | --- |
+| local | 各 Mac の Docker Postgres または Cloud SQL Proxy | 開発。シードは架空データ |
+| prod | GCP Cloud Run（1 サービス）＋ Cloud SQL ＋ GCS | 本番。stg は置かない（1 ユーザーで、本番前の確認は local で足りる） |
+
+### 3.1 GCP の配置
+
+- プロジェクト: 既存の NIHO 本番プロジェクトに置く（請求先が同じ会社になるため）。将来分けたくなったら `pg_dump` と GCS のコピーで移せる。
+- Cloud Run: `niho-finance`（min 0 / max 1、同時実行 1 ユーザー想定）。コールドスタートは許容。
+- Cloud SQL: 既存インスタンスに新しいデータベース `niho_finance` と専用ロールを作る（追加の固定費なし）。アプリのロールには `audit_log` への UPDATE / DELETE を与えない。
+- GCS: `niho-finance-documents`（証憑。オブジェクトのバージョニング ON、削除保護）、`niho-finance-backups`（日次エクスポート）。
+- Secret Manager: Stripe の制限付きキー、DB 接続、銀行 API のキー。
+- Cloud Scheduler: 日次の Stripe 同期、日次バックアップ、月次の登録番号照合、期限の通知。
+- 通知: 期限や取込の失敗はメール（Gmail API または SendGrid）。LINE は使わない。
+
+### 3.2 認証
+
+Cloud Run の IAP（Identity-Aware Proxy）直接統合で Google アカウント（会社のアカウント）だけを通す。アプリはヘッダーのメールを actor として記録する。IAP が使えない構成なら Auth.js の Google ログインで許可メールを固定する。v3 の複数ユーザーも IAP の許可リストと DB の役割で足りる。
+
+### 3.3 ドメイン
+
+v1 は `run.app` の URL をブックマークで使う。独自ドメイン（例: finance.niho.life）は証明書の失効を監視する運用が要るため、v2 以降で必要になったら付ける。
+
+## 4. ジョブ
+
+| ジョブ | 周期 | 内容 |
+| --- | --- | --- |
+| `stripe-sync` | 毎日 06:00 JST | 2 アカウントの balance transactions をカーソルから取得して明細化。失敗はメール |
+| `bank-sync`（v2） | 毎日 | 銀行 API の入出金明細を取得 |
+| `backup-export` | 毎日 03:00 JST | 仕訳・明細・設定を CSV / JSON / beancount で GCS に書く。Cloud SQL の自動バックアップとは別 |
+| `calendar-notify` | 毎日 09:00 JST | 7 日以内・当日の期限をメール |
+| `invoice-registry-verify`（v2） | 毎月 | 取引先の登録番号を国税庁 API で照合 |
+
+ジョブは route handler（`/jobs/<name>`）で、Cloud Scheduler からの OIDC トークンだけを受け付ける。失敗しても throw せず記録して終える（再試行の嵐を避ける）。
+
+## 5. 公開境界と秘密
+
+| 公開リポ（niho-finance） | 非公開側 |
+| --- | --- |
+| コード、設計・運用の文書、架空データのシードとテスト | 会社の実データ（DB・GCS）、`niho-finance-core`（会社固有の設定ファイル、事務処理規程の実物、日次エクスポートの写し） |
+| CSV 形式の定義（列名だけ） | 口座番号・支店名などの実値 |
+| Stripe の同期ロジック | アカウント ID・キー（Secret Manager） |
+| `.env.example` | `.env`（ローカル）、Cloud Run の env と Secret |
+
+- 会社固有の値はすべて DB か Secret Manager に置き、コードに埋めない。設定画面から入力する。
+- テストのフィクスチャは架空の会社・架空の口座。実データを混ぜない。
+- Issue / PR も公開。金額・取引先・口座の実値を書かない。
+
+`niho-finance-core` は当面ローカルフォルダ（iCloud / Drive に同期しない。Time Machine の対象にする）で始め、日次エクスポートの写しを自動で受け取る段階になったら非公開リポにする（git の履歴がそのまま改ざん検知になる）。
+
+## 6. データ保護
+
+| 項目 | 方法 |
+| --- | --- |
+| バックアップ | Cloud SQL 自動バックアップ（7 日）＋ PITR。加えて日次エクスポート（`backup-export`）を GCS（バージョニング・保持 10 年）に保存 |
+| 復元訓練 | 年 1 回、local にエクスポートを読み込んで試算表が一致することを確認する |
+| 証憑 | GCS のバージョニング ON、削除保護（保持ポリシーは「ロックしない」で 7 年）。アプリからの削除は論理削除のみ |
+| 改ざん検知 | 証憑は SHA-256、仕訳は監査ログ（追記のみ）。日次エクスポートの差分を非公開 git に積む |
+| 秘密 | Secret Manager。Stripe は読み取り専用の制限付きキー（Balance transactions / Payouts / Charges / Invoices の read） |
+| アクセス | IAP の許可メールだけ。管理画面の URL は非公開 |
+
+## 7. CI と配備
+
+- CI（GitHub Actions、公開リポ）: typecheck、lint、unit、`prisma validate`、ゴールデンテスト。秘密は使わない。
+- 配備: v1 は Mac から `scripts/deploy.sh`（`gcloud run deploy` ＋ `prisma migrate deploy`）。公開リポの Actions に GCP の権限を持たせない。配備の記録は `docs/ops/deploy-log.md` ではなく Cloud Run のリビジョン履歴で足りる。
+- migration は expand → contract（列の削除は配備の 1 つ後）。
+
+## 8. コストの見積り
+
+| 項目 | 月額（目安） |
+| --- | --- |
+| Cloud Run（min 0、1 ユーザー） | 0〜300 円 |
+| Cloud SQL（既存インスタンスに同居） | 追加 0 円（分離する場合は最小構成で 1,500 円前後） |
+| GCS（証憑・バックアップ、数 GB） | 50 円未満 |
+| Secret Manager / Scheduler / Logging | 0〜100 円 |
+| 読み取り（LLM、月 100 枚） | 100〜300 円 |
+| 合計 | 500 円未満 |
+
+## 9. 観測
+
+- エラーは Cloud Logging の severity で拾い、週 1 のまとめをメール。アラートポリシーは「ジョブの失敗」と「5xx」の 2 つだけ。
+- 画面の操作ログは監査ログで足りる。分析用のトラッキングは入れない。

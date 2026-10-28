@@ -1,0 +1,583 @@
+<!doctype html>
+<!--
+  mock: NIHO finance v1 主要画面（ホーム・明細・取引・証憑・報告・設定。PC とスマホの切替）
+  論点: ナビ 7 つの情報設計と順序 / 明細を 1 行で片付ける操作（推定チップ・登録/振替/無視）/ ホームで見せる数字の優先順位 / 白基調＋緑 1 色のトーン
+  作っていない: 検索・絞り込み・チップのポップオーバー・「…」メニューは見た目だけ。資金繰りと推移のグラフは固定の SVG。数字・取引先・口座は架空。
+             取引の「支出」シートは開いた状態の静止画。証憑のサムネイルは単色。設定は一覧だけで中は無い。スマホはホームと明細だけ最適化し、他は PC の縮小。
+  参照: docs/design/05-ui-ux.md / docs/design/00-overview.md §2 セグメント / docs/design/01-domain-model.md §2 明細
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIHO finance mock v1</title>
+<style>
+:root{
+  --bg:#FFFCF5; --surface:#FFFFFF; --text:#1C1C1A; --muted:#6F6E68; --muted-2:#9A9892; --border:#E7E4DB; --border-2:#D9D6CC;
+  --primary:#4B9E5E; --primary-ink:#2F7A41; --primary-soft:#E9F4EC; --accent:#B2D67C;
+  --danger:#C8463C; --danger-soft:#FBECEA; --warn:#B7791F; --warn-soft:#FBF3E3;
+  --radius:12px; --radius-s:8px; --shadow:0 1px 2px rgba(28,28,26,.06); --shadow-2:0 8px 24px rgba(28,28,26,.10);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#ECEAE3;font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Hiragino Kaku Gothic ProN",system-ui,-apple-system,sans-serif;color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;padding:16px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.r{text-align:right}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+
+/* mock chrome */
+.mockbar{max-width:1280px;margin:0 auto 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mockbar .grp{display:flex;gap:4px;background:#fff;border:1px solid var(--border);border-radius:999px;padding:3px}
+.mockbar .grp button{padding:6px 12px;border-radius:999px;color:var(--muted)}
+.mockbar .grp button.on{background:var(--text);color:#fff}
+.mockbar .sp{flex:1}
+.urlbar{max-width:1280px;margin:0 auto 10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;color:var(--muted-2);font-size:13px}
+.urlbar .dot{width:10px;height:10px;border-radius:50%;background:#E4E1D8}
+.urlbar .path{color:var(--text);font-weight:700}
+
+/* frame */
+.frame{max-width:1280px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:grid;grid-template-columns:216px 1fr;min-height:820px;box-shadow:var(--shadow)}
+.side{border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:2px;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px;font-weight:800;letter-spacing:.2px}
+.brand .mark{width:26px;height:26px;border-radius:8px;background:var(--primary);position:relative}
+.brand .mark:after{content:"";position:absolute;inset:7px;border-radius:4px;background:var(--accent)}
+.brand .co{display:block;font-weight:400;color:var(--muted);font-size:11px;letter-spacing:0}
+.nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--muted);font-weight:600;width:100%;text-align:left}
+.nav svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.nav:hover{background:rgba(28,28,26,.04)}
+.nav.on{background:#fff;color:var(--text);box-shadow:var(--shadow)}
+.nav .cnt{margin-left:auto;background:var(--primary-soft);color:var(--primary-ink);font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
+.nav.v2{opacity:.45}
+.side .foot{margin-top:auto;padding:10px;color:var(--muted-2);font-size:12px;display:flex;align-items:center;gap:8px}
+.side .foot .av{width:22px;height:22px;border-radius:50%;background:#D9D6CC}
+.main{padding:22px 28px 32px;min-width:0}
+.screen{display:none}
+.screen.on{display:block}
+.head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.head h1{font-size:20px;margin:0;font-weight:800}
+.head .sp{flex:1}
+.seg{display:inline-flex;background:#fff;border:1px solid var(--border);border-radius:10px;padding:3px}
+.seg button{padding:5px 10px;border-radius:7px;color:var(--muted);font-weight:600;font-size:13px}
+.seg button.on{background:var(--text);color:#fff}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-weight:700;font-size:13px;border:1px solid transparent;white-space:nowrap}
+.btn.primary{background:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-ink)}
+.btn.secondary{background:#fff;border-color:var(--border-2)}
+.btn.ghost{color:var(--muted)}
+.btn.ghost:hover{background:rgba(28,28,26,.05);color:var(--text)}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
+.card h2{font-size:13px;color:var(--muted);margin:0 0 10px;font-weight:700;letter-spacing:.2px}
+.grid{display:grid;gap:14px}
+.g-home-top{grid-template-columns:1.2fr 2fr}
+.g-home-mid{grid-template-columns:2fr 1fr}
+.big{font-size:34px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.big .unit{font-size:14px;color:var(--muted);font-weight:600;margin-left:4px}
+.sub{color:var(--muted);font-size:12px;margin-top:6px}
+.acct{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.acct .a{border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.acct .a .n{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct .a .v{font-size:18px;font-weight:800}
+.acct .a .m{font-size:11px;color:var(--muted-2)}
+.acct .a .m b{color:var(--primary-ink);font-weight:700}
+.ic{width:8px;height:8px;border-radius:50%;background:#D9D6CC;flex:none}
+.ic.bank{background:#5B8DEF}.ic.card{background:#B07CD6}.ic.stripe{background:#635BFF}.ic.cash{background:#E0A93B}.ic.owner{background:#9A9892}
+.pl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.pl .k{font-size:12px;color:var(--muted)}
+.pl .v{font-size:22px;font-weight:800;margin-top:2px}
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar{display:grid;grid-template-columns:120px 1fr 90px;align-items:center;gap:10px;font-size:13px}
+.bar .t{display:flex;height:10px;border-radius:999px;background:#F1EFE8;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--primary)}
+.bar .t i.c{background:#E0A93B}
+.todo{display:flex;flex-direction:column}
+.todo button{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);text-align:left;width:100%}
+.todo button:last-child{border-bottom:0}
+.todo .badge{min-width:30px;text-align:center;background:var(--primary-soft);color:var(--primary-ink);font-weight:800;border-radius:8px;padding:2px 6px}
+.todo .badge.warn{background:var(--warn-soft);color:var(--warn)}
+.todo .badge.date{background:#F1EFE8;color:var(--muted);font-weight:700;font-size:12px}
+.todo .chev{margin-left:auto;color:var(--muted-2)}
+.chart{width:100%;height:150px;display:block}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;background:var(--primary);vertical-align:middle;margin-right:6px}
+.legend i.dash{background:repeating-linear-gradient(90deg,var(--muted-2) 0 3px,transparent 3px 6px)}
+
+/* chips & tabs */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:12px;font-weight:600;color:var(--muted)}
+.chip.on{border-color:var(--text);color:var(--text)}
+.chip .c{color:var(--muted-2);font-weight:700}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:0}
+.tabs button{padding:10px 12px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;font-size:13px}
+.tabs button.on{color:var(--text);border-bottom-color:var(--text)}
+.tabs .cnt{margin-left:6px;color:var(--muted-2);font-weight:700}
+.tabs .sp{flex:1}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;border-radius:10px;padding:6px 10px;width:240px;color:var(--muted-2);font-size:13px}
+.search svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+
+/* table */
+.tbl{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.tr{display:grid;align-items:center;gap:12px;padding:0 14px;min-height:46px;border-bottom:1px solid var(--border);transition:opacity .25s,transform .25s}
+.tr:last-child{border-bottom:0}
+.tr.th{min-height:36px;font-size:11px;color:var(--muted-2);font-weight:700;background:#FBFAF6;letter-spacing:.3px}
+.tr.gone{opacity:0;transform:translateX(12px);pointer-events:none}
+.tr.hide{display:none}
+.txn{grid-template-columns:22px 56px 1.3fr 110px 1.6fr 200px}
+.cb{width:16px;height:16px;border:1.5px solid var(--border-2);border-radius:4px;background:#fff}
+.desc{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc .w{display:block;font-size:11px;color:var(--muted-2)}
+.amt{font-weight:700}
+.amt.out{color:var(--text)}
+.amt.in{color:var(--primary-ink)}
+.est{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.t{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:7px;font-size:12px;border:1px solid var(--border-2);background:#fff;color:var(--text);white-space:nowrap}
+.t.guess{border-style:dashed;color:var(--muted)}
+.t.rule{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-ink)}
+.t.seg{border:0;background:#F1EFE8;color:var(--muted)}
+.t.warn{border:0;background:var(--warn-soft);color:var(--warn)}
+.t.doc{border:0;background:#F1EFE8;color:var(--muted-2)}
+.acts{display:flex;gap:4px;justify-content:flex-end;align-items:center}
+.more{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted-2)}
+.more:hover{background:rgba(28,28,26,.05);color:var(--text)}
+.je{grid-template-columns:56px 1.4fr 1fr 1fr 110px 110px 40px}
+.je .acc{font-size:13px}
+.je .acc .s{display:block;font-size:11px;color:var(--muted-2)}
+.docico{display:inline-flex;width:22px;height:22px;border-radius:6px;background:var(--primary-soft);color:var(--primary-ink);align-items:center;justify-content:center;font-size:11px;font-weight:800}
+.docico.none{background:#F1EFE8;color:var(--muted-2)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--text);color:#fff;padding:10px 14px 10px 16px;border-radius:12px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-2);transition:.2s;font-size:13px;z-index:50}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast button{color:var(--accent);font-weight:800}
+
+/* journal sheet (static) */
+.je-wrap{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
+.sheet{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-2);padding:18px 20px}
+.sheet h3{margin:0 0 14px;font-size:15px}
+.f{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.f label{font-size:12px;color:var(--muted);font-weight:700}
+.in{border:1px solid var(--border-2);border-radius:9px;padding:8px 10px;background:#fff;font-size:14px;display:flex;align-items:center;justify-content:space-between;min-height:38px}
+.in .ph{color:var(--muted-2)}
+.in.big{font-size:22px;font-weight:800;justify-content:flex-end}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.drop{border:1.5px dashed var(--border-2);border-radius:10px;padding:14px;text-align:center;color:var(--muted-2);font-size:12px}
+.sheet .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+
+/* documents */
+.doc-wrap{display:grid;grid-template-columns:1fr 380px;gap:14px;align-items:start}
+.docs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.dc{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.dc.on{border-color:var(--text)}
+.dc .th{height:110px;background:linear-gradient(180deg,#F4F2EC,#E9E6DD);position:relative}
+.dc .th:after{content:"";position:absolute;left:18px;right:18px;top:16px;height:6px;border-radius:3px;background:rgba(28,28,26,.08);box-shadow:0 14px 0 rgba(28,28,26,.08),0 28px 0 rgba(28,28,26,.06),0 42px 0 rgba(28,28,26,.06)}
+.dc .th.pdf{background:linear-gradient(180deg,#FFF7F2,#F5E7DE)}
+.dc .b{padding:10px 12px}
+.dc .n{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc .m{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-top:2px}
+.prev{height:220px;border-radius:10px;background:linear-gradient(180deg,#F4F2EC,#E9E6DD);margin-bottom:14px;position:relative}
+.prev:after{content:"";position:absolute;left:28px;right:28px;top:26px;height:7px;border-radius:3px;background:rgba(28,28,26,.08);box-shadow:0 18px 0 rgba(28,28,26,.08),0 36px 0 rgba(28,28,26,.06),0 54px 0 rgba(28,28,26,.06),0 72px 0 rgba(28,28,26,.05),0 90px 0 rgba(28,28,26,.05)}
+.sugg{font-size:11px;color:var(--primary-ink);font-weight:700;margin-left:6px}
+
+/* reports */
+.rep{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rt{width:100%;border-collapse:collapse;font-size:13px}
+.rt th{text-align:left;font-size:11px;color:var(--muted-2);font-weight:700;padding:6px 0;border-bottom:1px solid var(--border)}
+.rt th.r{text-align:right}
+.rt td{padding:7px 0;border-bottom:1px solid #F1EFE8}
+.rt tr.h td{font-weight:800;background:#FBFAF6;padding-left:6px}
+.rt tr.sum td{font-weight:800;border-top:1px solid var(--border-2);border-bottom:0}
+.rt td.ind{padding-left:18px}
+.rt td a{color:var(--text);text-decoration:none;border-bottom:1px dotted var(--muted-2)}
+.segtbl td:first-child{width:50%}
+
+/* settings */
+.set{display:grid;grid-template-columns:1fr 1fr;gap:12px 28px}
+.set button{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--border);text-align:left;width:100%}
+.set .k{font-weight:700}
+.set .d{font-size:12px;color:var(--muted);margin-left:auto}
+.set .chev{color:var(--muted-2)}
+
+/* phone */
+.frame.phone{max-width:393px;min-height:852px;grid-template-columns:1fr;border-radius:40px;border:8px solid #1C1C1A;box-shadow:0 20px 60px rgba(0,0,0,.25);position:relative}
+.frame.phone .side{display:none}
+.frame.phone .main{padding:48px 16px 92px}
+.frame.phone .head{margin-bottom:12px}
+.frame.phone .head h1{font-size:19px}
+.frame.phone .head .seg,.frame.phone .head .btn.secondary,.frame.phone .head .btn.ghost{display:none}
+.frame.phone .g-home-top,.frame.phone .g-home-mid{grid-template-columns:1fr}
+.frame.phone .acct{grid-template-columns:1fr 1fr}
+.frame.phone .big{font-size:30px}
+.frame.phone .pl .v{font-size:18px}
+.frame.phone .bar{grid-template-columns:90px 1fr 80px;font-size:12px}
+.frame.phone .chips{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;margin-bottom:8px}
+.frame.phone .tabs button{padding:8px 8px;font-size:12px}
+.frame.phone .search{display:none}
+.frame.phone .tr.th{display:none}
+.frame.phone .txn{grid-template-columns:1fr auto;grid-template-areas:"desc amt" "est est" "acts acts";padding:10px 12px;gap:6px 10px}
+.frame.phone .txn .cb,.frame.phone .txn .d{display:none}
+.frame.phone .txn .desc{grid-area:desc;white-space:normal}
+.frame.phone .txn .desc:before{content:attr(data-d) "  ";color:var(--muted-2);font-size:11px}
+.frame.phone .txn .amt{grid-area:amt}
+.frame.phone .txn .est{grid-area:est}
+.frame.phone .txn .acts{grid-area:acts;justify-content:flex-start}
+.frame.phone .txn .acts .btn{flex:1;justify-content:center}
+.frame.phone .txn .more{display:none}
+.frame.phone .je-wrap,.frame.phone .doc-wrap,.frame.phone .rep{grid-template-columns:1fr}
+.frame.phone .je{grid-template-columns:50px 1fr 90px}
+.frame.phone .je .acc,.frame.phone .je .segc,.frame.phone .je .dcol{display:none}
+.frame.phone .docs{grid-template-columns:1fr 1fr}
+.frame.phone .set{grid-template-columns:1fr}
+.frame.phone .sheet{display:none}
+.frame.phone .docdetail{display:none}
+.tabbar{display:none}
+.frame.phone .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding:8px 6px 22px}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;color:var(--muted-2)}
+.tabbar button.on{color:var(--text)}
+.tabbar svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbar .cam{width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;margin-top:-18px;box-shadow:var(--shadow-2)}
+.frame.phone .notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:30px;border-radius:999px;background:#1C1C1A}
+.notch{display:none}
+.frame.phone .notch{display:block}
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <div class="grp" id="screens">
+    <button data-s="home" class="on">ホーム</button>
+    <button data-s="txn">明細</button>
+    <button data-s="je">取引</button>
+    <button data-s="doc">証憑</button>
+    <button data-s="rep">報告</button>
+    <button data-s="set">設定</button>
+  </div>
+  <div class="sp"></div>
+  <div class="grp" id="device">
+    <button data-d="pc" class="on">PC</button>
+    <button data-d="phone">スマホ</button>
+  </div>
+</div>
+<div class="urlbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:6px">finance.niho.life</span><span class="path" id="path">/home</span></div>
+
+<div class="frame" id="frame">
+  <div class="notch"></div>
+  <aside class="side">
+    <div class="brand"><span class="mark"></span><span>NIHO finance<span class="co">NIHO株式会社 · 第1期</span></span></div>
+    <button class="nav on" data-s="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>ホーム</button>
+    <button class="nav" data-s="txn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>明細<span class="cnt">23</span></button>
+    <button class="nav" data-s="je"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>取引</button>
+    <button class="nav" data-s="doc"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>証憑<span class="cnt">4</span></button>
+    <button class="nav" data-s="rep"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>報告</button>
+    <button class="nav v2" data-s="inv"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>請求</button>
+    <button class="nav v2" data-s="cls"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg>決算</button>
+    <button class="nav" data-s="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
+    <div class="foot"><span class="av"></span>takahama</div>
+  </aside>
+
+  <main class="main">
+
+  <!-- ホーム -->
+  <section class="screen on" data-screen="home">
+    <div class="head"><h1>ホーム</h1><span class="muted">2026年11月</span><span class="sp"></span><button class="btn secondary sm">Stripe 同期</button><button class="btn primary sm">CSV 取込</button></div>
+    <div class="grid g-home-top" style="margin-bottom:14px">
+      <div class="card">
+        <h2>現預金</h2>
+        <div class="big num">1,356,500<span class="unit">円</span></div>
+        <div class="sub">うち入金待ち（Stripe） <b class="num">242,200</b> 円 · 今日 06:00 同期</div>
+        <div class="sub" style="margin-top:14px">カード未払 <span class="num">72,460</span> 円 · 役員立替 <span class="num">165,000</span> 円</div>
+      </div>
+      <div class="card">
+        <h2>口座</h2>
+        <div class="acct">
+          <div class="a"><span class="n"><i class="ic bank"></i>GMOあおぞら 法人</span><span class="v num">1,102,300</span><span class="m">未処理 <b>9</b></span></div>
+          <div class="a"><span class="n"><i class="ic stripe"></i>Stripe kamakura</span><span class="v num">158,000</span><span class="m">未処理 <b>5</b></span></div>
+          <div class="a"><span class="n"><i class="ic stripe"></i>Stripe platform</span><span class="v num">84,200</span><span class="m">未処理 <b>3</b></span></div>
+          <div class="a"><span class="n"><i class="ic cash"></i>現金 kamakura</span><span class="v num">12,000</span><span class="m">11/08 確認</span></div>
+          <div class="a"><span class="n"><i class="ic card"></i>三井住友カード</span><span class="v num">-72,460</span><span class="m">未処理 <b>6</b> · 12/10 引落</span></div>
+          <div class="a"><span class="n"><i class="ic owner"></i>役員立替</span><span class="v num">-165,000</span><span class="m">創立費 2 件</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="grid g-home-mid" style="margin-bottom:14px">
+      <div class="card">
+        <h2>今月の損益</h2>
+        <div class="pl">
+          <div><div class="k">売上</div><div class="v num">612,000</div></div>
+          <div><div class="k">費用</div><div class="v num">318,540</div></div>
+          <div><div class="k">利益</div><div class="v num" style="color:var(--primary-ink)">293,460</div></div>
+        </div>
+        <div class="bars">
+          <div class="bar"><span>① プラットフォーム</span><span class="t"><i style="width:22%"></i></span><span class="num r">+84,200</span></div>
+          <div class="bar"><span>② 直営拠点</span><span class="t"><i style="width:48%"></i></span><span class="num r">+151,260</span></div>
+          <div class="bar"><span>③ 受託開発</span><span class="t"><i style="width:70%"></i></span><span class="num r">+300,000</span></div>
+          <div class="bar"><span>共通</span><span class="t"><i class="c" style="width:38%"></i></span><span class="num r">-242,000</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>やること</h2>
+        <div class="todo">
+          <button data-go="txn"><span class="badge">23</span>未処理の明細<span class="chev">›</span></button>
+          <button data-go="doc"><span class="badge warn">4</span>未紐づけの証憑<span class="chev">›</span></button>
+          <button><span class="badge date">1/12</span>法人設立届出書<span class="chev">›</span></button>
+          <button><span class="badge date">1/20</span>源泉所得税（納期の特例）<span class="chev">›</span></button>
+          <button><span class="badge date">2/12</span>青色申告承認申請書<span class="chev">›</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>残高の見通し（90日）</h2>
+      <svg class="chart" viewBox="0 0 800 150" preserveAspectRatio="none">
+        <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#4B9E5E" stop-opacity=".18"/><stop offset="1" stop-color="#4B9E5E" stop-opacity="0"/></linearGradient></defs>
+        <line x1="0" y1="120" x2="800" y2="120" stroke="#E7E4DB"/>
+        <line x1="0" y1="70" x2="800" y2="70" stroke="#F1EFE8"/>
+        <line x1="0" y1="20" x2="800" y2="20" stroke="#F1EFE8"/>
+        <path d="M0,62 L60,58 L120,64 L180,52 L240,66 L300,60 L320,60" fill="none" stroke="#4B9E5E" stroke-width="2.5"/>
+        <path d="M0,62 L60,58 L120,64 L180,52 L240,66 L300,60 L320,60 L320,120 L0,120Z" fill="url(#g)"/>
+        <path d="M320,60 L380,74 L440,70 L500,88 L560,80 L620,96 L680,90 L740,104 L800,98" fill="none" stroke="#9A9892" stroke-width="2" stroke-dasharray="5 5"/>
+        <circle cx="320" cy="60" r="4" fill="#4B9E5E"/>
+        <text x="4" y="14" font-size="10" fill="#9A9892">150万</text>
+        <text x="4" y="66" font-size="10" fill="#9A9892">100万</text>
+        <text x="4" y="116" font-size="10" fill="#9A9892">50万</text>
+        <text x="312" y="140" font-size="10" fill="#6F6E68">今日</text>
+        <text x="500" y="140" font-size="10" fill="#9A9892">12/10 カード</text>
+        <text x="640" y="140" font-size="10" fill="#9A9892">1/20 源泉</text>
+      </svg>
+      <div class="legend"><span><i></i>実績</span><span><i class="dash"></i>定期取引と税金の予定</span></div>
+    </div>
+  </section>
+
+  <!-- 明細 -->
+  <section class="screen" data-screen="txn">
+    <div class="head"><h1>明細</h1><span class="sp"></span><button class="btn ghost sm">Stripe 同期</button><button class="btn secondary sm">CSV 取込</button></div>
+    <div class="chips">
+      <span class="chip on">すべて <span class="c">23</span></span>
+      <span class="chip"><i class="ic bank"></i>GMOあおぞら <span class="c">9</span></span>
+      <span class="chip"><i class="ic card"></i>三井住友カード <span class="c">6</span></span>
+      <span class="chip"><i class="ic stripe"></i>Stripe kamakura <span class="c">5</span></span>
+      <span class="chip"><i class="ic stripe"></i>Stripe platform <span class="c">3</span></span>
+    </div>
+    <div class="tabs">
+      <button class="on">未処理<span class="cnt" id="pendingCount">23</span></button>
+      <button>登録済み</button>
+      <button>振替</button>
+      <button>無視</button>
+      <span class="sp"></span>
+      <span class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>摘要・金額・取引先</span>
+    </div>
+    <div class="tbl" style="border-top:0;border-top-left-radius:0;border-top-right-radius:0">
+      <div class="tr th txn"><span></span><span>日付</span><span>摘要</span><span class="r">金額</span><span>科目 · 税区分 · 取引先 · セグメント</span><span></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/04</span><span class="desc" data-d="11/04">振込 ストライプ ジャパン(カ<span class="w">GMOあおぞら 法人</span></span><span class="amt in num r">+84,200</span><span class="est"><span class="t rule">振替 → Stripe platform</span><span class="t doc">11/01 入金予定と一致</span></span><span class="acts"><button class="btn primary sm" data-act="done">振替</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/05</span><span class="desc" data-d="11/05">Vデビット GOOGLE CLOUD JAPAN<span class="w">GMOあおぞら 法人</span></span><span class="amt out num r">-12,340</span><span class="est"><span class="t guess">通信費</span><span class="t guess">課税仕入 10%</span><span class="t guess">Google</span><span class="t seg">① プラットフォーム</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/05</span><span class="desc" data-d="11/05">振込 カ)カマクラフドウサン<span class="w">GMOあおぞら 法人</span></span><span class="amt out num r">-88,000</span><span class="est"><span class="t rule">地代家賃</span><span class="t rule">課税仕入 10%</span><span class="t rule">鎌倉不動産</span><span class="t seg">② 直営拠点</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/06</span><span class="desc" data-d="11/06">東京電力エナジーパートナー<span class="w">三井住友カード</span></span><span class="amt out num r">-9,870</span><span class="est"><span class="t guess">水道光熱費</span><span class="t guess">課税仕入 10%</span><span class="t seg">② 直営拠点</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/07</span><span class="desc" data-d="11/07">AMAZON.CO.JP<span class="w">三井住友カード</span></span><span class="amt out num r">-3,980</span><span class="est"><span class="t guess">消耗品費</span><span class="t guess">課税仕入 10%</span><span class="t seg">② 直営拠点</span><span class="t warn">証憑なし</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/08</span><span class="desc" data-d="11/08">振込 ヤマダ タロウ<span class="w">GMOあおぞら 法人</span></span><span class="amt in num r">+330,000</span><span class="est"><span class="t guess">売掛金</span><span class="t guess">山田太郎</span><span class="t seg">③ 受託開発</span><span class="t doc">請求 INV-2026-0003</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/10</span><span class="desc" data-d="11/10">振込手数料<span class="w">GMOあおぞら 法人</span></span><span class="amt out num r">-220</span><span class="est"><span class="t rule">支払手数料</span><span class="t rule">非課税</span><span class="t seg">共通</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/12</span><span class="desc" data-d="11/12">charge · 月会費 11月<span class="w">Stripe kamakura</span></span><span class="amt in num r">+15,000</span><span class="est"><span class="t rule">売上高</span><span class="t rule">課税売上 10%</span><span class="t seg">② 直営拠点</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/12</span><span class="desc" data-d="11/12">fee · 月会費 11月<span class="w">Stripe kamakura</span></span><span class="amt out num r">-540</span><span class="est"><span class="t rule">支払手数料</span><span class="t rule">非課税</span><span class="t seg">② 直営拠点</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+
+      <div class="tr txn"><span class="cb"></span><span class="d muted num">11/13</span><span class="desc" data-d="11/13">ANTHROPIC<span class="w">三井住友カード</span></span><span class="amt out num r">-7,560</span><span class="est"><span class="t guess">通信費</span><span class="t guess">課税仕入（インボイスなし）</span><span class="t seg">① プラットフォーム</span></span><span class="acts"><button class="btn primary sm" data-act="done">登録</button><button class="btn ghost sm" data-act="done">無視</button><button class="more">…</button></span></div>
+    </div>
+  </section>
+
+  <!-- 取引 -->
+  <section class="screen" data-screen="je">
+    <div class="head"><h1>取引</h1><span class="muted">2026年11月</span><span class="sp"></span><span class="seg"><button>収入</button><button class="on">支出</button><button>振替</button><button>伝票</button></span></div>
+    <div class="je-wrap">
+      <div class="tbl">
+        <div class="tr th je"><span>日付</span><span>摘要</span><span>借方</span><span>貸方</span><span class="r">金額</span><span>セグメント</span><span></span></div>
+        <div class="tr je"><span class="muted num">11/01</span><span class="desc">設立 資本金の払込</span><span class="acc">普通預金<span class="s">GMOあおぞら</span></span><span class="acc">資本金</span><span class="num r amt">50,000</span><span class="segc"><span class="t seg">共通</span></span><span class="dcol"><span class="docico">PDF</span></span></div>
+        <div class="tr je"><span class="muted num">11/01</span><span class="desc">登録免許税</span><span class="acc">創立費</span><span class="acc">役員借入金<span class="s">役員立替</span></span><span class="num r amt">150,000</span><span class="segc"><span class="t seg">共通</span></span><span class="dcol"><span class="docico">PDF</span></span></div>
+        <div class="tr je"><span class="muted num">11/01</span><span class="desc">定款認証 手数料</span><span class="acc">創立費</span><span class="acc">役員借入金<span class="s">役員立替</span></span><span class="num r amt">15,000</span><span class="segc"><span class="t seg">共通</span></span><span class="dcol"><span class="docico">PDF</span></span></div>
+        <div class="tr je"><span class="muted num">11/05</span><span class="desc">家賃 11月 鎌倉不動産</span><span class="acc">地代家賃</span><span class="acc">普通預金<span class="s">GMOあおぞら</span></span><span class="num r amt">88,000</span><span class="segc"><span class="t seg">② 直営拠点</span></span><span class="dcol"><span class="docico">PDF</span></span></div>
+        <div class="tr je"><span class="muted num">11/08</span><span class="desc">受託開発 11月分 入金</span><span class="acc">普通預金<span class="s">GMOあおぞら</span></span><span class="acc">売掛金<span class="s">山田太郎</span></span><span class="num r amt">330,000</span><span class="segc"><span class="t seg">③ 受託開発</span></span><span class="dcol"><span class="docico">INV</span></span></div>
+        <div class="tr je"><span class="muted num">11/12</span><span class="desc">月会費 11月 charge</span><span class="acc">Stripe 残高<span class="s">kamakura</span></span><span class="acc">売上高</span><span class="num r amt">15,000</span><span class="segc"><span class="t seg">② 直営拠点</span></span><span class="dcol"><span class="docico none">—</span></span></div>
+        <div class="tr je"><span class="muted num">11/12</span><span class="desc">月会費 11月 fee</span><span class="acc">支払手数料</span><span class="acc">Stripe 残高<span class="s">kamakura</span></span><span class="num r amt">540</span><span class="segc"><span class="t seg">② 直営拠点</span></span><span class="dcol"><span class="docico none">—</span></span></div>
+        <div class="tr je"><span class="muted num">11/15</span><span class="desc">Stripe 入金 platform</span><span class="acc">普通預金<span class="s">GMOあおぞら</span></span><span class="acc">Stripe 残高<span class="s">platform</span></span><span class="num r amt">84,200</span><span class="segc"><span class="t seg">① プラットフォーム</span></span><span class="dcol"><span class="docico none">—</span></span></div>
+      </div>
+      <div class="sheet">
+        <h3>支出</h3>
+        <div class="f"><label>金額</label><div class="in big num">3,980</div></div>
+        <div class="row2">
+          <div class="f"><label>日付</label><div class="in">2026/11/07</div></div>
+          <div class="f"><label>支払元</label><div class="in">三井住友カード</div></div>
+        </div>
+        <div class="f"><label>科目</label><div class="in">消耗品費<span class="sugg">推定</span></div></div>
+        <div class="row2">
+          <div class="f"><label>税区分</label><div class="in">課税仕入 10%</div></div>
+          <div class="f"><label>セグメント</label><div class="in">② 直営拠点</div></div>
+        </div>
+        <div class="f"><label>取引先</label><div class="in">Amazon</div></div>
+        <div class="f"><label>摘要</label><div class="in"><span class="ph">延長コード・電池</span></div></div>
+        <div class="f"><label>証憑</label><div class="drop">ここにドロップ、または選ぶ</div></div>
+        <div class="foot"><button class="btn ghost">キャンセル</button><button class="btn primary">登録</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 証憑 -->
+  <section class="screen" data-screen="doc">
+    <div class="head"><h1>証憑</h1><span class="sp"></span><span class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>日付 · 金額 · 取引先</span><button class="btn primary sm">アップロード</button></div>
+    <div class="chips"><span class="chip on">受信箱 <span class="c">4</span></span><span class="chip">すべて <span class="c">31</span></span><span class="chip">無効 <span class="c">1</span></span></div>
+    <div class="doc-wrap">
+      <div class="docs">
+        <div class="dc on"><div class="th"></div><div class="b"><div class="n">IMG_2041.jpg</div><div class="m"><span>11/07</span><span class="num">3,980</span></div></div></div>
+        <div class="dc"><div class="th pdf"></div><div class="b"><div class="n">invoice_google_2026-11.pdf</div><div class="m"><span>11/05</span><span class="num">12,340</span></div></div></div>
+        <div class="dc"><div class="th"></div><div class="b"><div class="n">IMG_2038.jpg</div><div class="m"><span>—</span><span class="muted">未整理</span></div></div></div>
+        <div class="dc"><div class="th pdf"></div><div class="b"><div class="n">領収書_登録免許税.pdf</div><div class="m"><span>11/01</span><span class="num">150,000</span></div></div></div>
+      </div>
+      <div class="card docdetail">
+        <div class="prev"></div>
+        <div class="f"><label>種別</label><div class="in">領収書</div></div>
+        <div class="row2">
+          <div class="f"><label>日付</label><div class="in">2026/11/07<span class="sugg">読取</span></div></div>
+          <div class="f"><label>金額</label><div class="in num">3,980<span class="sugg">読取</span></div></div>
+        </div>
+        <div class="f"><label>取引先</label><div class="in">Amazon<span class="sugg">読取</span></div></div>
+        <div class="f"><label>登録番号</label><div class="in">T1234567890123<span class="sugg">照合済み</span></div></div>
+        <div class="sheet-foot" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+          <button class="btn primary">明細に紐づける · 11/07 AMAZON.CO.JP -3,980</button>
+          <button class="btn secondary">この証憑から取引を登録</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 報告 -->
+  <section class="screen" data-screen="rep">
+    <div class="head"><h1>報告</h1><span class="sp"></span><span class="seg"><button>今月</button><button class="on">今期</button><button>期間</button></span><button class="btn secondary sm">CSV</button><button class="btn secondary sm">PDF</button></div>
+    <div class="tabs" style="margin-bottom:14px"><button class="on">試算表</button><button>月次推移</button><button>セグメント</button><button>現預金</button><button>仕訳帳</button><button>総勘定元帳</button></div>
+    <div class="rep">
+      <div class="card">
+        <h2>貸借対照表 · 2026/11/30</h2>
+        <table class="rt">
+          <tr><th>科目</th><th class="r">残高</th></tr>
+          <tr class="h"><td>資産</td><td></td></tr>
+          <tr><td class="ind"><a>現金</a></td><td class="num r">12,000</td></tr>
+          <tr><td class="ind"><a>普通預金</a></td><td class="num r">1,102,300</td></tr>
+          <tr><td class="ind"><a>Stripe 残高</a></td><td class="num r">242,200</td></tr>
+          <tr><td class="ind"><a>売掛金</a></td><td class="num r">0</td></tr>
+          <tr><td class="ind"><a>創立費</a></td><td class="num r">165,000</td></tr>
+          <tr class="sum"><td>資産 合計</td><td class="num r">1,521,500</td></tr>
+          <tr class="h"><td>負債</td><td></td></tr>
+          <tr><td class="ind"><a>未払金</a></td><td class="num r">72,460</td></tr>
+          <tr><td class="ind"><a>役員借入金</a></td><td class="num r">165,000</td></tr>
+          <tr class="sum"><td>負債 合計</td><td class="num r">237,460</td></tr>
+          <tr class="h"><td>純資産</td><td></td></tr>
+          <tr><td class="ind"><a>資本金</a></td><td class="num r">50,000</td></tr>
+          <tr><td class="ind"><a>当期純利益</a></td><td class="num r">1,234,040</td></tr>
+          <tr class="sum"><td>負債・純資産 合計</td><td class="num r">1,521,500</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h2>損益計算書 · 2026/11/01 – 11/30</h2>
+        <table class="rt">
+          <tr><th>科目</th><th class="r">金額</th></tr>
+          <tr class="h"><td>売上高</td><td class="num r">612,000</td></tr>
+          <tr><td class="ind"><a>会費</a></td><td class="num r">228,000</td></tr>
+          <tr><td class="ind"><a>プラットフォーム手数料</a></td><td class="num r">84,000</td></tr>
+          <tr><td class="ind"><a>受託開発</a></td><td class="num r">300,000</td></tr>
+          <tr class="h"><td>販売費及び一般管理費</td><td class="num r">318,540</td></tr>
+          <tr><td class="ind"><a>地代家賃</a></td><td class="num r">88,000</td></tr>
+          <tr><td class="ind"><a>通信費</a></td><td class="num r">31,200</td></tr>
+          <tr><td class="ind"><a>水道光熱費</a></td><td class="num r">9,870</td></tr>
+          <tr><td class="ind"><a>消耗品費</a></td><td class="num r">14,230</td></tr>
+          <tr><td class="ind"><a>支払手数料</a></td><td class="num r">10,240</td></tr>
+          <tr><td class="ind"><a>創立費償却</a></td><td class="num r">0</td></tr>
+          <tr><td class="ind"><a>租税公課</a></td><td class="num r">165,000</td></tr>
+          <tr class="sum"><td>営業利益</td><td class="num r">293,460</td></tr>
+          <tr class="sum"><td>当期純利益</td><td class="num r">293,460</td></tr>
+        </table>
+        <h2 style="margin-top:18px">セグメント</h2>
+        <table class="rt segtbl">
+          <tr><th>セグメント</th><th class="r">売上</th><th class="r">費用</th><th class="r">利益</th></tr>
+          <tr><td>① プラットフォーム</td><td class="num r">84,000</td><td class="num r">31,200</td><td class="num r">52,800</td></tr>
+          <tr><td>② 直営拠点</td><td class="num r">228,000</td><td class="num r">112,100</td><td class="num r">115,900</td></tr>
+          <tr><td>③ 受託開発</td><td class="num r">300,000</td><td class="num r">0</td><td class="num r">300,000</td></tr>
+          <tr><td>共通</td><td class="num r">0</td><td class="num r">175,240</td><td class="num r">-175,240</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section class="screen" data-screen="set">
+    <div class="head"><h1>設定</h1></div>
+    <div class="set">
+      <button><span class="k">事業所</span><span class="d">NIHO株式会社</span><span class="chev">›</span></button>
+      <button><span class="k">会計期間</span><span class="d">第1期 2026/11/01 – 2027/03/31 · 免税</span><span class="chev">›</span></button>
+      <button><span class="k">勘定科目</span><span class="d">62</span><span class="chev">›</span></button>
+      <button><span class="k">税区分</span><span class="d">12</span><span class="chev">›</span></button>
+      <button><span class="k">口座</span><span class="d">6</span><span class="chev">›</span></button>
+      <button><span class="k">取引先</span><span class="d">18</span><span class="chev">›</span></button>
+      <button><span class="k">セグメント</span><span class="d">4</span><span class="chev">›</span></button>
+      <button><span class="k">タグ</span><span class="d">3</span><span class="chev">›</span></button>
+      <button><span class="k">ルール</span><span class="d">14</span><span class="chev">›</span></button>
+      <button><span class="k">定期取引</span><span class="d">5</span><span class="chev">›</span></button>
+      <button><span class="k">証憑の規程</span><span class="d">電子取引データ保存</span><span class="chev">›</span></button>
+      <button><span class="k">書き出しとバックアップ</span><span class="d">今日 03:00</span><span class="chev">›</span></button>
+      <button><span class="k">監査ログ</span><span class="d"></span><span class="chev">›</span></button>
+    </div>
+  </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="on" data-s="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>ホーム</button>
+    <button data-s="txn"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>明細</button>
+    <button data-s="doc"><span class="cam"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>
+    <button data-s="rep"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>報告</button>
+    <button data-s="set"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>その他</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg">登録しました</span><button id="undo">取り消す</button></div>
+
+<script>
+(function(){
+  var paths={home:'/home',txn:'/transactions',je:'/entries',doc:'/documents',rep:'/reports/trial-balance',set:'/settings',inv:'/invoices',cls:'/closing'};
+  function show(s){
+    if(!paths[s]) return;
+    document.querySelectorAll('.screen').forEach(function(el){el.classList.toggle('on',el.getAttribute('data-screen')===s);});
+    document.querySelectorAll('[data-s]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-s')===s);});
+    document.getElementById('path').textContent=paths[s];
+    if(s==='inv'||s==='cls'){document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('on');});}
+  }
+  document.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){show(b.getAttribute('data-s'));});});
+  document.querySelectorAll('[data-go]').forEach(function(b){b.addEventListener('click',function(){show(b.getAttribute('data-go'));});});
+  document.querySelectorAll('#device button').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('#device button').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on');
+    document.getElementById('frame').classList.toggle('phone',b.getAttribute('data-d')==='phone');
+  });});
+  var toast=document.getElementById('toast'),last=null,timer=null;
+  document.querySelectorAll('[data-act="done"]').forEach(function(b){b.addEventListener('click',function(){
+    var row=b.closest('.tr');row.classList.add('gone');
+    setTimeout(function(){row.classList.add('hide');},260);
+    last=row;
+    document.getElementById('toastMsg').textContent=(b.textContent.trim()==='無視'?'無視しました':(b.textContent.trim()==='振替'?'振替にしました':'登録しました'));
+    var c=document.getElementById('pendingCount');c.textContent=Math.max(0,parseInt(c.textContent,10)-1);
+    document.querySelector('.nav[data-s="txn"] .cnt').textContent=c.textContent;
+    toast.classList.add('on');clearTimeout(timer);timer=setTimeout(function(){toast.classList.remove('on');},5000);
+  });});
+  document.getElementById('undo').addEventListener('click',function(){
+    if(last){last.classList.remove('hide');last.classList.remove('gone');var c=document.getElementById('pendingCount');c.textContent=parseInt(c.textContent,10)+1;document.querySelector('.nav[data-s="txn"] .cnt').textContent=c.textContent;last=null;}
+    toast.classList.remove('on');
+  });
+})();
+</script>
+</body>
+</html>
