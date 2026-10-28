@@ -100,7 +100,7 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 | --- | --- | --- | --- |
 | `stripe-sync` | 06:00 | 接続済みの Stripe 口座の balance transactions を明細化（12 §4） | 同期の失敗でも 200 を返し（12 §4.4）、`job.finished ok=false` を記録する |
 | `backup-export` | 03:00 | `exports/<日付>/<時刻>Z/` に、全テーブルの JSON スナップショット（復元用）・会計期間ごとの試算表・`book/`（S7 の書き出し: 設定と仕訳の JSON、仕訳 CSV、beancount、明細と証憑の索引。会社の登録後）・manifest（全ファイルの SHA-256）を、DB の同じ時点から書く | 同上 |
-| `calendar-notify` | 09:00 | 会計期間から `CalendarItem` を生成（冪等）し、7 日前・当日・超過の期限をメール。知らせる期限がない日も SMTP のログインまで確かめる（アプリパスワードの失効を期限の前に失敗として知らせる） | 同上 |
+| `calendar-notify` | 09:00 | 会計期間から `CalendarItem` を生成（冪等。規則から外れた未完了の項目は消す）し、7 日前・当日・超過の期限をメール。知らせる期限がない日も SMTP のログインまで確かめる（アプリパスワードの失効を期限の前に失敗として知らせる） | 同上 |
 | `mail-check` | 手動だけ | 「送信の確認」を 1 通送る（アプリパスワードを入れた・更新したとき） | 同上 |
 
 - どのジョブも例外を外に投げず、`{"severity":"ERROR","event":"job.finished","job":"…","ok":false,…}` を 1 行で記録して HTTP 500 を返す。Scheduler は再試行しない（`--max-retry-attempts=0`）。

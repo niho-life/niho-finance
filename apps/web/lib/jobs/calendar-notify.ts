@@ -38,12 +38,12 @@ export function calendarNoticeText(notices: readonly CalendarNotice[], appUrl?: 
 }
 
 export async function calendarNotifyJob({ prisma, today }: JobContext): Promise<JobSummary> {
-  const { created, updated } = await syncCalendarItems(prisma, { actor: JOB_ACTOR });
+  const { created, updated, removed } = await syncCalendarItems(prisma, { actor: JOB_ACTOR });
   const notices = selectCalendarNotices(await loadOpenCalendarItems(prisma), today);
   if (notices.length === 0) {
     const check = await checkMail();
     if (!check.ok) throw new Error(check.error);
-    return { created, updated, notified: 0, transport: check.transport };
+    return { created, updated, removed, notified: 0, transport: check.transport };
   }
 
   const result = await sendMail({
@@ -62,6 +62,7 @@ export async function calendarNotifyJob({ prisma, today }: JobContext): Promise<
   return {
     created,
     updated,
+    removed,
     notified: notices.length,
     week: count("week"),
     today: count("today"),

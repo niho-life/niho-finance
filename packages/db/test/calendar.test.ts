@@ -44,7 +44,6 @@ describe("calendar rules", () => {
       "founding.depreciation-method-notice": "2027-05-31",
       "annual.tax-return": "2027-05-31",
       "annual.shareholders-meeting": "2027-06-30",
-      "annual.withholding-special-jan": "2027-01-20",
       "annual.legal-records": "2027-01-31",
     });
     // No 7/10 inside 2026-11-10..2027-03-31, and no interim return in the first year.
@@ -58,11 +57,17 @@ describe("calendar rules", () => {
     expect(due).toEqual({
       "annual.tax-return": "2028-05-31",
       "annual.shareholders-meeting": "2028-06-30",
-      "annual.withholding-special-jan": "2028-01-20",
       "annual.legal-records": "2028-01-31",
       "annual.withholding-special-jul": "2027-07-10",
       "annual.interim-return": "2027-11-30",
     });
+  });
+
+  it("leave the withholding tax payments to the payroll (22-payroll §7.1)", () => {
+    // Only the filing for the special rule mentions 源泉所得税; the payments come from pay runs.
+    expect(
+      CALENDAR_RULES.filter((rule) => rule.title.includes("源泉所得税")).map((rule) => rule.key),
+    ).toEqual(["founding.withholding-special-application"]);
   });
 
   it("round month additions down to the end of a shorter month", () => {
@@ -76,8 +81,7 @@ describe("calendar rules", () => {
   it("take the day before the end of 第 1 期 when it comes before founding + 3 months", () => {
     const due = build("2027-01-15", { no: 1, startDate: "2027-01-15", endDate: "2027-03-31" });
     expect(due["founding.blue-return-application"]).toBe("2027-03-30");
-    // 1/20 and 1/31 fall inside the short first year.
-    expect(due["annual.withholding-special-jan"]).toBe("2027-01-20");
+    // 1/31 falls inside the short first year.
     expect(due["annual.legal-records"]).toBe("2027-01-31");
   });
 
@@ -93,9 +97,11 @@ describe("calendar rules", () => {
       dueDate: "2028-06-30",
       note: null,
     });
-    expect(items.find((item) => item.ruleKey === "annual.withholding-special-jul")?.kind).toBe(
-      "payment",
-    );
+    expect(items.find((item) => item.ruleKey === "annual.withholding-special-jul")).toMatchObject({
+      kind: "filing",
+      title: "算定基礎届（年金事務所）",
+      dueDate: "2027-07-10",
+    });
     expect(items.find((item) => item.ruleKey === "annual.interim-return")?.note).toBe(
       "前期の税額が一定額を超えた場合",
     );

@@ -231,6 +231,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   // 期限 (24-calendar §2)
   "calendar_item.reopen": "未完了に戻す",
   "calendar_item.notify": "期限の通知",
+  "calendar_item.delete": "期限の削除",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */

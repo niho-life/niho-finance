@@ -65,7 +65,11 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
     const seeded = await ruleItem("annual.tax-return");
     const expected = (await expectedCount()) - 1;
     const auditBefore = await prisma.auditLog.count({ where: { action: "calendar_item.create" } });
-    expect(await syncCalendarItems(prisma, { actor })).toEqual({ created: expected, updated: 0 });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: expected,
+      updated: 0,
+      removed: 0,
+    });
     expect(await prisma.auditLog.count({ where: { action: "calendar_item.create" } })).toBe(
       auditBefore + expected,
     );
@@ -85,7 +89,11 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
   });
 
   it("changes nothing on the next run", async () => {
-    expect(await syncCalendarItems(prisma, { actor })).toEqual({ created: 0, updated: 0 });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 0,
+      removed: 0,
+    });
   });
 
   it("puts an open item back on the rule's date, and leaves a completed one alone", async () => {
@@ -104,7 +112,11 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
       },
     });
 
-    expect(await syncCalendarItems(prisma, { actor })).toEqual({ created: 0, updated: 1 });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 1,
+      removed: 0,
+    });
     expect(fromDbDate((await ruleItem("annual.tax-return")).dueDate)).toBe(
       fromDbDate(open.dueDate),
     );
@@ -193,7 +205,11 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
       where: { id: item.id },
       data: { dueDate: toDbDate("2026-11-20") },
     });
-    expect(await syncCalendarItems(prisma, { actor })).toEqual({ created: 0, updated: 0 });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 0,
+      removed: 0,
+    });
     expect(fromDbDate((await ruleItem(item.ruleKey ?? "")).dueDate)).toBe("2026-11-20");
 
     const reopened = await reopenCalendarItem(prisma, item.id, { actor: owner });
@@ -207,7 +223,11 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
     expect(audit.after).toMatchObject({ completedAt: null, completedBy: null });
 
     // Open again: the next sync follows the rule.
-    expect(await syncCalendarItems(prisma, { actor })).toEqual({ created: 0, updated: 1 });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 1,
+      removed: 0,
+    });
     expect(fromDbDate((await ruleItem(item.ruleKey ?? "")).dueDate)).toBe(ruleDate);
 
     // Reopening an open item writes nothing.
@@ -340,5 +360,50 @@ describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => 
       (row) => row.action === "calendar_item.reopen" && row.entityId === item.id,
     );
     expect(reopen?.target).toBe(`期限 第 1 期 ${item.title}`);
+  });
+
+  it("deletes an open item whose rule is gone, keeping its row in the audit log and completed ones", async () => {
+    const fiscalYear = await prisma.fiscalYear.findFirstOrThrow({ where: { no: 1 } });
+    const leftover = (id: string, ruleKey: string, completed: boolean) =>
+      prisma.calendarItem.create({
+        data: {
+          id,
+          fiscalYearId: fiscalYear.id,
+          kind: "payment",
+          title: "源泉所得税（納期の特例・7〜12 月分）（税務署）",
+          dueDate: toDbDate("2027-01-20"),
+          ruleKey,
+          ...(completed ? { completedAt: new Date(), completedBy: owner } : {}),
+        },
+      });
+    // As the 1/20 rule left them before the payroll took the withholding tax over (22 §7.1).
+    const open = await leftover("calendar-test-gone-open", "annual.withholding-special-jan", false);
+    const done = await leftover("calendar-test-gone-done", "annual.gone-for-test", true);
+    const ofNoYear = await prisma.calendarItem.count({ where: { fiscalYearId: null } });
+
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 0,
+      removed: 1,
+    });
+    expect(await prisma.calendarItem.findUnique({ where: { id: open.id } })).toBeNull();
+    expect(await prisma.calendarItem.findUnique({ where: { id: done.id } })).not.toBeNull();
+    // The payroll's items (no fiscal year, an earlier test) are not the rules' to delete.
+    expect(await prisma.calendarItem.count({ where: { fiscalYearId: null } })).toBe(ofNoYear);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { action: "calendar_item.delete", entityId: open.id },
+    });
+    expect(audit).toMatchObject({ actor, entity: "calendar_item", after: null });
+    expect(audit.before).toMatchObject({
+      ruleKey: "annual.withholding-special-jan",
+      title: open.title,
+      completedAt: null,
+    });
+    expect(await syncCalendarItems(prisma, { actor })).toEqual({
+      created: 0,
+      updated: 0,
+      removed: 0,
+    });
   });
 });
