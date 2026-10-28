@@ -26,6 +26,7 @@ import {
   type EntryCounterpart,
   type Money,
 } from "@niho-finance/ledger";
+import { isYearMonth, PREMIUM_TIMINGS, type YearMonth } from "@niho-finance/payroll";
 import { z } from "zod";
 
 type Conversion<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -725,3 +726,190 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 給与 (22-payroll §5.6・§6)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, 0 or more. Empty → `emptyAs` when given, otherwise 「…を入力してください」. */
+export function nonNegativeYen(label: string, options: { emptyAs?: Money } = {}) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") {
+      return options.emptyAs === undefined
+        ? problem(`${label}を入力してください`)
+        : ok(options.emptyAs);
+    }
+    const amount = parseYenInput(text);
+    if (amount === null) return problem(`${label}は 0 円以上の円の整数で入力してください`);
+    return ok(amount);
+  });
+}
+
+/** Whole yen, negative allowed (a correction); empty → 0. */
+export function signedYenOrZero(label: string) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") return ok(0n);
+    const amount = parseYenInput(text, { allowNegative: true });
+    if (amount === null)
+      return problem(`${label}は円の整数で入力してください（マイナスも入れられます）`);
+    return ok(amount);
+  });
+}
+
+/** A month as `YYYY-MM`. */
+export function yearMonthField(label: string) {
+  return fromText(label, (text): Conversion<YearMonth> => {
+    if (text === "") return problem(`${label}を入力してください`);
+    if (!isYearMonth(text)) return problem(`${label}は 2026-12 の形にしてください`);
+    return ok(text);
+  });
+}
+
+export const EMPLOYEE_KINDS = ["officer", "employee"] as const;
+export const EMPLOYEE_TAX_COLUMNS = ["kou", "otsu"] as const;
+
+const employeeFields = {
+  name: requiredText("名前", 100),
+  kind: enumField("区分", EMPLOYEE_KINDS),
+  birthDate: requiredDate("生年月日"),
+  basePay: nonNegativeYen("課税支給"),
+  commuteAllowance: nonNegativeYen("通勤手当", { emptyAs: 0n }),
+  socialInsured: booleanField("社会保険"),
+  insuredFrom: optionalDate("資格取得日"),
+  healthSmr: optionalPositiveYen("標準報酬月額（健康保険）"),
+  pensionSmr: optionalPositiveYen("標準報酬月額（厚生年金）"),
+  employmentInsured: booleanField("雇用保険"),
+  taxColumn: enumField("源泉徴収の区分", EMPLOYEE_TAX_COLUMNS),
+  dependents: optionalIntegerInRange("扶養親族等の数", 0, 99),
+  residentTax: nonNegativeYen("住民税", { emptyAs: 0n }),
+};
+
+type EmployeeFieldsOutput = z.output<z.ZodObject<typeof employeeFields>>;
+
+/** 役員は雇用保険なし; 社会保険ありなら資格取得日と標準報酬月額 2 つが要る (22-payroll §5.1). */
+function refineEmployee(value: EmployeeFieldsOutput, ctx: z.RefinementCtx): void {
+  if (value.kind === "officer" && value.employmentInsured) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["employmentInsured"],
+      message: "役員は雇用保険の被保険者になりません。雇用保険を「なし」にしてください",
+    });
+  }
+  if (!value.socialInsured) return;
+  const required = [
+    ["insuredFrom", value.insuredFrom, "資格取得日"],
+    ["healthSmr", value.healthSmr, "標準報酬月額（健康保険）"],
+    ["pensionSmr", value.pensionSmr, "標準報酬月額（厚生年金）"],
+  ] as const;
+  for (const [path, field, label] of required) {
+    if (field === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: [path],
+        message: `社会保険ありのときは${label}を入力してください`,
+      });
+    }
+  }
+}
+
+/** Without social insurance the 資格取得日 and 標準報酬月額 are not kept. */
+function normalizeEmployee<T extends EmployeeFieldsOutput>(value: T) {
+  return {
+    ...value,
+    insuredFrom: value.socialInsured ? value.insuredFrom : null,
+    healthSmr: value.socialInsured ? value.healthSmr : null,
+    pensionSmr: value.socialInsured ? value.pensionSmr : null,
+    dependents: value.dependents ?? 0,
+  };
+}
+
+/** 従業員の追加 (22-payroll §6.2). */
+export const employeeCreateSchema = z
+  .object(employeeFields)
+  .superRefine(refineEmployee)
+  .transform(normalizeEmployee);
+export type EmployeeCreateInput = z.input<typeof employeeCreateSchema>;
+export type ParsedEmployeeInput = z.output<typeof employeeCreateSchema>;
+
+/** 従業員の変更: every field is sent again (the Sheet edits the whole row). */
+export const employeeUpdateSchema = z
+  .object({ id: idField("従業員"), ...employeeFields })
+  .superRefine(refineEmployee)
+  .transform(normalizeEmployee);
+export type EmployeeUpdateInput = z.input<typeof employeeUpdateSchema>;
+
+/** One person of a pay run: what the screen lets change (master data comes from the database). */
+export const payrollRunItemSchema = z
+  .object({
+    employeeId: idField("従業員"),
+    taxablePay: nonNegativeYen("課税支給"),
+    commuteAllowance: nonNegativeYen("通勤手当", { emptyAs: 0n }),
+    residentTax: nonNegativeYen("住民税", { emptyAs: 0n }),
+    incomeTaxAdjustment: signedYenOrZero("源泉所得税の調整"),
+    socialInsuranceAdjustment: signedYenOrZero("社会保険料の調整"),
+    adjustmentNote: optionalText("調整のメモ", 200),
+  })
+  .superRefine((value, ctx) => {
+    const adjusted = value.incomeTaxAdjustment !== 0n || value.socialInsuranceAdjustment !== 0n;
+    if (adjusted && value.adjustmentNote === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["adjustmentNote"],
+        message: "調整したときは、何を直したかをメモに書いてください",
+      });
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    adjustmentNote:
+      value.incomeTaxAdjustment !== 0n || value.socialInsuranceAdjustment !== 0n
+        ? value.adjustmentNote
+        : null,
+  }));
+export type PayrollRunItemFormInput = z.input<typeof payrollRunItemSchema>;
+
+const tableIdText = z.string().trim().min(1).max(100);
+
+/** The table versions the preview used: the confirmation then computes with the same ones. */
+export const payrollTableIdsSchema = z.object({
+  withholding: tableIdText,
+  kenpo: tableIdText,
+  pension: tableIdText,
+  employment: tableIdText.nullable(),
+});
+
+/** The totals the owner confirmed (the preview's): the confirmation is refused when they differ. */
+export const payrollExpectedSchema = z.object({
+  grossPay: signedYenOrZero("総支給の合計"),
+  netPay: signedYenOrZero("差引支給の合計"),
+  employerTotal: signedYenOrZero("会社負担の合計"),
+});
+
+/** 支給の計算 → 確定 (22-payroll §6.3). */
+export const payrollRunSchema = z.object({
+  payMonth: yearMonthField("支給月"),
+  paymentDate: requiredDate("支払日"),
+  premiumTiming: enumField("社会保険料の控除", PREMIUM_TIMINGS),
+  /** Empty → 未払金〔給与〕. */
+  payFromWalletId: optionalIdField("支払元"),
+  withholdingSpecialDue: booleanField("源泉所得税の納期の特例"),
+  residentTaxSpecialDue: booleanField("住民税の納期の特例"),
+  items: z
+    .array(payrollRunItemSchema, { error: "従業員ごとの入力の形式が正しくありません" })
+    .min(1, { error: "支給する従業員がいません。従業員を追加してください" })
+    .max(100, { error: "従業員は 100 人までです" }),
+  tableIds: payrollTableIdsSchema.nullish().transform((value) => value ?? null),
+  expected: payrollExpectedSchema.nullish().transform((value) => value ?? null),
+});
+export type PayrollRunInput = z.input<typeof payrollRunSchema>;
+export type ParsedPayrollRun = z.output<typeof payrollRunSchema>;
+
+/** 納付を登録 (22-payroll §5.4・§6.6). `amount` empty → the scheduled amount. */
+export const payrollPaymentSchema = z.object({
+  calendarItemId: idField("納付予定"),
+  walletId: idField("支払元の口座"),
+  paymentDate: requiredDate("納付日"),
+  amount: optionalPositiveYen("納付額"),
+});
+export type PayrollPaymentInput = z.input<typeof payrollPaymentSchema>;
+export type ParsedPayrollPayment = z.output<typeof payrollPaymentSchema>;

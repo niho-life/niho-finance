@@ -80,7 +80,8 @@ function toEntryRef(row: { id: string; no: number; entryDate: Date }): EntryRef 
   return { id: row.id, no: row.no, entryDate: fromDbDate(row.entryDate) };
 }
 
-async function loadTaxRules(db: Db): Promise<TaxRateRule[]> {
+/** The tax rate rules in the ledger's form (also used by the payroll entries). */
+export async function loadTaxRules(db: Db): Promise<TaxRateRule[]> {
   const rows = await db.taxRateRule.findMany({
     orderBy: [{ taxCategoryCode: "asc" }, { effectiveFrom: "asc" }, { ratePercent: "desc" }],
   });
@@ -103,7 +104,7 @@ function noFiscalYearMessage(date: CalendarDate): string {
  * The fiscal year containing `date`, locked until the transaction ends (the lock
  * `postJournalEntry` takes too), so that its accounting method and close cannot change meanwhile.
  */
-async function lockFiscalYearOn(tx: Tx, date: CalendarDate): Promise<FiscalYear> {
+export async function lockFiscalYearOn(tx: Tx, date: CalendarDate): Promise<FiscalYear> {
   const day = toDbDate(date);
   const years = await tx.fiscalYear.findMany({
     where: { startDate: { lte: day }, endDate: { gte: day } },

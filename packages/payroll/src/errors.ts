@@ -11,6 +11,7 @@ export const PAYROLL_INPUT_ERROR_CODES = [
   "CARE_WITHOUT_HEALTH",
   "UNKNOWN_STANDARD_REMUNERATION",
   "TABLE_NOT_EFFECTIVE",
+  "INVALID_ADJUSTMENT",
 ] as const;
 export type PayrollInputErrorCode = (typeof PAYROLL_INPUT_ERROR_CODES)[number];
 
@@ -69,6 +70,21 @@ export class PayrollTableFormatError extends Error {
     super(`${table}: ${path === "" ? "" : `${path} `}${problem}`);
     this.name = "PayrollTableFormatError";
     this.table = table;
+    this.path = path;
+  }
+}
+
+/**
+ * Thrown when a stored payroll run snapshot (`PayrollRun.items` / `tableIds`, 22-payroll §5.5) does
+ * not have the exact shape it was written with (a data bug, not an input error).
+ */
+export class PayrollSnapshotError extends Error {
+  /** JSON path of the offending value, e.g. `"[0].result.netPay"`. */
+  readonly path: string;
+
+  constructor(path: string, problem: string) {
+    super(`payroll snapshot: ${path === "" ? "" : `${path} `}${problem}`);
+    this.name = "PayrollSnapshotError";
     this.path = path;
   }
 }
