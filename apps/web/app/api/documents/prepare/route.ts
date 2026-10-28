@@ -9,6 +9,7 @@ import {
 import type { PrepareResponse } from "@/lib/documents/api-types";
 import { getDocumentStorage } from "@/lib/storage";
 import { newDocumentKey } from "@/lib/storage/keys";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
  * points to the document that already has the same file or issues the upload target.
  */
 export async function POST(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("accountant", { json: true });
+  if (denied) return denied;
   return handleApi(async () => {
     assertSameOrigin(request);
     const body = await readJson(request, prepareRequestSchema);

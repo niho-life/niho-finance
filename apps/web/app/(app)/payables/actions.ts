@@ -21,6 +21,7 @@ import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of /payables (25 §6, §7). The repository validates every input with its Zod
@@ -56,6 +57,8 @@ export interface RegisteredPayable {
 export async function registerPayableAction(
   values: unknown,
 ): Promise<ActionResult<RegisteredPayable>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       registerPayable(prisma(), valuesSchema.parse(values) as PayableRegisterInput, await by()),
@@ -69,6 +72,8 @@ export async function registerPayableAction(
 
 /** 期日・支払元を変える (not a ledger change). */
 export async function updatePayableAction(id: string, values: unknown): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updatePayable(
@@ -95,6 +100,8 @@ export async function payPayableAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<PaidPayable>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       payPayable(
@@ -124,6 +131,8 @@ export async function cancelPayablePaymentAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<ReversedPayable>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       cancelPayablePayment(
@@ -141,6 +150,8 @@ export async function cancelPayableAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<ReversedPayable>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       cancelPayable(
@@ -157,6 +168,8 @@ export async function cancelPayableAction(
 export async function savePaymentTermsAction(
   values: unknown,
 ): Promise<ActionResult<PaymentTerms | null>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updatePartnerPaymentTerms(

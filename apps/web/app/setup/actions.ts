@@ -21,6 +21,7 @@ import { z } from "zod";
 import { attempt, formInput } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { toOpeningPreviewView, type OpeningPreviewView } from "@/lib/opening-view";
 import { stepHref, type WizardStep } from "./steps";
 
@@ -42,6 +43,8 @@ export async function saveCompanyStepAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () => {
     const values = formInput<CompanyInput>(formData);
     const existing = await getCompany(prisma());
@@ -59,6 +62,8 @@ export async function createFirstFiscalYearAction(values: {
   consumptionTax: string;
   accountingMethod: string;
 }): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () =>
     createFirstFiscalYear(
       prisma(),
@@ -76,6 +81,8 @@ export async function createFirstFiscalYearAction(values: {
 
 /** Step 3: the chart template with the tax categories, rate rules and segments. */
 export async function bootstrapStandardDataAction(): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () => bootstrapStandardData(prisma(), await by()));
   if (!result.ok) return result;
   goTo("wallets");
@@ -85,6 +92,8 @@ const walletRowsSchema = z.array(z.record(z.string(), z.string())).max(20);
 
 /** Step 4: the wallets checked in the list, in one transaction. */
 export async function createWalletsAction(rows: unknown): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () =>
     createWallets(prisma(), walletRowsSchema.parse(rows) as WalletCreateInput[], await by()),
   );
@@ -94,12 +103,16 @@ export async function createWalletsAction(rows: unknown): Promise<ActionResult> 
 
 /** 「あとで」 on Step 4 or 5 (done later from the settings or the home). */
 export async function skipWalletsAction(): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () => skipSetupStep(prisma(), "wallets", await by()));
   if (!result.ok) return result;
   goTo("opening");
 }
 
 export async function skipOpeningAction(): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () => skipSetupStep(prisma(), "opening", await by()));
   if (!result.ok) return result;
   goTo("complete");
@@ -109,12 +122,16 @@ export async function skipOpeningAction(): Promise<ActionResult> {
 export async function previewOpeningAction(
   input: OpeningInput,
 ): Promise<ActionResult<OpeningPreviewView>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(() => previewOpeningEntries(prisma(), input));
   return result.ok ? { ok: true, data: toOpeningPreviewView(result.data) } : result;
 }
 
 /** Step 5: posts the opening entries once (kind 開始, segment 共通). */
 export async function postOpeningAction(input: OpeningInput): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   const result = await attempt(async () => postOpeningEntries(prisma(), input, await by()));
   if (!result.ok) return result;
   goTo("complete");

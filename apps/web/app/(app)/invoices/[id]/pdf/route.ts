@@ -3,6 +3,7 @@ import { db } from "@/lib/data";
 import { contentDisposition, pdfResponse } from "@/lib/pdf/download";
 import { invoicePdfFileNames, renderInvoicePdf } from "@/lib/pdf/invoice";
 import { getDocumentStorage, StoredFileNotFoundError } from "@/lib/storage";
+import { authorizeRoute } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ export async function GET(
   request: Request,
   { params }: RouteContext<"/invoices/[id]/pdf">,
 ): Promise<Response> {
+  const denied = await authorizeRoute("accountant");
+  if (denied) return denied;
   const { id } = await params;
   if (id.length > 64) return notFound();
   const prisma = await db();

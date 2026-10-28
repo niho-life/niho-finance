@@ -7,7 +7,7 @@ import { logEvent } from "./log";
  * Who writes (the audit log `actor` of Server Actions). On Cloud Run the screens sit behind IAP,
  * which signs every request it lets through (`x-goog-iap-jwt-assertion`, ES256); the email of
  * that verified assertion is the actor. In prod a missing or invalid assertion rejects the write.
- * Locally, without IAP, it is `NIHO_FINANCE_ACTOR` (default `owner`). docs/ops/deploy.md §5.
+ * Locally, without IAP, it is `NIHO_FINANCE_ACTOR` (default `owner@example.com`, the seed's 管理者). docs/ops/deploy.md §5.
  */
 
 export const IAP_ASSERTION_HEADER = "x-goog-iap-jwt-assertion";
@@ -79,8 +79,16 @@ export async function iapAssertionStatus(): Promise<IapAssertionStatus> {
 
 /** The actor of the current request (Server Actions). Throws `ActorError` when it is not known. */
 export async function actor(): Promise<string> {
+  return actorFromHeaders(await headers());
+}
+
+/**
+ * The actor of a request with these headers (`actor()`, and the proxy, which has the request's
+ * headers but not `headers()`). Throws `ActorError` when it is not known.
+ */
+export async function actorFromHeaders(requestHeaders: Headers): Promise<string> {
   const env = appEnv();
-  const assertion = (await headers()).get(IAP_ASSERTION_HEADER);
+  const assertion = requestHeaders.get(IAP_ASSERTION_HEADER);
   const audience = env.NIHO_FINANCE_IAP_AUDIENCE;
   if (!audience || !assertion) {
     if (env.NIHO_FINANCE_ENV === "prod") {

@@ -13,6 +13,7 @@ const SECTIONS = [
   { label: "請求", href: "/invoices", summary: "見積・納品・請求と入金の消込" },
   { label: "支払", href: "/payables", summary: "受領した請求書の未払と支払期日" },
   { label: "給与", href: "/payroll", summary: "従業員・支給・給与明細・納付" },
+  { label: "立替精算", href: "/expenses", summary: "社員・業務委託の立替の提出と支払" },
   { label: "決算", href: "/closing", summary: "決算整理・固定資産・締め" },
   { label: "設定", href: "/settings", summary: "事業所・会計期間・勘定科目・口座 …" },
 ] as const;

@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./icons";
-import { isActiveItem, NAV_ITEMS } from "./nav-items";
+import { isActiveItem, NAV_ITEMS, VIEWER_NAV_ITEMS } from "./nav-items";
 
-/** PC navigation (216px). Sections not built yet are muted text, not links. */
-export function SideNav() {
+/**
+ * PC navigation (216px). Sections not built yet are muted text, not links. 閲覧 sees 報告 and
+ * 書き出し only (23 §3.4).
+ */
+export function SideNav({ viewer = false }: { viewer?: boolean }) {
   const pathname = usePathname();
   return (
     <nav aria-label="メイン" className="flex flex-col gap-0.5">
-      {NAV_ITEMS.map((item) => {
+      {(viewer ? VIEWER_NAV_ITEMS : NAV_ITEMS).map((item) => {
         const base =
           "flex min-h-10 items-center gap-2.5 rounded-[10px] px-2.5 text-[14px] font-semibold";
         if (!item.href) {

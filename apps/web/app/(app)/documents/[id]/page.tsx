@@ -1,4 +1,5 @@
 import {
+  buildReadingProposal,
   findLinkCandidates,
   getDocumentDetail,
   listPartners,
@@ -22,6 +23,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { formatDate, formatDateTime, formatPeriod } from "@/lib/format";
+import { ntaStatus, readerStatus } from "@/lib/reader/config";
 import { Band } from "../_components/band";
 import { DocumentHistory } from "../_components/document-history";
 import { DocumentLinks, type LinkView } from "../_components/document-links";
@@ -29,6 +31,7 @@ import { DocumentMeta, type DocumentItems } from "../_components/document-meta";
 import { DocumentPreview } from "../_components/document-preview";
 import { LinkCandidates, type CandidateView } from "../_components/link-candidates";
 import { documentTitle } from "../_components/list-query";
+import { ReadingSection } from "../_components/reading-section";
 import { ReplaceDocumentButton } from "../_components/replace-document";
 import { VoidDocumentButton } from "../_components/void-document";
 
@@ -215,6 +218,14 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
     amount: formatYen(entry.amount),
     note: candidateNote(null, entry.documentCount),
   }));
+  // 読み取り (20-reader §10.1): the stored proposal, and whether a provider can read again.
+  const proposal = await buildReadingProposal(prisma, detail.id);
+  // 提案を保存 makes the saved items equal to the proposal: 項目 starts over from them then, and
+  // not on every edit of a cell (which would take the focus away while tabbing through).
+  const appliedKey = (proposal?.rows ?? [])
+    .filter((row) => row.same)
+    .map((row) => row.field)
+    .join(",");
 
   return (
     <>
@@ -260,9 +271,17 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
           sha256={detail.sha256}
         />
         <div className="flex min-w-0 flex-col gap-6">
+          <ReadingSection
+            documentId={detail.id}
+            mime={detail.mime}
+            voided={voided}
+            proposal={proposal}
+            reader={readerStatus()}
+            ntaEnabled={ntaStatus().enabled}
+          />
           {/* A new link can fill empty items on the server: the cells start over from them. */}
           <DocumentMeta
-            key={`${detail.status}|${linkKey}`}
+            key={`${detail.status}|${linkKey}|${appliedKey}`}
             id={detail.id}
             items={items}
             partners={partners}

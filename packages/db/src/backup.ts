@@ -71,7 +71,10 @@ export const BACKUP_TABLES = [
   { table: "recurring_item", model: "RecurringItem" },
   { table: "calendar_item", model: "CalendarItem" },
   { table: "audit_log", model: "AuditLog" },
+  { table: "external_api_usage", model: "ExternalApiUsage" },
   { table: "app_user", model: "User" },
+  { table: "expense_payment", model: "ExpensePayment" },
+  { table: "expense_claim", model: "ExpenseClaim" },
 ] as const satisfies readonly { table: string; model: Prisma.ModelName }[];
 
 export interface BackupColumn {

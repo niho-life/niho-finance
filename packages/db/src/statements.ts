@@ -96,7 +96,9 @@ export type StatementErrorCode =
   | "ZERO_AMOUNT"
   | "CANDIDATE_MISMATCH"
   /** The line paid an invoice (請求, #16): it is reopened by cancelling that payment there. */
-  | "INVOICE_PAYMENT";
+  | "INVOICE_PAYMENT"
+  /** The line paid 立替精算 (#21): it is reopened by cancelling that payment there. */
+  | "EXPENSE_PAYMENT";
 
 /**
  * A statement line that cannot be settled or reopened as asked. A `SettingsError`, so that the web's
@@ -912,6 +914,13 @@ export async function reopenWalletTransaction(
         `この明細は${invoice ? `請求書 ${invoice.number} の` : "請求書の"}入金に充てています。未処理に戻すには、請求の画面で入金を取り消してください`,
       );
     }
+    // A payment of 立替精算 (23-users-and-expenses §5.2): the same as an invoice's payment.
+    if (entry.sourceKind === "expense") {
+      throw new StatementError(
+        "EXPENSE_PAYMENT",
+        "この明細は立替精算の支払に充てています。未処理に戻すには、立替精算の画面で支払を取り消してください",
+      );
+    }
     // 照合 (the line was matched to an entry posted otherwise: by hand, or for the other line of a
     // transfer): only this line is unlinked; the entry stays as it is.
     if (!ownsEntry(entry, row.id)) {
@@ -1295,6 +1304,8 @@ export interface StatementEntrySummary {
   ownsEntry: boolean;
   /** The invoice whose payment the entry is (請求, #16): reopened there, not on this screen. */
   invoiceId: string | null;
+  /** The entry is a payment of 立替精算 (#21): reopened there, not on this screen. */
+  expensePayment: boolean;
 }
 
 export interface StatementRow {
@@ -1414,6 +1425,7 @@ function entrySummary(row: ListRow, wallets: readonly WalletRef[]): StatementEnt
     summary,
     ownsEntry: ownsEntry(entry, row.id),
     invoiceId: entry.sourceKind === "invoice" ? entry.sourceId : null,
+    expensePayment: entry.sourceKind === "expense",
   };
 }
 

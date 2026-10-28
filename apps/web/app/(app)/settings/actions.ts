@@ -42,6 +42,7 @@ import { z } from "zod";
 import { attempt, formInput, inlinePatch, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult, RowValues } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of /settings. Each one: validates with the repository's Zod schemas (inline edits
@@ -72,6 +73,8 @@ export async function saveCompanyAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(async () => updateCompany(prisma(), formInput(formData), await by()), nothing);
 }
 
@@ -81,6 +84,8 @@ export async function updateFiscalYearAction(
   id: string,
   values: { consumptionTax: string; accountingMethod: string },
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       updateFiscalYear(
@@ -101,6 +106,8 @@ export async function createNextFiscalYearAction(values: {
   consumptionTax: string;
   accountingMethod: string;
 }): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       createNextFiscalYear(
@@ -129,6 +136,8 @@ export async function previewFiscalYearCloseAction(
   fiscalYearId: string,
   lockedThrough: string,
 ): Promise<ActionResult<ClosePreview>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return attempt(() => {
     const date = closeDateSchema.parse(lockedThrough);
     return previewFiscalYearClose(prisma(), parseId(fiscalYearId), date === "" ? null : date);
@@ -146,6 +155,8 @@ export async function closeFiscalYearAction(
   fiscalYearId: string,
   values: { lockedThrough: string; reason: string },
 ): Promise<ActionResult<ClosedFiscalYear>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       closeFiscalYearThrough(
@@ -185,6 +196,8 @@ function accountValues(account: AccountSettings): RowValues {
 }
 
 export async function createAccountAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => createAccount(prisma(), formInput(formData), await by()), nothing);
 }
 
@@ -192,6 +205,8 @@ export async function updateAccountAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => updateAccount(prisma(), inlinePatch(id, patch, ACCOUNT_FIELDS), await by()),
     accountValues,
@@ -199,6 +214,8 @@ export async function updateAccountAction(
 }
 
 export async function setAccountActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setAccountActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, await by()),
@@ -210,6 +227,8 @@ export async function createSubAccountAction(
   accountId: string,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       createSubAccount(
@@ -225,6 +244,8 @@ export async function updateSubAccountAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => {
       const { id: subAccountId, name } = inlinePatch(id, patch, ["name"] as const);
@@ -238,6 +259,8 @@ export async function setSubAccountActiveAction(
   id: string,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setSubAccountActive(
@@ -255,6 +278,8 @@ export async function createTaxRateRuleAction(
   taxCategoryCode: string,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       createTaxRateRule(
@@ -270,6 +295,8 @@ export async function setTaxRateRuleEnabledAction(
   id: string,
   enabled: boolean,
 ): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setTaxRateRuleEnabled(
@@ -284,10 +311,14 @@ export async function setTaxRateRuleEnabledAction(
 // 口座 -----------------------------------------------------------------------
 
 export async function createWalletAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => createWallet(prisma(), formInput(formData), await by()), nothing);
 }
 
 export async function updateWalletAction(id: string, formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateWallet(
@@ -300,6 +331,8 @@ export async function updateWalletAction(id: string, formData: FormData): Promis
 }
 
 export async function setWalletActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setWalletActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, await by()),
@@ -332,6 +365,8 @@ function partnerValues(partner: PartnerSettings): RowValues {
 }
 
 export async function createPartnerAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => createPartner(prisma(), formInput(formData), await by()), nothing);
 }
 
@@ -339,6 +374,8 @@ export async function updatePartnerAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => updatePartner(prisma(), inlinePatch(id, patch, PARTNER_FIELDS), await by()),
     partnerValues,
@@ -346,6 +383,8 @@ export async function updatePartnerAction(
 }
 
 export async function setPartnerActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setPartnerActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, await by()),
@@ -360,6 +399,8 @@ function segmentValues(segment: SegmentSettings): RowValues {
 }
 
 export async function createSegmentAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => createSegment(prisma(), formInput(formData), await by()), nothing);
 }
 
@@ -367,6 +408,8 @@ export async function updateSegmentAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateSegment(prisma(), inlinePatch(id, patch, ["code", "name"] as const), await by()),
@@ -375,6 +418,8 @@ export async function updateSegmentAction(
 }
 
 export async function setSegmentActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setSegmentActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, await by()),
@@ -387,6 +432,8 @@ function memoTagValues(tag: MemoTagSettings): RowValues {
 }
 
 export async function createMemoTagAction(formData: FormData): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => createMemoTag(prisma(), formInput(formData), await by()), nothing);
 }
 
@@ -394,6 +441,8 @@ export async function updateMemoTagAction(
   id: string,
   patch: RowValues,
 ): Promise<ActionResult<RowValues>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => {
     const { id: tagId, name } = inlinePatch(id, patch, ["name"] as const);
     return updateMemoTag(prisma(), { id: tagId, name }, await by());
@@ -401,6 +450,8 @@ export async function updateMemoTagAction(
 }
 
 export async function setMemoTagActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       setMemoTagActive(prisma(), { id: parseId(id), isActive: parseBoolean(isActive) }, await by()),
