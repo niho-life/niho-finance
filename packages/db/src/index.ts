@@ -132,6 +132,7 @@ export {
 export { isUniqueViolation, SettingsError } from "./errors";
 export { newId } from "./ids";
 export {
+  attachInvoicePdf,
   cancelInvoicePayment,
   createInvoiceDraft,
   discardInvoiceDraft,

@@ -12,6 +12,7 @@ const OPERATIONS: Readonly<Record<string, string>> = {
   "invoice.cancel_payment": "入金の取消",
   "invoice.void": "無効",
   "invoice.discard": "破棄",
+  "invoice.attach_pdf": "PDF の保存",
 };
 
 const GRID =

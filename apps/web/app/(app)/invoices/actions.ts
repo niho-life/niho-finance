@@ -8,6 +8,7 @@ import {
   issueInvoice,
   markInvoiceSent,
   recordInvoicePayment,
+  SettingsError,
   updateInvoiceDraft,
   updateInvoiceSettings,
   voidInvoice,
@@ -24,10 +25,11 @@ import { z } from "zod";
 import { attempt, formInput, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { keepInvoicePdfAsDocument } from "./_lib/evidence";
 
 /*
  * Server Actions of /invoices (18 §8–§10). The repository validates every input with its Zod
- * schemas, locks the document and writes the audit log as `NIHO_FINANCE_ACTOR`. Expected failures
+ * schemas, locks the document and writes the audit log as the signed-in user (`lib/actor.ts`). Expected failures
  * come back as `{ ok: false }` with the field of each problem. Amounts go back as decimal text:
  * bigint stays on the server.
  */
@@ -46,6 +48,11 @@ export interface SavedInvoice {
   status: InvoiceStatus;
   /** 残高 as decimal text (請求書 only). */
   balance: string | null;
+}
+
+export interface IssuedInvoice extends SavedInvoice {
+  /** The 証憑 the issued PDF was saved as; `null` when saving it failed (offered again on the detail). */
+  pdfDocumentId: string | null;
 }
 
 function saved(record: InvoiceRecord): SavedInvoice {
@@ -96,9 +103,35 @@ export async function updateInvoiceDraftAction(
   );
 }
 
-/** 発行: the number, the copies and (請求書) the 売掛金 / 売上 entry. */
-export async function issueInvoiceAction(id: string): Promise<ActionResult<SavedInvoice>> {
-  return write(async () => issueInvoice(prisma(), parseId(id), await by()), saved);
+/**
+ * 発行: the number, the copies and (請求書) the 売掛金 / 売上 entry; then the PDF is kept as a 証憑
+ * (18 §11). The issue stands even when the PDF cannot be saved.
+ */
+export async function issueInvoiceAction(id: string): Promise<ActionResult<IssuedInvoice>> {
+  return write(
+    async () => {
+      const record = await issueInvoice(prisma(), parseId(id), await by());
+      const pdfDocumentId = await keepInvoicePdfAsDocument(prisma(), record.id, await by());
+      return { record, pdfDocumentId };
+    },
+    ({ record, pdfDocumentId }) => ({ ...saved(record), pdfDocumentId }),
+  );
+}
+
+/** PDF を証憑に保存: for an issued document whose PDF was not saved on issue (18 §11). */
+export async function saveInvoicePdfAction(id: string): Promise<ActionResult<string>> {
+  return write(
+    async () => {
+      const documentId = await keepInvoicePdfAsDocument(prisma(), parseId(id), await by());
+      if (!documentId) {
+        throw new SettingsError(
+          "PDF を証憑に保存できませんでした。もう一度試してください。続くときは 設定 › 証憑の規程 の保存先を確かめてください",
+        );
+      }
+      return documentId;
+    },
+    (documentId) => documentId,
+  );
 }
 
 /** 破棄 of a draft (logical). */
