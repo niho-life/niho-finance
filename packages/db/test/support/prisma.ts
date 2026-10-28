@@ -5,6 +5,7 @@ import { hasTestDatabase } from "./database";
 
 let client: PrismaClient | undefined;
 let emptyClient: PrismaClient | undefined;
+let restoreClient: PrismaClient | undefined;
 
 /** The client for the test database (DATABASE_URL is the test database inside test workers). */
 export function testPrisma(): PrismaClient {
@@ -26,9 +27,21 @@ export function emptyTestPrisma(): PrismaClient {
   return emptyClient;
 }
 
+/** The client for the restore test database (migrated, not seeded). Only the backup test uses it. */
+export function restoreTestPrisma(): PrismaClient {
+  const databaseUrl = process.env.NIHO_FINANCE_RESTORE_DATABASE_URL;
+  if (!hasTestDatabase || !databaseUrl) {
+    throw new Error("restoreTestPrisma() is only available in database tests");
+  }
+  restoreClient ??= createPrismaClient({ databaseUrl });
+  return restoreClient;
+}
+
 afterAll(async () => {
   await client?.$disconnect();
   await emptyClient?.$disconnect();
+  await restoreClient?.$disconnect();
   client = undefined;
   emptyClient = undefined;
+  restoreClient = undefined;
 });

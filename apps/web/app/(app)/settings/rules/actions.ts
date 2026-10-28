@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /*
  * Server Actions of 設定 › ルール (15 §10), also called by 「ルールにする」 on /statements. The
@@ -23,7 +23,7 @@ import { actor } from "@/lib/env";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -51,7 +51,7 @@ const saved = (rule: { id: string; displayName: string }): SavedRule => ({
 
 export async function createRuleAction(values: unknown): Promise<ActionResult<SavedRule>> {
   return write(
-    () => createRule(prisma(), valuesSchema.parse(values) as RuleCreateInput, by()),
+    async () => createRule(prisma(), valuesSchema.parse(values) as RuleCreateInput, await by()),
     saved,
   );
 }
@@ -61,7 +61,8 @@ export async function updateRuleAction(
   values: unknown,
 ): Promise<ActionResult<SavedRule>> {
   return write(
-    () => updateRule(prisma(), parseId(id), valuesSchema.parse(values) as RuleUpdateInput, by()),
+    async () =>
+      updateRule(prisma(), parseId(id), valuesSchema.parse(values) as RuleUpdateInput, await by()),
     saved,
   );
 }
@@ -70,7 +71,10 @@ export async function setRuleActiveAction(
   id: string,
   isActive: boolean,
 ): Promise<ActionResult<SavedRule>> {
-  return write(() => setRuleActive(prisma(), parseId(id), parseBoolean(isActive), by()), saved);
+  return write(
+    async () => setRuleActive(prisma(), parseId(id), parseBoolean(isActive), await by()),
+    saved,
+  );
 }
 
 export interface RuleMatchTotals {
@@ -111,7 +115,7 @@ export interface AppliedRule {
 /** 既存の未処理への適用: settles the pending lines this rule wins, as the import would. */
 export async function applyRuleAction(id: string): Promise<ActionResult<AppliedRule>> {
   return write(
-    () => applyRuleToPending(prisma(), parseId(id), by()),
+    async () => applyRuleToPending(prisma(), parseId(id), await by()),
     (result) => ({
       registered: result.registered,
       transferred: result.transferred,
