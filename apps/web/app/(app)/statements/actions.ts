@@ -3,6 +3,7 @@
 import {
   getPrismaClient,
   ignoreWalletTransaction,
+  loadStatementDocuments,
   registerWalletTransaction,
   reopenWalletTransaction,
   transferWalletTransaction,
@@ -14,12 +15,21 @@ import {
   type StatementSettleResult,
   type TransferStatementInput,
 } from "@niho-finance/db";
-import type { CalendarDate } from "@niho-finance/ledger";
+import {
+  DOCUMENT_KIND_LABELS,
+  DOCUMENT_STATUS_LABELS,
+  formatYen,
+  type CalendarDate,
+  type DocumentKind,
+  type DocumentStatus,
+  type Money,
+} from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { formatDate } from "@/lib/format";
 
 /*
  * Server Actions of /statements (15 §5, §7). The repository validates every input with its Zod
@@ -151,4 +161,71 @@ export async function noteStatementAction(
       ),
     (result) => ({ note: result.note }),
   );
+}
+
+/** A document as the 証憑 sheet of a line lists it (formatted on the server). */
+export interface StatementDocumentItem {
+  id: string;
+  /** The file name, or the kind when there is none. */
+  title: string;
+  /** 領収書 … */
+  kind: string;
+  /** 2026/11/07, or `null` (未整理). */
+  date: string | null;
+  /** With grouping, or `null` (未整理). */
+  amount: string | null;
+  partner: string | null;
+  /** 未紐づけ / 紐づけ済み / 無効（理由）. */
+  status: string;
+  voided: boolean;
+  /** The same amount as the line (inbox): listed first. */
+  sameAmount: boolean;
+}
+
+export interface StatementDocumentsView {
+  linked: StatementDocumentItem[];
+  inbox: StatementDocumentItem[];
+}
+
+function documentItem(document: {
+  id: string;
+  kind: DocumentKind;
+  status: DocumentStatus;
+  originalName: string | null;
+  txnDate: CalendarDate | null;
+  amount: Money | null;
+  partnerName: string | null;
+  voidReason: string | null;
+  sameAmount?: boolean;
+}): StatementDocumentItem {
+  const voided = document.status === "voided";
+  return {
+    id: document.id,
+    title: document.originalName ?? DOCUMENT_KIND_LABELS[document.kind],
+    kind: DOCUMENT_KIND_LABELS[document.kind],
+    date: document.txnDate ? formatDate(document.txnDate) : null,
+    amount: document.amount === null ? null : formatYen(document.amount),
+    partner: document.partnerName,
+    status:
+      voided && document.voidReason
+        ? `無効（${document.voidReason}）`
+        : DOCUMENT_STATUS_LABELS[document.status],
+    voided,
+    sameAmount: document.sameAmount ?? false,
+  };
+}
+
+/** 証憑 of a line (15 §5): the linked documents and the inbox to link from. Reads only. */
+export async function loadStatementDocumentsAction(
+  id: string,
+): Promise<ActionResult<StatementDocumentsView>> {
+  const result = await attempt(() => loadStatementDocuments(prisma(), parseId(id)));
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    data: {
+      linked: result.data.linked.map(documentItem),
+      inbox: result.data.inbox.map(documentItem),
+    },
+  };
 }
