@@ -9,7 +9,7 @@
 | 日次エクスポート（バックアップバケット `exports/<日付>/<時刻>Z/`。非公開側 `niho-finance-core` にも写す） | 帳簿の中身を確かめたい、別の DB に立てたい、年 1 回の訓練 | 1 日 1 回（03:00 JST） |
 | Cloud SQL の自動バックアップ（7 日）と PITR | インスタンスやデータベースそのものが壊れた | 任意の時点 |
 
-エクスポートの中身: `snapshot.json`（全テーブル。bigint は文字列、日付は ISO）、`trial-balance.json`（会計期間ごとの試算表）、`manifest.json`（各ファイルの SHA-256、書き出し時の migration 名と git の SHA）。S7（#8）の CSV / beancount は merge 後に同じフォルダに並ぶ。
+エクスポートの中身: `snapshot.json`（全テーブル。bigint は文字列、日付は ISO。`db:restore` が読む）、`trial-balance.json`（会計期間ごとの試算表）、`book/`（報告の書き出し: `settings.json`・`journal-entries.json`・`journal.csv`・`ledger.beancount`・`wallet-transactions.json`・`documents.json` と、その `manifest.json`。会社の登録後）、`manifest.json`（全ファイルの SHA-256、書き出し時の migration 名と git の SHA）。`book/` は人や他の道具（freee・beancount）が読む形で、復元には使わない。
 
 ## 2. 日次エクスポートからローカルに復元する
 

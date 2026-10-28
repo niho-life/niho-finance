@@ -42,6 +42,14 @@ describe.skipIf(!hasTestDatabase)("backup export and restore", () => {
     expect(line).toHaveProperty("journal_entry_id");
     expect(snapshot.tables.company?.[0]?.founded_on).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
     expect(exported.trialBalances.length).toBe(await source.fiscalYear.count());
+    expect(exported.extra).toBeUndefined();
+  });
+
+  it("reads the extra source in the same view as the snapshot", async () => {
+    const exported = await exportBackup(source, {
+      extra: async (tx) => tx.journalEntry.count(),
+    });
+    expect(exported.extra).toBe(exported.snapshot.tables.journal_entry?.length);
   });
 
   it("restores into an empty database with the same rows and trial balances", async () => {

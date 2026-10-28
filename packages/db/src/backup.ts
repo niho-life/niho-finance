@@ -223,9 +223,11 @@ export async function trialBalancesForBackup(db: Db): Promise<BackupTrialBalance
   return result;
 }
 
-export interface BackupExport {
+export interface BackupExport<Extra = undefined> {
   snapshot: BackupSnapshot;
   trialBalances: BackupTrialBalance[];
+  /** What `options.extra` read in the same view of the database. */
+  extra: Extra | undefined;
 }
 
 const BACKUP_TRANSACTION = { maxWait: 60_000, timeout: 10 * 60_000 } as const;
@@ -233,15 +235,17 @@ const BACKUP_TRANSACTION = { maxWait: 60_000, timeout: 10 * 60_000 } as const;
 /**
  * The snapshot and the trial balances from one view of the database (REPEATABLE READ), so the
  * trial balances are exactly those of the snapshot even when something is posted meanwhile.
+ * `extra` reads more in the same view (the job adds the reports' CSV / beancount source, S7).
  */
-export async function exportBackup(
+export async function exportBackup<Extra = undefined>(
   prisma: PrismaClient,
-  options: { now?: Date } = {},
-): Promise<BackupExport> {
+  options: { now?: Date; extra?: (tx: Db) => Promise<Extra> } = {},
+): Promise<BackupExport<Extra>> {
   return prisma.$transaction(
     async (tx) => ({
       snapshot: await exportBackupSnapshot(tx, options),
       trialBalances: await trialBalancesForBackup(tx),
+      extra: options.extra ? await options.extra(tx) : undefined,
     }),
     { ...BACKUP_TRANSACTION, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
   );

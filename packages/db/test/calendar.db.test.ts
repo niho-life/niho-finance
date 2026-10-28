@@ -1,6 +1,6 @@
 import { addDays, type CalendarDate } from "@niho-finance/ledger";
-import type { PrismaClient } from "@prisma/client";
-import { beforeAll, describe, expect, it } from "vitest";
+import type { CalendarItem, PrismaClient } from "@prisma/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildCalendarItems,
   fromDbDate,
@@ -18,9 +18,21 @@ const actor = "system";
 
 describe.skipIf(!hasTestDatabase)("calendar items from the fiscal years", () => {
   let prisma: PrismaClient;
+  let seeded: CalendarItem[];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     prisma = testPrisma();
+    seeded = await prisma.calendarItem.findMany();
+  });
+
+  // The test database is shared by the files (others read the calendar for the home): leave the
+  // calendar as the seed made it. calendar_item has no ledger guard; the audit rows stay.
+  afterAll(async () => {
+    if (!seeded) return;
+    await prisma.calendarItem.deleteMany({ where: { id: { notIn: seeded.map((row) => row.id) } } });
+    for (const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...row } of seeded) {
+      await prisma.calendarItem.update({ where: { id }, data: row });
+    }
   });
 
   async function expectedCount(): Promise<number> {

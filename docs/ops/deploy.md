@@ -95,7 +95,7 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 | ジョブ | 周期（JST） | 内容 | 失敗のとき |
 | --- | --- | --- | --- |
 | `stripe-sync` | 06:00 | S4（#5）。2 アカウントの balance transactions を明細化 | 記録して 500（再試行なし） |
-| `backup-export` | 03:00 | 全テーブルの JSON スナップショット・会計期間ごとの試算表・manifest（SHA-256）を `exports/<日付>/<時刻>/` に書く。S7（#8）の CSV / beancount は merge 後に同じフォルダへ足す | 同上 |
+| `backup-export` | 03:00 | `exports/<日付>/<時刻>Z/` に、全テーブルの JSON スナップショット（復元用）・会計期間ごとの試算表・`book/`（S7 の書き出し: 設定と仕訳の JSON、仕訳 CSV、beancount、明細と証憑の索引。会社の登録後）・manifest（全ファイルの SHA-256）を、DB の同じ時点から書く | 同上 |
 | `calendar-notify` | 09:00 | 会計期間から `CalendarItem` を生成（冪等）し、7 日前・当日・超過の期限をメール。知らせる期限がない日も SMTP のログインまで確かめる（アプリパスワードの失効を期限の前に失敗として知らせる） | 同上 |
 | `mail-check` | 手動だけ | 「送信の確認」を 1 通送る（アプリパスワードを入れた・更新したとき） | 同上 |
 

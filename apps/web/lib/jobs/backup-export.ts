@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
-import { appendAuditLog, exportBackup } from "@niho-finance/db";
+import { appendAuditLog, exportBackup, getCompany, loadBackupSource } from "@niho-finance/db";
+import { buildBackupFiles } from "@niho-finance/reports";
 import { backupSinkFromEnv } from "../backup/sink";
 import { appEnv } from "../env";
 import { JOB_ACTOR, type JobContext, type JobSummary } from "./run";
 
 /*
- * backup-export (daily, 03:00 JST; docs/ops/deploy.md §6–§7): `snapshot.json` (every table),
- * `trial-balance.json` (every fiscal year) and, last, `manifest.json` (SHA-256 of each file) in
+ * backup-export (daily, 03:00 JST; docs/ops/deploy.md §6–§7): `snapshot.json` (every table, what
+ * `npm run db:restore` loads), `trial-balance.json` (every fiscal year), the reports' export of the
+ * book in `book/` (S7: settings and journal as JSON, `journal.csv`, `ledger.beancount`, statements
+ * and documents; it has its own manifest) and, last, `manifest.json` (SHA-256 of every file) in
  * `exports/<YYYY-MM-DD>/<HHmmss>Z/` (UTC). A folder without a manifest is an incomplete export.
+ * Everything is read in one view of the database. Before the company exists there is no `book/`.
  */
 
 export const BACKUP_MANIFEST_FORMAT = "niho-finance-backup";
@@ -41,13 +45,20 @@ function sha256(body: Buffer): string {
 
 export async function backupExportJob({ prisma, startedAt }: JobContext): Promise<JobSummary> {
   const sink = backupSinkFromEnv();
-  const { snapshot, trialBalances } = await exportBackup(prisma, { now: startedAt });
+  const { snapshot, trialBalances, extra } = await exportBackup(prisma, {
+    now: startedAt,
+    extra: async (tx) => ((await getCompany(tx)) ? loadBackupSource(tx) : null),
+  });
   const folder = backupFolder(startedAt);
+  const book = extra ? await buildBackupFiles(extra, { now: startedAt }) : [];
   const files: ExportFile[] = [
     jsonFile("snapshot.json", snapshot),
     jsonFile("trial-balance.json", trialBalances),
-    // S7 (#8): the CSV / beancount exports (`(db) => Promise<{ path, body, contentType }[]>`)
-    // join here, in the same folder and the manifest.
+    ...book.map((file) => ({
+      path: `book/${file.path}`,
+      body: Buffer.from(file.content),
+      contentType: file.contentType,
+    })),
   ];
 
   const written: { path: string; bytes: number; sha256: string }[] = [];
@@ -78,5 +89,6 @@ export async function backupExportJob({ prisma, startedAt }: JobContext): Promis
     files: written.length + 1,
     bytes: written.reduce((sum, file) => sum + file.bytes, manifestFile.body.length),
     entries: snapshot.tables.journal_entry?.length ?? 0,
+    book: book.length > 0 ? book.length : "no company yet",
   };
 }
