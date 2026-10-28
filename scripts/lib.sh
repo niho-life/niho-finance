@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2034  # the variables are read by the scripts that source this file
 # Shared by scripts/gcp-bootstrap.sh and scripts/deploy.sh. Source, do not run.
 set -euo pipefail
 
@@ -22,6 +22,8 @@ load_deploy_env() {
     [[ -n "${!name:-}" ]] || die "$name is not set in $DEPLOY_ENV"
   done
   TASKS_QUEUE="${TASKS_QUEUE:-niho-finance-manual}"
+  # Every resource that takes labels carries this one: Cloud Billing reports filter on it.
+  COST_LABEL="app=niho-finance"
   RUNNER_SA_EMAIL="$RUNNER_SA@$GCP_PROJECT.iam.gserviceaccount.com"
   SCHEDULER_SA_EMAIL="$SCHEDULER_SA@$GCP_PROJECT.iam.gserviceaccount.com"
   IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$ARTIFACT_REPO/web"

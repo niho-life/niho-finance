@@ -22,7 +22,11 @@ CONNECTION="$(cloudsql_connection_name)"
 # No pipelines here: with `set -o pipefail` a `head` closing early kills the script with SIGPIPE.
 gen_password() { openssl rand -hex 20; }
 first_line() { local text="$1"; printf '%s' "${text%%$'\n'*}"; }
-ensure_secret() { gcp secrets describe "$1" > /dev/null 2>&1 || gcp secrets create "$1" --replication-policy automatic; }
+ensure_secret() {
+  gcp secrets describe "$1" > /dev/null 2>&1 \
+    || gcp secrets create "$1" --replication-policy automatic --labels "$COST_LABEL"
+  gcp secrets update "$1" --update-labels "$COST_LABEL" > /dev/null
+}
 secret_has_version() {
   [[ -n "$(gcp secrets versions list "$1" --filter='state:ENABLED' --format='value(name)' --limit 1)" ]]
 }
@@ -38,6 +42,7 @@ ensure_bucket() {
       --uniform-bucket-level-access --public-access-prevention --retention-period "$retention"
   fi
   if [[ "$versioning" == 1 ]]; then gcp storage buckets update "gs://$name" --versioning > /dev/null; fi
+  gcp storage buckets update "gs://$name" --update-labels "$COST_LABEL" > /dev/null
   # Create and read only: the runtime cannot delete or overwrite objects.
   for role in roles/storage.objectCreator roles/storage.objectViewer; do
     gcp storage buckets add-iam-policy-binding "gs://$name" \
@@ -120,6 +125,8 @@ resources() {
   gcp artifacts repositories describe "$ARTIFACT_REPO" --location "$GCP_REGION" > /dev/null 2>&1 \
     || gcp artifacts repositories create "$ARTIFACT_REPO" --location "$GCP_REGION" \
       --repository-format docker --description "NIHO finance images"
+  gcp artifacts repositories update "$ARTIFACT_REPO" --location "$GCP_REGION" \
+    --update-labels "$COST_LABEL" > /dev/null
   gcp artifacts repositories set-cleanup-policies "$ARTIFACT_REPO" --location "$GCP_REGION" \
     --policy "$REPO_ROOT/ops/artifact-cleanup.json" --no-dry-run > /dev/null
 

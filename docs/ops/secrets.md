@@ -16,25 +16,25 @@
 ## 2. 発行
 
 - DB の 2 ロール: `scripts/gcp-bootstrap.sh resources` がパスワードを生成して Secret に入れる。migration 用ロールは Cloud SQL の API で作り（テーブルの所有者）、アプリ用ロールは migrate ジョブが `niho-finance-database-url` の値から `CREATE ROLE … LOGIN NOCREATEDB NOCREATEROLE` で作る（superuser ではない。Cloud SQL では属性 `NOSUPERUSER` を書くことも拒まれるので既定に任せる）。パスワードは画面にもログにも出ない。
-- SMTP のアプリパスワード: 送信元の Google アカウントで 2 段階認証を有効にし、「アプリパスワード」を発行して、発行した人が自分で入れる:
+- SMTP のアプリパスワード: 送信元の Google アカウントで 2 段階認証を有効にし、「アプリパスワード」を発行して、発行した人が自分で入れる。端末で次を実行し、表示された 16 文字を貼り付ける（画面に出ない。空白は除かれる。16 文字の英数字でなければ何も保存せずに止まる）:
 
 ```sh
-printf '%s' '<app password>' | gcloud --project <project> secrets versions add niho-finance-smtp-password --data-file=-
+scripts/set-smtp-password.sh
 ```
 
-入れたら `scripts/deploy.sh --no-build`（サービスが新しい版で起動する）→ `scripts/run-job.sh mail-check` で「[NIHO finance] 送信の確認」が届くことを見る。Google アカウントのパスワードを変えるとアプリパスワードは無効になる。そのときは毎朝の `calendar-notify` が SMTP のログインで失敗し、「ジョブの失敗」のアラートが届くので、発行し直す。
+スクリプトは Secret に新しい版を足し、`scripts/deploy.sh --no-build`（いま動いているイメージのまま、サービスを新しい版で起動し直す）と `scripts/run-job.sh mail-check` まで続けて行う。「[NIHO finance] 送信の確認」が届けば完了。Google アカウントのパスワードを変えるとアプリパスワードは無効になる。そのときは毎朝の `calendar-notify` が SMTP のログインで失敗し、「ジョブの失敗」のアラートが届くので、発行し直す。
 
 - Stripe: S4（#5）の手順。制限付きキーは Balance transactions / Payouts / Charges / Invoices の read だけ。
 
 ## 3. 更新（ローテーション）
 
-順序はいつも「新しい版を足す → 配備し直す → 古い版を無効化する」。配備は `scripts/deploy.sh --no-build`（イメージはそのまま、サービスとジョブが最新の版で起動する）。
+順序はいつも「新しい版を足す → 配備し直す → 古い版を無効化する」。配備は `scripts/deploy.sh --no-build`（いま動いているイメージのまま、サービスとジョブが最新の版で起動する。Secret は `latest` を参照し、インスタンスの起動時に読まれる）。
 
 | 鍵 | 手順 |
 | --- | --- |
 | migration 用ロール | 新しいパスワードを作る → `gcloud sql users set-password niho_finance_migrate --instance <instance> --password '<new>'` → 新しい URL を `niho-finance-migrate-database-url` に足す → `scripts/deploy.sh --no-build` |
 | アプリ用ロール | 新しい URL（パスワードだけ変える）を `niho-finance-database-url` に足す → `scripts/deploy.sh --no-build`（migrate ジョブが `ALTER ROLE … PASSWORD` を流してからサービスが上がる） |
-| SMTP | 新しいアプリパスワードを発行して足す → `scripts/deploy.sh --no-build` → `scripts/run-job.sh mail-check` で「送信の確認」が届くことを見る → Google 側で古いアプリパスワードを削除 |
+| SMTP | 新しいアプリパスワードを発行して `scripts/set-smtp-password.sh`（足す → 起動し直す → 送信の確認）→ 届いたら Google 側で古いアプリパスワードを削除 |
 | Stripe | 新しい制限付きキーを発行して足す → `scripts/deploy.sh --no-build` → Stripe 側で古いキーを失効 |
 
 古い版: `gcloud secrets versions disable <n> --secret <name>`（しばらく置いてから `destroy`）。

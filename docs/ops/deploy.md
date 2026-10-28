@@ -73,7 +73,7 @@ Cloud SQL は private IP のみなので、サービスとジョブは Direct VP
 
 ```sh
 scripts/deploy.sh            # 現在の HEAD を配備する（clean な worktree で、main を取り込んでから）
-scripts/deploy.sh --no-build # 直前に作ったイメージをそのまま配備し直す
+scripts/deploy.sh --no-build # いま動いているイメージのまま配備し直す（Secret の新しい版を読ませる）
 ```
 
 1. `gcloud builds submit --config cloudbuild.yaml`（イメージのタグは git の SHA）
@@ -127,7 +127,9 @@ scripts/deploy.sh --no-build # 直前に作ったイメージをそのまま配�
 | Secret Manager（有効なバージョン 6 つまで無料） | 0 円 |
 | Artifact Registry（直近 10 イメージ） | 10 円未満 |
 | Cloud Build（1 日 120 分まで無料） | 0 円 |
-| 合計 | 06 §8 の「500 円未満」の範囲 |
+| 合計 | 06 §8 の「500 円未満」の範囲（オーナーの上限は月 300 円） |
+
+請求の確かめ方: ラベルを付けられる資源（Cloud Run のサービスとジョブ・GCS・Artifact Registry・Secret Manager）はすべて `app=niho-finance` を持つので、Cloud Billing のレポートでラベルに絞ると NIHO アプリと分けて見られる。Cloud Scheduler はラベルを持てないので SKU（ジョブ数）で見る。Cloud SQL は共有インスタンスなので分けられない（追加の固定費はない）。
 
 ## 10. 独自ドメイン
 

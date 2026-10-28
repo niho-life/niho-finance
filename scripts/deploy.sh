@@ -5,6 +5,7 @@
 #   3. the web service (IAP) and the jobs service (IAM) are deployed with the new image
 #   4. health check
 # Usage: scripts/deploy.sh [--no-build] [--allow-dirty]
+#   --no-build  redeploys the image that is serving now (picks up new secret versions; no build)
 # Needs scripts/deploy.env (see deploy.env.example) and a gcloud login with access to the project.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -21,10 +22,17 @@ for arg in "$@"; do
   esac
 done
 
-TAG="$(git rev-parse --short=12 HEAD)"
-if [[ -n "$(git status --porcelain)" ]]; then
-  [[ $allow_dirty -eq 1 ]] || die "the worktree has uncommitted changes (deploy what is committed, or pass --allow-dirty)"
-  TAG="$TAG-dirty"
+if [[ $build -eq 1 ]]; then
+  TAG="$(git rev-parse --short=12 HEAD)"
+  if [[ -n "$(git status --porcelain)" ]]; then
+    [[ $allow_dirty -eq 1 ]] || die "the worktree has uncommitted changes (deploy what is committed, or pass --allow-dirty)"
+    TAG="$TAG-dirty"
+  fi
+else
+  serving="$(gcp run services describe "$WEB_SERVICE" --region "$GCP_REGION" \
+    --format='value(spec.template.spec.containers[0].image)')"
+  [[ "$serving" == "$IMAGE:"* ]] || die "$WEB_SERVICE is not serving an image of $IMAGE (first deploy needs a build)"
+  TAG="${serving#"$IMAGE:"}"
 fi
 CONNECTION="$(cloudsql_connection_name)"
 WEB_URL="$(service_url "$WEB_SERVICE")"
@@ -34,7 +42,7 @@ if [[ $build -eq 1 ]]; then
   log "build $IMAGE:$TAG (Cloud Build)"
   gcp builds submit --config cloudbuild.yaml --substitutions="_IMAGE=$IMAGE,_TAG=$TAG" .
 else
-  log "skip build; using $IMAGE:$TAG"
+  log "no build: redeploying the serving image $IMAGE:$TAG"
 fi
 
 log "migrate: run job $MIGRATE_JOB with $IMAGE-migrate:$TAG"
@@ -45,7 +53,7 @@ gcp run jobs deploy "$MIGRATE_JOB" \
   --set-cloudsql-instances "$CONNECTION" \
   --network "$VPC_NETWORK" --subnet "$VPC_SUBNET" --vpc-egress private-ranges-only \
   --set-secrets "DATABASE_URL=$SECRET_MIGRATE_DATABASE_URL:latest,NIHO_FINANCE_APP_DATABASE_URL=$SECRET_DATABASE_URL:latest" \
-  --max-retries 0 --task-timeout 20m --memory 1Gi \
+  --max-retries 0 --task-timeout 20m --memory 1Gi --labels "$COST_LABEL" \
   --execute-now --wait
 
 deploy_service() {
@@ -63,6 +71,7 @@ deploy_service() {
     --network "$VPC_NETWORK" --subnet "$VPC_SUBNET" --vpc-egress private-ranges-only \
     --set-secrets "DATABASE_URL=$SECRET_DATABASE_URL:latest,NIHO_FINANCE_SMTP_PASSWORD=$SECRET_SMTP_PASSWORD:latest" \
     --set-env-vars "$(service_env_vars "$role" "$TAG")" \
+    --labels "$COST_LABEL" \
     "$@"
 }
 
