@@ -545,6 +545,10 @@ export function StatementsList({
   function menuItems(row: ClientStatementRow): MenuItem[] {
     if (row.status === "pending") {
       return [
+        // 請求 (#16, 18 §9.4): a deposit can pay an issued invoice (売掛金の消込).
+        ...(BigInt(row.amount) > 0n
+          ? [{ label: "この請求に充てる", href: `/invoices/apply?statement=${row.id}` }]
+          : []),
         {
           label: "証憑を紐づける",
           onSelect: () => setDialog({ kind: "documents", rowId: row.id }),

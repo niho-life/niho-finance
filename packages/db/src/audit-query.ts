@@ -190,6 +190,17 @@ export async function describeAuditTargets(
     });
     for (const invoice of invoices) label("invoice", invoice.id, invoiceAuditName(invoice));
   }
+  if (ids.has("calendar_item")) {
+    const items = await db.calendarItem.findMany({
+      where: { id: of("calendar_item") },
+      select: { id: true, title: true, fiscalYear: { select: { no: true } } },
+    });
+    // 「第 1 期 法人税…の申告と納付」; a payroll payment has no fiscal year (22 §7.1).
+    for (const item of items) {
+      const year = item.fiscalYear ? `第 ${item.fiscalYear.no} 期 ` : "";
+      label("calendar_item", item.id, `${year}${item.title}`);
+    }
+  }
   if (ids.has("fixed_asset")) {
     for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
       label("fixed_asset", row.id, row.name);

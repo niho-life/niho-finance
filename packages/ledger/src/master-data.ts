@@ -228,6 +228,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "payroll_run.confirm": "支給の確定",
   "payroll_payment.post": "納付の登録",
   "calendar_item.complete": "完了にする",
+  // 期限 (24-calendar §2)
+  "calendar_item.reopen": "未完了に戻す",
+  "calendar_item.notify": "期限の通知",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */

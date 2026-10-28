@@ -14,7 +14,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/entries/[id]/correct` | 訂正（伝票のフォームを元の仕訳で埋める）。取消済み・反対仕訳・決算済みの期は詳細へ戻す |
 | `/documents` | 証憑（受信箱 / すべて / 無効）。保存（PC はドロップゾーン、スマホは撮影と選ぶ）・検索は URL の `tab` `from` `to` `amountMin` `amountMax` `partner` `kind` `q` `page`・索引簿の書き出し |
 | `/documents/[id]` | 証憑の詳細（プレビュー・項目の直接編集・紐づけ・候補・無効化・差し替え・履歴・この証憑から取引を登録） |
-| `/more` | スマホの「その他」（証憑・取引・設定） |
+| `/more` | スマホの「その他」（証憑・取引・明細の取込・期限・請求・給与・設定） |
 | `/settings` | 設定の索引 |
 | `/settings/company` | 事業所 |
 | `/settings/fiscal-years` | 会計期間（次の期を作る・締め） |
@@ -35,6 +35,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/reports` | 報告。`/reports/trial-balance` へ redirect |
 | `/reports/trial-balance` ・ `monthly` ・ `segments` ・ `cash` ・ `journal` ・ `ledger` | 試算表・月次推移・セグメント損益・現預金・仕訳帳・総勘定元帳。条件は検索パラメータ（`fy` `period` `from` `to` `segment`、仕訳帳は `status` `page`、総勘定元帳は `account` `sub`） |
 | `/reports/export` | 報告の CSV / PDF（GET の route handler。`report` `format` と上の条件） |
+| `/calendar` | 期限（会計期間ごとの一覧・完了にする / 未完了に戻す。[24](../../docs/design/24-calendar.md)） |
 | `/api/documents/*` | 証憑の API（`prepare` / `complete` / `upload`〔ローカル保存の受け口〕/ `[id]/file` / `index.csv`。13 §7） |
 | `/api/health` | 死活と DB の疎通、`service`（`web` / `jobs`）、`gitSha`、`iap`（IAP の署名ヘッダーの検証結果: `verified` / `missing` / `invalid` / `not-configured`。誰かは返さない） |
 | `/api/jobs/backup` | POST。日次エクスポート（`backup-export`）。`NIHO_FINANCE_SERVICE=jobs` のときだけ動き、画面のサービスでは 404 |

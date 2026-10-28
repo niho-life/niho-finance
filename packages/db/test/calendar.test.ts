@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCalendarItems,
   CALENDAR_RULES,
+  calendarItemStatus,
   selectCalendarNotices,
   type BuiltCalendarItem,
   type CalendarNoticeItem,
@@ -169,5 +170,27 @@ describe("selectCalendarNotices", () => {
       ["today", "today"],
       ["late", "week"],
     ]);
+  });
+});
+
+describe("calendarItemStatus", () => {
+  const today: CalendarDate = "2026-11-07";
+  const open = (dueDate: CalendarDate) => calendarItemStatus({ dueDate, completedAt: null }, today);
+
+  it("tells overdue, today and the home's 7 days apart from later items", () => {
+    expect(open("2026-11-06")).toEqual({ kind: "overdue" });
+    expect(open("2026-11-07")).toEqual({ kind: "today" });
+    expect(open("2026-11-08")).toEqual({ kind: "soon", days: 1 });
+    expect(open("2026-11-14")).toEqual({ kind: "soon", days: 7 });
+    expect(open("2026-11-15")).toEqual({ kind: "open" });
+  });
+
+  it("dates a completed item on the JST day it was recorded, whatever its due date", () => {
+    // 2026-11-07T15:30Z is 2026-11-08 00:30 in Japan.
+    const completedAt = new Date("2026-11-07T15:30:00Z");
+    expect(calendarItemStatus({ dueDate: "2026-11-01", completedAt }, today)).toEqual({
+      kind: "completed",
+      on: "2026-11-08",
+    });
   });
 });
