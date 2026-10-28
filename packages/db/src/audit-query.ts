@@ -201,6 +201,10 @@ export async function describeAuditTargets(
       label("calendar_item", item.id, `${year}${item.title}`);
     }
   }
+  if (ids.has("fixed_asset")) {
+    for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
+      label("fixed_asset", row.id, row.name);
+  }
   return names;
 }
 

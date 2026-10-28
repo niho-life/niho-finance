@@ -7,7 +7,7 @@ export interface NavItem {
   href: string | null;
 }
 
-/** The left navigation (10 §1, 18 §6, 24 §3). */
+/** The left navigation (10 §1, 18 §6, 16 §2: 決算 between 請求 and 設定, 24 §3: 期限 after 報告). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "home", label: "ホーム", href: "/" },
   { key: "statements", label: "明細", href: "/statements" },
@@ -17,6 +17,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "calendar", label: "期限", href: "/calendar" },
   { key: "invoices", label: "請求", href: "/invoices" },
   { key: "payroll", label: "給与", href: "/payroll" },
+  { key: "closing", label: "決算", href: "/closing" },
   { key: "settings", label: "設定", href: "/settings" },
 ];
 
