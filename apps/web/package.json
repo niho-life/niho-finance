@@ -11,6 +11,8 @@
   "dependencies": {
     "@niho-finance/db": "*",
     "@niho-finance/payroll": "*",
+    "@niho-finance/reports": "*",
+    "@react-pdf/renderer": "^4.9.0",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",
