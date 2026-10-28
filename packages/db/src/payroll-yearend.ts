@@ -15,19 +15,33 @@
 import {
   dateParts,
   formatYen,
+  getTaxCategory,
   lastDayOfMonth,
   LedgerValidationError,
+  resolveTaxRule,
   type CalendarDate,
   type Money,
+  type TaxRateRule,
 } from "@niho-finance/ledger";
 import {
+  aggregateFeePayments,
+  annualSalaryTotals,
   BONUS_WITHHOLDING_METHOD_LABELS,
+  buildWithholdingSlip,
+  FEE_ACCOUNT_CODES,
+  FEE_WITHHOLDING_ACCOUNT_CODE,
+  feeReportTotals,
+  inSalaryReportRange,
+  inTaxOfficeRange,
+  unifiedCsvIssues,
   bonusReportSlot,
   bonusTableIdsOf,
   buildBonusEntries,
   buildYearEndSettlementEntry,
   calculateBonus,
   calculateYearEnd,
+  annualReportSlot,
+  employedInPayMonth,
   emptyYearEndDeclaration,
   findTableById,
   findYearEndTable,
@@ -54,9 +68,18 @@ import {
   yearMonthLabel,
   yearMonthOf,
   yearMonthParts,
+  yearEndCalculationPart,
+  yearEndRetirementReason,
+  type AnnualSalaryTotals,
   type BonusTables,
   type BonusWarning,
   type BonusWarningCode,
+  type FeeAccountCode,
+  type FeeAggregation,
+  type FeeCategory,
+  type FeeJournalLine,
+  type FeePayee,
+  type FeeTotals,
   type PayrollBonusItem,
   type PayrollBonusItemInput,
   type PayrollBonusTableIds,
@@ -66,8 +89,10 @@ import {
   type PayrollInputIssue,
   type PayrollRunSummary,
   type SocialInsuranceAggregate,
+  type StatementPayer,
   type TableRef,
   type TaxColumn,
+  type WithholdingSlip,
   type WorkerKind,
   type YearEndDeclaration,
   type YearEndInput,
@@ -85,7 +110,7 @@ import type {
 import { z } from "zod";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, toDbDate } from "./dates";
-import type { EntryRef } from "./entries";
+import { loadTaxRules, type EntryRef } from "./entries";
 import { isUniqueViolation, SettingsError } from "./errors";
 import { newId } from "./ids";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
@@ -113,16 +138,20 @@ import {
   type StoredRun,
 } from "./payroll";
 import {
+  partnerIndividualSchema,
   payrollBonusRunSchema,
   yearEndConfirmSchema,
   yearEndDeclarationSaveSchema,
   yearEndDeclarationSchema,
   yearEndSnapshotInputSchema,
+  yearEndStatementSaveSchema,
   type ParsedPayrollBonusRun,
+  type PartnerIndividualInput,
   type PayrollBonusRunInput,
   type YearEndConfirmInput,
   type YearEndDeclarationFormInput,
   type YearEndDeclarationSaveInput,
+  type YearEndStatementSaveInput,
 } from "./schemas";
 import { lockSettings, runInTransaction } from "./transaction";
 
@@ -319,15 +348,17 @@ async function planBonus(db: Db, data: ParsedPayrollBonusRun): Promise<BonusPlan
     );
   }
 
+  // 退職した月より後の賞与には出さない (§12.3); 資格喪失月の賞与には保険料をかけない (coverage).
   const employees = (await db.employee.findMany({ where: { isActive: true } }))
     .sort(employeeOrder)
-    .map(toEmployeeRecord);
+    .map(toEmployeeRecord)
+    .filter((employee) => employedInPayMonth(employee.leftOn, data.payMonth));
   const byId = new Map(employees.map((employee) => [employee.id, employee]));
   const rows = new Map<string, { row: ParsedPayrollBonusRun["items"][number]; index: number }>();
   data.items.forEach((row, index) => {
     if (!byId.has(row.employeeId)) {
       throw new SettingsError(
-        "賞与の計算にない従業員か、無効にした従業員が入っています。画面を読み込み直してください",
+        "賞与の計算にない従業員（無効にした従業員・前の月までに退職した従業員）が入っています。画面を読み込み直してください",
         { field: `items.${index}.employeeId` },
       );
     }
@@ -828,7 +859,8 @@ export async function loadBonusDraft(db: Db, payMonth: string): Promise<BonusDra
       : null;
   const employees = (await db.employee.findMany({ where: { isActive: true } }))
     .sort(employeeOrder)
-    .map(toEmployeeRecord);
+    .map(toEmployeeRecord)
+    .filter((employee) => employedInPayMonth(employee.leftOn, month));
   const draftEmployees = employees.map((employee): BonusDraftEmployee => {
     const item = previous?.items.find((candidate) => candidate.employeeId === employee.id);
     return {
@@ -1044,10 +1076,18 @@ export interface YearEndDeclarationRecord {
   year: number;
   employeeId: string;
   declaration: YearEndDeclaration;
+  /**
+   * The 申告 was saved from the 年末調整 screen. `false` for a row the 法定調書 screen made to keep
+   * only names and addresses (§12.2): the 年末調整 still waits for its 申告.
+   */
+  declared: boolean;
   createdAt: Date;
   updatedAt: Date;
   updatedBy: string;
 }
+
+/** The key a row made by the 法定調書 screen carries (its calculation part is empty). */
+const STATEMENT_ONLY_KEY = "statementOnly";
 
 /** A stored declaration read back through the same schema as the form (a mismatch is a data bug). */
 function readStoredDeclaration(json: unknown, id: string): YearEndDeclaration {
@@ -1059,14 +1099,61 @@ function readStoredDeclaration(json: unknown, id: string): YearEndDeclaration {
 }
 
 function toDeclarationRecord(row: PayrollYearEndDeclaration): YearEndDeclarationRecord {
+  const json = row.declarations;
+  const statementOnly =
+    typeof json === "object" &&
+    json !== null &&
+    !Array.isArray(json) &&
+    (json as Record<string, unknown>)[STATEMENT_ONLY_KEY] === true;
   return {
     id: row.id,
     year: row.year,
     employeeId: row.employeeId,
-    declaration: readStoredDeclaration(row.declarations, row.id),
+    declaration: readStoredDeclaration(json, row.id),
+    declared: !statementOnly,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     updatedBy: row.updatedBy,
+  };
+}
+
+/**
+ * The 法定調書 fields of `saved` kept through a save from the 年末調整 screen that does not send
+ * them (§12.2): the recipient, 前職の支払者, and a person's name when the row at the same place
+ * has the same category.
+ */
+function keepStatementFields(
+  next: YearEndDeclaration,
+  saved: YearEndDeclaration | null,
+): YearEndDeclaration {
+  if (!saved) return next;
+  return {
+    ...next,
+    recipient: next.recipient ?? saved.recipient,
+    dependents: next.dependents.map((dependent, index) => {
+      const before = saved.dependents[index];
+      return dependent.person === undefined &&
+        before?.person !== undefined &&
+        before.category === dependent.category
+        ? { ...dependent, person: before.person }
+        : dependent;
+    }),
+    spouse:
+      next.spouse && next.spouse.person === undefined && saved.spouse?.person
+        ? { ...next.spouse, person: saved.spouse.person }
+        : next.spouse,
+    specificRelatives: next.specificRelatives.map((relative, index) => {
+      const before = saved.specificRelatives[index];
+      return relative.person === undefined && before?.person !== undefined
+        ? { ...relative, person: before.person }
+        : relative;
+    }),
+    previousEmployer:
+      next.previousEmployer &&
+      next.previousEmployer.payer === undefined &&
+      saved.previousEmployer?.payer
+        ? { ...next.previousEmployer, payer: saved.previousEmployer.payer }
+        : next.previousEmployer,
   };
 }
 
@@ -1112,7 +1199,11 @@ export async function saveYearEndDeclaration(
       );
     }
     const existing = await tx.payrollYearEndDeclaration.findUnique({ where: key });
-    const declarations = toAuditJson(data.declaration);
+    const declaration = keepStatementFields(
+      data.declaration,
+      existing ? toDeclarationRecord(existing).declaration : null,
+    );
+    const declarations = toAuditJson(declaration);
     const row = existing
       ? await tx.payrollYearEndDeclaration.update({
           where: { id: existing.id },
@@ -1141,7 +1232,7 @@ export async function saveYearEndDeclaration(
             },
           }
         : {}),
-      after: { year: data.year, employeeId: data.employeeId, declarations: data.declaration },
+      after: { year: data.year, employeeId: data.employeeId, declarations: declaration },
     });
     return toDeclarationRecord(row);
   });
@@ -1294,11 +1385,21 @@ function planFor(
       socialInsurance: totals.socialInsurance,
       withheld: totals.withheld,
     },
-    declaration: override ?? declaration?.declaration ?? emptyYearEndDeclaration(),
+    declaration:
+      override ??
+      (declaration?.declared ? declaration.declaration : null) ??
+      emptyYearEndDeclaration(),
     table: context.table,
   };
   const result = calculateYearEnd(input);
   const blockers: string[] = [];
+  // 年の中途の退職者 (§12.3) first: the reason the person is out, whatever else is missing.
+  const retired = yearEndRetirementReason(
+    employee.leftOn,
+    context.year,
+    context.decemberRun?.paymentDate ?? null,
+  );
+  if (retired !== null) blockers.push(retired);
   const december = `${context.year} 年 12 月の支給`;
   if (!context.decemberRun) {
     blockers.push(
@@ -1309,7 +1410,9 @@ function planFor(
       `${december}に${employee.name}さんが入っていません。年末調整は最後の給与の支払時に在職している人が対象です`,
     );
   }
-  if (!declaration) blockers.push("申告をまだ保存していません。申告を保存してから確定します");
+  if (!declaration?.declared) {
+    blockers.push("申告をまだ保存していません。申告を保存してから確定します");
+  }
   for (const reason of result.ineligible) blockers.push(reason.message);
   return {
     employee,
@@ -1540,7 +1643,7 @@ export async function loadYearEnd(db: Db, year: number): Promise<YearEndOverview
         isActive: employee.isActive,
         taxColumn: plan.input.taxColumn,
       },
-      declaration: declaration
+      declaration: declaration?.declared
         ? { updatedAt: declaration.updatedAt, updatedBy: declaration.updatedBy }
         : null,
       inDecemberRun: plan.inDecemberRun,
@@ -1686,7 +1789,7 @@ export async function previewYearEnd(
     table: tableRef(context.table),
     birthDates: context.table.birthDates,
     employee,
-    declaration,
+    declaration: declaration?.declared ? declaration : null,
     usedDeclaration: plan.input.declaration,
     totals: plan.totals,
     taxColumn: plan.input.taxColumn,
@@ -1805,7 +1908,12 @@ export async function confirmYearEnd(
     }
 
     const { table: _table, ...input } = plan.input;
-    const snapshot = toAuditJson({ input, runs: plan.totals.runs, result });
+    // The snapshot keeps what the calculation read; the names of §12.2 stay in the declaration.
+    const snapshot = toAuditJson({
+      input: { ...input, declaration: yearEndCalculationPart(input.declaration) },
+      runs: plan.totals.runs,
+      result,
+    });
     await tx.payrollYearEnd
       .create({
         data: {
@@ -1838,6 +1946,25 @@ export async function confirmYearEnd(
           title: slot.title,
           dueDate: toDbDate(slot.dueDate),
           ruleKey: slot.ruleKey,
+        },
+      });
+    }
+    // 給与支払報告書・法定調書合計表の提出 (§12.4): made by the year's first 年末調整 (once).
+    const annual = annualReportSlot(data.year);
+    if (
+      !(await tx.calendarItem.findFirst({
+        where: { fiscalYearId: null, ruleKey: annual.ruleKey },
+        select: { id: true },
+      }))
+    ) {
+      await tx.calendarItem.create({
+        data: {
+          id: newId(),
+          fiscalYearId: null,
+          kind: "filing",
+          title: annual.title,
+          dueDate: toDbDate(annual.dueDate),
+          ruleKey: annual.ruleKey,
         },
       });
     }
@@ -2040,4 +2167,471 @@ export async function loadWithholdingLedger(
     },
     yearEnd,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// 法定調書 (§12): 源泉徴収票・給与支払報告書・合計表・報酬の支払調書
+// ---------------------------------------------------------------------------------------------
+
+/** Whether a recipient's 源泉徴収票 has the 年末調整 in it. */
+export type StatementState = "adjusted" | "not_adjusted" | "pending";
+
+/** One recipient of the year (everyone paid in it): the slip and what to do with it. */
+export interface StatementRecipient {
+  employee: Pick<EmployeeRecord, "id" | "name" | "kind" | "isActive" | "leftOn">;
+  slip: WithholdingSlip;
+  /**
+   * `adjusted`: the confirmed 年末調整 is in the slip. `not_adjusted`: 年末調整の対象外 (乙欄・年の
+   * 中途の退職・2,000 万円超など; `reason`). `pending`: 対象 but not confirmed yet (`reason`): the slip
+   * waits for it.
+   */
+  state: StatementState;
+  reason: string | null;
+  /** 給与支払報告書を市区町村に出す (年の中途の退職者で 30 万円以下を除く). */
+  inSalaryReport: boolean;
+  /** 源泉徴収票を税務署に出す範囲 (2027 年 1 月以後は給与支払報告書でみなし提出). */
+  inTaxOffice: boolean;
+  /** What the unified CSV and the 報告書 still lack (住所・フリガナ・市町村コード・氏名). */
+  missing: string[];
+  /** The saved declaration (with the names), `null` = none. */
+  declaration: YearEndDeclarationRecord | null;
+}
+
+export interface StatementsOverview {
+  year: number;
+  payer: StatementPayer;
+  table: TableRef;
+  recipients: StatementRecipient[];
+  /** 給与所得の源泉徴収票合計表の元データ (pending people counted as not adjusted). */
+  totals: AnnualSalaryTotals;
+  /** People whose 年末調整 is still to confirm. */
+  pending: number;
+}
+
+async function loadPayer(db: Db): Promise<StatementPayer> {
+  const company = await db.company.findFirst({
+    select: { name: true, address: true, corporateNumber: true },
+  });
+  return {
+    name: company?.name ?? "",
+    address: company?.address ?? "",
+    phone: null,
+    corporateNumber: company?.corporateNumber ?? null,
+  };
+}
+
+/** 甲欄 / 乙欄 at the year's last monthly pay of the person, else the master data's. */
+function lastTaxColumn(
+  employee: EmployeeRecord,
+  year: number,
+  runs: readonly StoredRun[],
+): "kou" | "otsu" {
+  const last = [...runs]
+    .filter((run) => inYear(run.paymentDate, year))
+    .reverse()
+    .find((run) => run.items.some((item) => item.employeeId === employee.id));
+  const item = last?.items.find((candidate) => candidate.employeeId === employee.id);
+  return item ? item.input.taxColumn.column : employee.taxColumn;
+}
+
+/** Why a person paid in the year has no 年末調整 (`null`: they should have one). */
+function notAdjustedReason(plan: YearEndPlan, context: YearEndContext): string | null {
+  const retired = yearEndRetirementReason(
+    plan.employee.leftOn,
+    context.year,
+    context.decemberRun?.paymentDate ?? null,
+  );
+  if (retired !== null) return retired;
+  const [ineligible] = plan.result.ineligible;
+  if (ineligible) return ineligible.message;
+  if (context.decemberRun && !plan.inDecemberRun) {
+    return `${context.year} 年 12 月の支給に入っていないので、年末調整の対象外です（最後の給与の支払時に在職していない）`;
+  }
+  return null;
+}
+
+async function statementRecipients(
+  db: Db,
+  year: number,
+  onlyEmployeeId: string | null,
+): Promise<{ context: YearEndContext; payer: StatementPayer; recipients: StatementRecipient[] }> {
+  const context = await loadYearEndContext(db, year);
+  const paid = new Set<string>();
+  for (const run of context.runs) {
+    if (inYear(run.paymentDate, year)) for (const item of run.items) paid.add(item.employeeId);
+  }
+  for (const run of context.bonuses) {
+    if (!inYear(run.paymentDate, year)) continue;
+    for (const item of run.items) if (item.result.bonus > 0n) paid.add(item.employeeId);
+  }
+  const wanted =
+    onlyEmployeeId === null ? [...paid] : paid.has(onlyEmployeeId) ? [onlyEmployeeId] : [];
+  const [rows, declarations, confirmedRows, payer] = await Promise.all([
+    db.employee.findMany({ where: { id: { in: wanted } } }),
+    db.payrollYearEndDeclaration.findMany({ where: { year, employeeId: { in: wanted } } }),
+    db.payrollYearEnd.findMany({ where: { year, employeeId: { in: wanted } } }),
+    loadPayer(db),
+  ]);
+  const confirmed = await readYearEnds(db, confirmedRows, context.runs);
+  const declared = new Map(declarations.map((row) => [row.employeeId, toDeclarationRecord(row)]));
+  const recipients = rows.sort(employeeOrder).map((row): StatementRecipient => {
+    const employee = toEmployeeRecord(row);
+    const declaration = declared.get(employee.id) ?? null;
+    const record = confirmed.get(employee.id) ?? null;
+    const plan = planFor(context, employee, declaration, null);
+    const reason = record ? null : notAdjustedReason(plan, context);
+    const state: StatementState = record
+      ? "adjusted"
+      : reason !== null
+        ? "not_adjusted"
+        : "pending";
+    const joinedOn =
+      employee.insuredFrom !== null && inYear(employee.insuredFrom, year)
+        ? employee.insuredFrom
+        : null;
+    const slip = buildWithholdingSlip({
+      year,
+      payer,
+      employee: {
+        id: employee.id,
+        name: employee.name,
+        kind: employee.kind,
+        birthDate: employee.birthDate,
+        taxColumn: lastTaxColumn(employee, year, context.runs),
+        leftOn: employee.leftOn,
+        joinedOn,
+      },
+      totals: plan.totals,
+      declaration: declaration?.declaration ?? null,
+      declared: declaration?.declared ?? false,
+      yearEnd: record?.result ?? null,
+      table: context.table,
+    });
+    return {
+      employee: {
+        id: employee.id,
+        name: employee.name,
+        kind: employee.kind,
+        isActive: employee.isActive,
+        leftOn: employee.leftOn,
+      },
+      slip,
+      state,
+      reason:
+        state === "pending"
+          ? "年末調整をまだ確定していません。給与 › 年末調整 で確定してから源泉徴収票を出します"
+          : reason,
+      inSalaryReport: inSalaryReportRange(slip),
+      inTaxOffice: inTaxOfficeRange(slip),
+      missing: unifiedCsvIssues(slip),
+      declaration,
+    };
+  });
+  return { context, payer, recipients };
+}
+
+/**
+ * 法定調書 of `year` (§12.2): everyone paid in the year (monthly or bonus) with the 源泉徴収票 (受給者
+ * 交付用 for everyone; 給与支払報告書 for those in range: not 年の中途の退職者で 30 万円以下), the state
+ * of the 年末調整, what the CSV still lacks, and the 合計表's rows. Throws `PayrollTableMissingError`
+ * for a year without data.
+ */
+export async function loadStatements(db: Db, year: number): Promise<StatementsOverview> {
+  const { context, payer, recipients } = await statementRecipients(db, year, null);
+  return {
+    year,
+    payer,
+    table: tableRef(context.table),
+    recipients,
+    totals: annualSalaryTotals(recipients.map((recipient) => recipient.slip)),
+    pending: recipients.filter((recipient) => recipient.state === "pending").length,
+  };
+}
+
+/** The 源泉徴収票 of one person and year, or `null` when the person was not paid in the year. */
+export async function loadWithholdingSlip(
+  db: Db,
+  year: number,
+  employeeId: string,
+): Promise<StatementRecipient | null> {
+  if (!Number.isSafeInteger(year) || typeof employeeId !== "string" || employeeId === "") {
+    return null;
+  }
+  const { recipients } = await statementRecipients(db, year, employeeId);
+  return recipients[0] ?? null;
+}
+
+/**
+ * 法定調書の欄を保存 (§12.2): the recipient's フリガナ・住所・市町村コード・受給者番号, the names of the
+ * saved declaration's people (in their order there) and 前職の支払者, merged into the declaration
+ * (DB only; never a マイナンバー). Allowed after the 年末調整 is confirmed: nothing of the calculation
+ * changes. Without a saved declaration only the recipient's fields are kept (a row the 年末調整 still
+ * treats as 未入力). Audit log `payroll_year_end_declaration.save_statement`.
+ */
+export async function saveStatementFields(
+  db: Db,
+  input: YearEndStatementSaveInput,
+  options: ActorOptions,
+): Promise<YearEndDeclarationRecord> {
+  const data = yearEndStatementSaveSchema.parse(input);
+  return runInTransaction(db, async (tx) => {
+    await lockSettings(tx, "payroll");
+    const employee = await tx.employee.findUnique({ where: { id: data.employeeId } });
+    if (!employee) {
+      throw new SettingsError("従業員が見つかりません。画面を読み込み直してください", {
+        field: "employeeId",
+      });
+    }
+    const key = { year_employeeId: { year: data.year, employeeId: data.employeeId } };
+    const existing = await tx.payrollYearEndDeclaration.findUnique({ where: key });
+    const current = existing ? toDeclarationRecord(existing) : null;
+    const base = current?.declaration ?? emptyYearEndDeclaration();
+    const changedShape =
+      data.dependents.length !== base.dependents.length ||
+      data.specificRelatives.length !== base.specificRelatives.length ||
+      (data.spouse !== null) !== (base.spouse !== null);
+    if (changedShape) {
+      throw new SettingsError(
+        "申告の配偶者・扶養親族が変わりました。画面を読み込み直してから氏名を入れてください",
+      );
+    }
+    const merged: YearEndDeclaration = {
+      ...base,
+      recipient: data.recipient,
+      dependents: base.dependents.map((dependent, index) => ({
+        ...dependent,
+        person: data.dependents[index]!,
+      })),
+      spouse: base.spouse && data.spouse ? { ...base.spouse, person: data.spouse } : base.spouse,
+      specificRelatives: base.specificRelatives.map((relative, index) => ({
+        ...relative,
+        person: data.specificRelatives[index]!,
+      })),
+      previousEmployer:
+        base.previousEmployer && data.previousPayer
+          ? { ...base.previousEmployer, payer: data.previousPayer }
+          : base.previousEmployer,
+    };
+    const json = toAuditJson(merged) as Record<string, Prisma.InputJsonValue>;
+    const declarations: Prisma.InputJsonValue =
+      current && current.declared ? json : { ...json, [STATEMENT_ONLY_KEY]: true };
+    const row = existing
+      ? await tx.payrollYearEndDeclaration.update({
+          where: { id: existing.id },
+          data: { declarations, updatedBy: options.actor },
+        })
+      : await tx.payrollYearEndDeclaration.create({
+          data: {
+            id: newId(),
+            year: data.year,
+            employeeId: data.employeeId,
+            declarations,
+            updatedBy: options.actor,
+          },
+        });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "payroll_year_end_declaration.save_statement",
+      entity: "payroll_year_end_declaration",
+      entityId: row.id,
+      ...(existing ? { before: { declarations: existing.declarations } } : {}),
+      after: { year: data.year, employeeId: data.employeeId, declarations: merged },
+    });
+    return toDeclarationRecord(row);
+  });
+}
+
+// 報酬、料金、契約金及び賞金の支払調書 -------------------------------------------------------
+
+/** 報酬の支払調書 of `year`: the payees, the 合計表's rows and what the owner still has to settle. */
+export interface FeeReportsOverview {
+  year: number;
+  payer: StatementPayer;
+  aggregation: FeeAggregation;
+  totals: FeeTotals;
+  /** Payees not marked 個人 or 法人 yet (paid through 5410 / 5110 in the year). */
+  undecided: FeePayee[];
+  /** The account names of 5410 / 5110 (the screen's labels). */
+  accountNames: Record<string, string>;
+}
+
+/** A line's tax-inclusive amount: 税抜経理の期は仮払消費税 (控除できる分) を足す. */
+function grossAmount(
+  line: { amount: Money; taxAmount: Money; taxCategoryCode: string },
+  date: CalendarDate,
+  method: "tax_inclusive" | "tax_exclusive",
+  rules: readonly TaxRateRule[],
+): Money {
+  if (method !== "tax_exclusive" || line.taxAmount === 0n) return line.amount;
+  if (getTaxCategory(line.taxCategoryCode)?.kind !== "taxable") return line.amount;
+  const percent = resolveTaxRule(line.taxCategoryCode, date, rules)?.deductiblePercent ?? 100;
+  const taxLine = percent === 100 ? line.taxAmount : (line.taxAmount * BigInt(percent)) / 100n;
+  return line.amount + taxLine;
+}
+
+/**
+ * 報酬の支払調書 (§12.2) of `year`: the posted entries dated in the year (a voided entry and its
+ * reversal both left out, so a correction counts once), their lines of 5410 支払報酬料 and 5110
+ * 業務委託費 per partner (debit − credit, tax-inclusive) and the 2300 預り金 of the same entries as
+ * 源泉徴収税額. Only partners marked 個人 get a 支払調書 (年間 5 万円超); unmarked ones are listed
+ * for the owner. `categories` is the 区分 chosen on the screen (`<partnerId>.<accountCode>`), never
+ * stored.
+ */
+export async function loadFeeReports(
+  db: Db,
+  year: number,
+  categories: Readonly<Record<string, FeeCategory>> = {},
+): Promise<FeeReportsOverview> {
+  const from = toDbDate(dateOf(year, 1, 1));
+  const to = toDbDate(dateOf(year, 12, 31));
+  const entryWhere = {
+    status: "posted" as const,
+    reversalOfId: null,
+    entryDate: { gte: from, lte: to },
+  };
+  const accounts = await db.account.findMany({
+    where: { code: { in: [...FEE_ACCOUNT_CODES, FEE_WITHHOLDING_ACCOUNT_CODE] } },
+    select: { id: true, code: true, name: true },
+  });
+  const feeAccounts = accounts.filter((account) =>
+    (FEE_ACCOUNT_CODES as readonly string[]).includes(account.code),
+  );
+  const withholdingAccount = accounts.find(
+    (account) => account.code === FEE_WITHHOLDING_ACCOUNT_CODE,
+  );
+  const [feeRows, payer, rules, fiscalYears] = await Promise.all([
+    db.journalLine.findMany({
+      where: {
+        accountId: { in: feeAccounts.map((account) => account.id) },
+        journalEntry: entryWhere,
+      },
+      select: {
+        side: true,
+        amount: true,
+        taxAmount: true,
+        taxCategoryCode: true,
+        partnerId: true,
+        accountId: true,
+        journalEntry: { select: { id: true, no: true, entryDate: true, fiscalYearId: true } },
+      },
+    }),
+    loadPayer(db),
+    loadTaxRules(db),
+    db.fiscalYear.findMany({ select: { id: true, accountingMethod: true } }),
+  ]);
+  const methods = new Map(fiscalYears.map((row) => [row.id, row.accountingMethod]));
+  const codeOf = new Map(feeAccounts.map((account) => [account.id, account.code]));
+  const lines: FeeJournalLine[] = feeRows.map((row) => {
+    const date = fromDbDate(row.journalEntry.entryDate);
+    const gross = grossAmount(
+      row,
+      date,
+      methods.get(row.journalEntry.fiscalYearId) ?? "tax_inclusive",
+      rules,
+    );
+    return {
+      entryId: row.journalEntry.id,
+      entryNo: row.journalEntry.no,
+      entryDate: date,
+      accountCode: codeOf.get(row.accountId) as FeeAccountCode,
+      partnerId: row.partnerId,
+      amount: row.side === "debit" ? gross : -gross,
+    };
+  });
+  const entryIds = [...new Set(lines.map((line) => line.entryId))];
+  const withholdingRows =
+    withholdingAccount && entryIds.length > 0
+      ? await db.journalLine.findMany({
+          where: { accountId: withholdingAccount.id, journalEntryId: { in: entryIds } },
+          select: { side: true, amount: true, partnerId: true, journalEntryId: true },
+        })
+      : [];
+  const partnerIds = [
+    ...new Set(lines.flatMap((line) => (line.partnerId === null ? [] : [line.partnerId]))),
+  ];
+  const partners = await db.partner.findMany({
+    where: { id: { in: partnerIds } },
+    select: { id: true, name: true, address: true, isIndividual: true },
+  });
+  const aggregation = aggregateFeePayments({
+    lines,
+    withholding: withholdingRows.map((row) => ({
+      entryId: row.journalEntryId,
+      partnerId: row.partnerId,
+      amount: row.side === "credit" ? row.amount : -row.amount,
+    })),
+    partners,
+    categories,
+  });
+  return {
+    year,
+    payer,
+    aggregation,
+    totals: feeReportTotals(aggregation.payees),
+    undecided: aggregation.payees.filter((payee) => payee.partner.isIndividual === null),
+    accountNames: Object.fromEntries(feeAccounts.map((account) => [account.code, account.name])),
+  };
+}
+
+/** 法定調書合計表の元データ (§12.2): 給与 and 報酬 of the year. */
+export interface AnnualTotals {
+  year: number;
+  payer: StatementPayer;
+  salary: AnnualSalaryTotals;
+  /** People whose 年末調整 is still to confirm (the salary rows change once they are). */
+  pending: number;
+  fees: FeeTotals;
+  /** Payees not marked 個人 or 法人 yet (not in the 報酬 rows). */
+  undecidedFees: number;
+}
+
+export async function loadAnnualTotals(
+  db: Db,
+  year: number,
+  categories: Readonly<Record<string, FeeCategory>> = {},
+): Promise<AnnualTotals> {
+  const [statements, fees] = await Promise.all([
+    loadStatements(db, year),
+    loadFeeReports(db, year, categories),
+  ]);
+  return {
+    year,
+    payer: statements.payer,
+    salary: statements.totals,
+    pending: statements.pending,
+    fees: fees.totals,
+    undecidedFees: fees.undecided.length,
+  };
+}
+
+/**
+ * 個人 / 法人 / 未確認 of a partner (§12.2: only individuals get a 報酬の支払調書). Audit log
+ * `partner.update` with the flag before and after.
+ */
+export async function setPartnerIndividual(
+  db: Db,
+  input: PartnerIndividualInput,
+  options: ActorOptions,
+): Promise<{ id: string; name: string; isIndividual: boolean | null }> {
+  const data = partnerIndividualSchema.parse(input);
+  return runInTransaction(db, async (tx) => {
+    const current = await tx.partner.findUnique({ where: { id: data.id } });
+    if (!current) throw new SettingsError("取引先が見つかりません。画面を読み込み直してください");
+    if (current.isIndividual === data.isIndividual) {
+      return { id: current.id, name: current.name, isIndividual: current.isIndividual };
+    }
+    const row = await tx.partner.update({
+      where: { id: current.id },
+      data: { isIndividual: data.isIndividual },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "partner.update",
+      entity: "partner",
+      entityId: row.id,
+      before: { isIndividual: current.isIndividual },
+      after: { isIndividual: row.isIndividual },
+    });
+    return { id: row.id, name: row.name, isIndividual: row.isIndividual };
+  });
 }

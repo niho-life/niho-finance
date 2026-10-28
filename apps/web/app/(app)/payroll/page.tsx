@@ -62,6 +62,17 @@ export default async function PayrollPage() {
             <ButtonLink href={`/payroll/year-end?year=${yearMonthParts(month).year}`} size="sm">
               年末調整
             </ButtonLink>
+            {/* 1〜3 月は前年分の法定調書の時期 (22-payroll §12.1). */}
+            <ButtonLink
+              href={`/payroll/statements?year=${
+                yearMonthParts(month).month <= 3
+                  ? yearMonthParts(month).year - 1
+                  : yearMonthParts(month).year
+              }`}
+              size="sm"
+            >
+              法定調書
+            </ButtonLink>
             <ButtonLink href="/payroll/employees" size="sm">
               従業員
             </ButtonLink>

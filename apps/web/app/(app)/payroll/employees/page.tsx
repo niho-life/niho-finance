@@ -53,6 +53,7 @@ export default async function EmployeesPage({
     dependents: employee.dependents,
     residentTax: formatYenInput(employee.residentTax),
     isActive: employee.isActive,
+    leftOn: employee.leftOn ?? "",
   }));
   return (
     <>

@@ -11,7 +11,11 @@ import {
   findPensionTable,
   findWithholdingTable,
 } from "./registry";
-import { socialInsurancePremiums, type SocialInsurancePremiums } from "./social-insurance";
+import {
+  socialInsurancePremiums,
+  type SocialInsuranceCoverage,
+  type SocialInsurancePremiums,
+} from "./social-insurance";
 import {
   isTableEffective,
   tableRef,
@@ -68,6 +72,26 @@ export interface PayrollInput {
   adjustments?: PayrollAdjustments;
   /** Pins table versions (e.g. the ones a past run used); the rest come from the registry. */
   tables?: Partial<PayrollTables>;
+  /**
+   * 退職者の最後の給与 (22-payroll §12.3): a second premium month deducted from this pay — with
+   * 翌月控除, the leaving month of a month-end leaver, whose premium no later run can deduct. Its
+   * premiums use the tables of that month (pinned in `tables` when given).
+   */
+  extraPremium?: PayrollExtraPremiumInput;
+}
+
+/** The second premium month of a final pay (§12.3) and the coverage in that month. */
+export interface PayrollExtraPremiumInput {
+  premiumMonth: YearMonth;
+  coverage: SocialInsuranceCoverage;
+  tables?: { kenpo?: KenpoTable; pension?: PensionTable };
+}
+
+/** The premiums of the second premium month (§12.3), with the tables they used. */
+export interface PayrollExtraPremium {
+  premiumMonth: YearMonth;
+  socialInsurance: SocialInsurancePremiums;
+  tables: { kenpo: TableRef; pension: TableRef };
 }
 
 /** 調整: signed whole yen added to the deductions (22-payroll §4). */
@@ -93,7 +117,10 @@ export interface PayrollResult {
   adjustments: PayrollAdjustments;
   /** incomeTax + adjustments.incomeTax: the income tax withheld. */
   incomeTaxTotal: Money;
-  /** socialInsurance.employeeTotal + adjustments.socialInsurance: the 健保・厚年 deduction. */
+  /**
+   * socialInsurance.employeeTotal (+ extraPremium's) + adjustments.socialInsurance: the 健保・厚年
+   * deduction.
+   */
   socialInsuranceEmployeeTotal: Money;
   /** 社会保険料（調整後）+ 雇用保険料 (本人負担) + 源泉所得税（調整後）+ 住民税. May be negative. */
   totalDeductions: Money;
@@ -105,6 +132,8 @@ export interface PayrollResult {
     pension: TableRef;
     employment: TableRef | null;
   };
+  /** The second premium month of a final pay (§12.3); left out otherwise. */
+  extraPremium?: PayrollExtraPremium;
 }
 
 const AMOUNTS = [
@@ -230,7 +259,69 @@ function validateInput(input: PayrollInput): void {
         "介護保険料は健康保険の被保険者だけにかかります。健康保険を「あり」にするか、介護保険を「なし」にしてください",
     });
   }
+  const extra = input.extraPremium;
+  if (extra !== undefined) {
+    if (!isYearMonth(extra.premiumMonth)) {
+      issues.push({
+        code: "INVALID_PREMIUM_MONTH",
+        field: "extraPremium.premiumMonth",
+        message: `退職月の対象月「${String(extra.premiumMonth)}」が正しくありません（YYYY-MM）`,
+      });
+    } else if (isYearMonth(input.premiumMonth) && extra.premiumMonth === input.premiumMonth) {
+      issues.push({
+        code: "INVALID_PREMIUM_MONTH",
+        field: "extraPremium.premiumMonth",
+        message: "退職月の社会保険料の対象月が、この支給の対象月と同じです",
+      });
+    }
+    const flags: unknown = extra.coverage;
+    const values =
+      typeof flags === "object" && flags !== null ? (flags as Record<string, unknown>) : {};
+    for (const { key, label } of COVERAGES.filter((coverage) => coverage.key !== "employment")) {
+      if (typeof values[key] !== "boolean") {
+        issues.push({
+          code: "INVALID_COVERAGE",
+          field: `extraPremium.coverage.${key}`,
+          message: `退職月の${label}の適用を「あり」か「なし」で指定してください`,
+        });
+      }
+    }
+    if (values.care === true && values.health !== true) {
+      issues.push({
+        code: "CARE_WITHOUT_HEALTH",
+        field: "extraPremium.coverage.care",
+        message: "退職月の介護保険料は健康保険の被保険者だけにかかります",
+      });
+    }
+  }
   if (issues.length > 0) throw new PayrollInputError(issues);
+}
+
+/** The premiums of the second premium month (§12.3), on that month's tables. */
+function extraPremiumOf(input: PayrollInput): PayrollExtraPremium | undefined {
+  const extra = input.extraPremium;
+  if (!extra) return undefined;
+  const pinned = extra.tables ?? {};
+  const issues = [
+    pinned.kenpo &&
+      checkPinnedTable(pinned.kenpo, "kyokai-kenpo", "extraPremium.kenpo", extra.premiumMonth),
+    pinned.pension &&
+      checkPinnedTable(pinned.pension, "pension", "extraPremium.pension", extra.premiumMonth),
+  ].filter((issue): issue is PayrollInputIssue => typeof issue === "object" && issue !== null);
+  if (issues.length > 0) throw new PayrollInputError(issues);
+  const kenpo = pinned.kenpo ?? findKenpoTable(extra.premiumMonth);
+  const pension = pinned.pension ?? findPensionTable(extra.premiumMonth);
+  return {
+    premiumMonth: extra.premiumMonth,
+    socialInsurance: socialInsurancePremiums(
+      kenpo,
+      pension,
+      extra.premiumMonth,
+      input.standardRemuneration,
+      extra.coverage,
+    ),
+    tables: { kenpo: tableRef(kenpo), pension: tableRef(pension) },
+  };
 }
 
 const TABLE_LABELS: Record<PayrollTableKind, string> = {
@@ -316,6 +407,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     input.standardRemuneration,
     input.coverage,
   );
+  const extraPremium = extraPremiumOf(input);
   const grossPay = input.taxablePay + input.nonTaxablePay;
   const employmentInsurance = tables.employment
     ? employmentInsurancePremium(tables.employment, grossPay)
@@ -324,7 +416,10 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     incomeTax: input.adjustments?.incomeTax ?? 0n,
     socialInsurance: input.adjustments?.socialInsurance ?? 0n,
   };
-  const socialInsuranceEmployeeTotal = socialInsurance.employeeTotal + adjustments.socialInsurance;
+  const socialInsuranceEmployeeTotal =
+    socialInsurance.employeeTotal +
+    (extraPremium?.socialInsurance.employeeTotal ?? 0n) +
+    adjustments.socialInsurance;
   const insuranceDeductions = socialInsuranceEmployeeTotal + (employmentInsurance?.employee ?? 0n);
   const withholdingBase = input.taxablePay - insuranceDeductions;
   const incomeTax = withholdingTax(tables.withholding, input.taxColumn, withholdingBase);
@@ -348,5 +443,6 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
       pension: tableRef(tables.pension),
       employment: tables.employment ? tableRef(tables.employment) : null,
     },
+    ...(extraPremium ? { extraPremium } : {}),
   };
 }

@@ -474,6 +474,8 @@ model Partner {
   address                      String?
   note                         String?
   isActive                     Boolean                   @default(true) @map("is_active")
+  /// 個人 (true) / 法人 (false) / 未確認 (null): 報酬の支払調書 (22-payroll §12.2) は個人だけ
+  isIndividual                 Boolean?                  @map("is_individual")
   createdAt                    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1101,6 +1103,8 @@ model Employee {
   /// 住民税の月額 (特別徴収): the default of a pay run
   residentTax       BigInt            @default(0) @map("resident_tax")
   isActive          Boolean           @default(true) @map("is_active")
+  /// 退職日 (22-payroll §12.3): 社会保険の資格喪失日はその翌日。null = 在職
+  leftOn            DateTime?         @map("left_on") @db.Date
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
