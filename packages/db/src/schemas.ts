@@ -14,8 +14,14 @@ import {
   CONSUMPTION_TAX_METHODS,
   corporateNumberProblem,
   defaultAccountingMethod,
+  DOCUMENT_KINDS,
+  DOCUMENT_LINK_KINDS,
+  DOCUMENT_MAX_BYTES,
+  DOCUMENT_SOURCES,
+  DOCUMENT_TABS,
   INVOICE_DOC_TYPES,
   invoiceRegistrationNumberProblem,
+  isAcceptedDocumentMime,
   isAccountGroupOf,
   isCalendarDate,
   isSalesTaxCategoryCode,
@@ -29,6 +35,7 @@ import {
   WALLET_KINDS,
   type BankAccountType,
   type CalendarDate,
+  type DocumentMime,
   type EntryCounterpart,
   type Money,
   type SalesTaxCategoryCode,
@@ -1104,3 +1111,202 @@ export const csvImportInputSchema = z.object({
 });
 export type CsvImportInput = z.input<typeof csvImportInputSchema>;
 export type ParsedCsvImportInput = z.output<typeof csvImportInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Documents (証憑, 13-documents §8.3)
+// ---------------------------------------------------------------------------
+
+/** Whole yen, 0 or more; empty → `null`. Accepts `3980`, `3,980`, full-width digits and bigint. */
+export function optionalNonNegativeYen(label: string) {
+  return orNull(
+    fromText(label, (text): Conversion<Money | null> => {
+      if (text === "") return ok(null);
+      const amount = parseYenInput(text);
+      if (amount === null) return problem(`${label}は 0 以上の円の整数で入力してください`);
+      return ok(amount);
+    }),
+  );
+}
+
+/** One of `values`; empty → `null` (e.g. 「すべて」 in a select). */
+export function optionalEnumField<const T extends readonly [string, ...string[]]>(
+  label: string,
+  values: T,
+) {
+  return orNull(
+    fromText(label, (text): Conversion<T[number] | null> => {
+      if (text === "") return ok(null);
+      if (!(values as readonly string[]).includes(text)) return problem(`${label}を選んでください`);
+      return ok(text as T[number]);
+    }),
+  );
+}
+
+/** One of `values`; a missing key, `null` or "" → `fallback`. */
+function enumWithDefault<const T extends readonly [string, ...string[]]>(
+  label: string,
+  values: T,
+  fallback: T[number],
+) {
+  return fromText(label, (text): Conversion<T[number]> => {
+    if (text === "") return ok(fallback);
+    if (!(values as readonly string[]).includes(text)) return problem(`${label}を選んでください`);
+    return ok(text as T[number]);
+  })
+    .optional()
+    .transform((value): T[number] => value ?? fallback);
+}
+
+/** SHA-256 of the file: 64 hex digits, normalized to lower case. */
+const sha256Field = fromText("SHA-256", (text) => {
+  const value = text.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    return problem("ファイルの SHA-256 が正しくありません。ファイルを選び直してください");
+  }
+  return ok(value);
+});
+
+/** An accepted MIME type (`normalizeDocumentMime` turns the browser's type into one). */
+const documentMimeField = fromText("形式", (text): Conversion<DocumentMime> => {
+  if (!isAcceptedDocumentMime(text)) {
+    return problem(
+      "この形式のファイルは保存できません。画像（JPEG・PNG・WebP・HEIC）・PDF・CSV を選んでください",
+    );
+  }
+  return ok(text);
+});
+
+const documentByteSizeField = fromText("大きさ", (text): Conversion<number> => {
+  if (!/^\d+$/.test(text)) {
+    return problem("ファイルの大きさが正しくありません。ファイルを選び直してください");
+  }
+  const size = Number(text);
+  if (size === 0)
+    return problem("空のファイルは保存できません。中身のあるファイルを選んでください");
+  if (size > DOCUMENT_MAX_BYTES) {
+    return problem("ファイルは 20 MB までです。小さくしてから選び直してください");
+  }
+  return ok(size);
+});
+
+/** The stored file as the browser describes it (checked again against the bytes on completion). */
+export const documentFileSchema = z.object({
+  sha256: sha256Field,
+  mime: documentMimeField,
+  byteSize: documentByteSizeField,
+  originalName: optionalText("ファイル名", 200),
+  source: enumField("保存の方法", DOCUMENT_SOURCES),
+});
+export type DocumentFileInput = z.input<typeof documentFileSchema>;
+
+/** Where the file is stored (`documents/<yyyy>/<mm>/<ulid>.<ext>`). */
+const storageKeyField = requiredText("保存先", 500);
+
+/** The search items required by 電子帳簿保存法 (date, amount, partner) and the rest of the form. */
+const documentItemFields = {
+  txnDate: optionalDate("取引年月日"),
+  amount: optionalNonNegativeYen("金額"),
+  /** A partner of the master; when set, the free-text name is cleared. */
+  partnerId: optionalIdField("取引先"),
+  /** Free-text name (「その他」) when the partner is not in the master. */
+  partnerName: optionalText("取引先名", 200),
+  invoiceRegistrationNumber: optionalInvoiceRegistrationNumber,
+  note: optionalText("メモ", 1000),
+};
+
+/** Omitted keys are left as they are (update) or inherited (replacement). */
+const documentItemPatchFields = {
+  kind: enumField("種別", DOCUMENT_KINDS).optional(),
+  txnDate: documentItemFields.txnDate.optional(),
+  amount: documentItemFields.amount.optional(),
+  partnerId: documentItemFields.partnerId.optional(),
+  partnerName: documentItemFields.partnerName.optional(),
+  invoiceRegistrationNumber: documentItemFields.invoiceRegistrationNumber.optional(),
+  note: documentItemFields.note.optional(),
+};
+
+export const documentRegisterSchema = documentFileSchema.extend({
+  storageKey: storageKeyField,
+  /** Defaults to 領収書. */
+  kind: enumWithDefault("種別", DOCUMENT_KINDS, "receipt"),
+  ...documentItemFields,
+});
+export type DocumentRegisterInput = z.input<typeof documentRegisterSchema>;
+
+/** The items edited on the detail screen (13 §4). Omitted keys are left as they are. */
+export const documentUpdateSchema = z.object({
+  id: idField("証憑"),
+  ...documentItemPatchFields,
+});
+export type DocumentUpdateInput = z.input<typeof documentUpdateSchema>;
+
+export const documentVoidSchema = z.object({
+  id: idField("証憑"),
+  reason: requiredText("理由", 200),
+});
+export type DocumentVoidInput = z.input<typeof documentVoidSchema>;
+
+/** A new file for a document; items given in `replacement` win over the inherited ones. */
+export const documentReplaceSchema = z.object({
+  id: idField("差し替える証憑"),
+  reason: requiredText("理由", 200),
+  replacement: documentFileSchema.extend({
+    storageKey: storageKeyField,
+    ...documentItemPatchFields,
+  }),
+});
+export type DocumentReplaceInput = z.input<typeof documentReplaceSchema>;
+
+export const documentLinkSchema = z.object({
+  kind: enumField("紐づける先", DOCUMENT_LINK_KINDS),
+  id: idField("紐づける先"),
+  documentId: idField("証憑"),
+});
+export type DocumentLinkInput = z.input<typeof documentLinkSchema>;
+
+/**
+ * The list's search form (13 §3.2; URL search parameters are the source). Conditions are ANDed.
+ * `tab` stays `null` when not given: the list defaults to the inbox, the index CSV to all.
+ */
+export const documentSearchSchema = z
+  .object({
+    tab: optionalEnumField("タブ", DOCUMENT_TABS),
+    from: optionalDate("取引年月日の始まり"),
+    to: optionalDate("取引年月日の終わり"),
+    amountMin: optionalNonNegativeYen("金額の下限"),
+    amountMax: optionalNonNegativeYen("金額の上限"),
+    /** Part of the partner's name (the master's or the free-text one). */
+    partner: optionalText("取引先", 200),
+    kind: optionalEnumField("種別", DOCUMENT_KINDS),
+    /** Part of the file name, the note or the partner's name. */
+    q: optionalText("キーワード", 200),
+    page: optionalIntegerInRange("ページ", 1, 100_000).transform((value) => value ?? 1),
+  })
+  .superRefine((value, ctx) => {
+    if (value.from !== null && value.to !== null && value.from > value.to) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["to"],
+        message: "取引年月日の終わりは始まりと同じ日か、それより後にしてください",
+      });
+    }
+    if (value.amountMin !== null && value.amountMax !== null && value.amountMin > value.amountMax) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountMax"],
+        message: "金額の上限は下限と同じか、それより大きくしてください",
+      });
+    }
+  });
+export type DocumentSearchInput = z.input<typeof documentSearchSchema>;
+export type DocumentSearchFilters = z.output<typeof documentSearchSchema>;
+
+/** 設定 › 証憑の規程 (13 §5). Empty 管理責任者 → 代表者, empty 処理責任者 → 管理責任者. */
+export const recordsPolicySchema = z.object({
+  effectiveOn: requiredDate("施行日"),
+  manager: optionalText("管理責任者", 100),
+  operator: optionalText("処理責任者", 100),
+  /** `POLICY_VERSION` of the text that is put in force. */
+  version: requiredText("版", 50),
+});
+export type RecordsPolicyInput = z.input<typeof recordsPolicySchema>;

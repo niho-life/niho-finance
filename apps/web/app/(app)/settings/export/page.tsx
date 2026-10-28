@@ -115,9 +115,6 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
         title="証憑一式"
         description="索引の CSV（証憑 ID・種類・日付・金額・取引先・登録番号・仕訳 No.・明細・ファイル名・SHA-256）と証憑のファイルを zip で書き出します。"
       >
-        <p className="mb-3 text-[13px] font-bold text-muted">
-          証憑の保存は準備中です。いまは索引だけの zip になります。
-        </p>
         <form
           method="get"
           action="/settings/export/download"

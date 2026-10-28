@@ -1,5 +1,6 @@
-import { getImportBatch } from "@niho-finance/db";
+import { findImportBatchDocument, getImportBatch } from "@niho-finance/db";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button";
@@ -23,8 +24,11 @@ function Item({ label, children }: { label: string; children: ReactNode }) {
 /** 取込の結果 (12-imports §1.3): the summary, why a sync failed, the failed rows and the warnings. */
 export default async function ImportBatchPage({ params }: PageProps<"/imports/[batchId]">) {
   const { batchId } = await params;
-  const batch = await getImportBatch(await db(), batchId);
+  const prisma = await db();
+  const batch = await getImportBatch(prisma, batchId);
   if (!batch) notFound();
+  // The CSV kept as evidence (S6): the batch's file as a 明細書 document.
+  const evidence = batch.source === "csv" ? await findImportBatchDocument(prisma, batchId) : null;
   const period =
     batch.periodFrom && batch.periodTo
       ? `${formatDate(batch.periodFrom)} – ${formatDate(batch.periodTo)}`
@@ -47,6 +51,16 @@ export default async function ImportBatchPage({ params }: PageProps<"/imports/[b
         <Item label="元">{IMPORT_SOURCE_LABELS[batch.source]}</Item>
         {batch.source === "csv" ? (
           <Item label="ファイル名">{batch.originalName ?? "—"}</Item>
+        ) : null}
+        {evidence ? (
+          <Item label="証憑">
+            <Link
+              href={`/documents/${evidence.id}`}
+              className="font-semibold underline underline-offset-4"
+            >
+              {evidence.originalName ?? "明細書"}
+            </Link>
+          </Item>
         ) : null}
         <Item label={batch.source === "csv" ? "期間" : "取得した期間"}>
           <span className="num">{period}</span>

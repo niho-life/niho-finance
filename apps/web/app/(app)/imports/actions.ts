@@ -19,6 +19,7 @@ import { revalidatePath } from "next/cache";
 import { z, ZodError } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
+import { keepImportFileAsDocument } from "@/lib/documents/import-evidence";
 import { actor } from "@/lib/env";
 import type { CsvImported, CsvPreviewView, StripeSyncView } from "./_lib/types";
 
@@ -149,6 +150,16 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
       );
       // A CSV import always records its batch; without one there is nothing to open.
       if (outcome.batchId === null) throw new Error("importCsv returned no batch");
+      // The file is electronic transaction data: kept as a 明細書 document (S6, 13 §9).
+      await keepImportFileAsDocument(
+        prisma(),
+        {
+          batchId: outcome.batchId,
+          bytes: input.bytes,
+          fileName: typeof input.fileName === "string" ? input.fileName : null,
+        },
+        by(),
+      );
       return outcome.batchId;
     },
     (batchId) => ({ batchId }),
