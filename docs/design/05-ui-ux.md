@@ -85,8 +85,8 @@
 
 ## 3. 見た目
 
-- 白基調。面は 1 段（ページ背景と surface の 2 色）。入れ子のカードを作らない。影は浮いている操作要素（ポップオーバー・シート）だけ。
-- 色は semantic token（background / surface / text / muted / border / primary / danger / success）。primary は NIHO のブランド色 1 色。金額のマイナスを赤で塗らない（記号と muted で表す。赤は警告だけ）。
+- 白基調で、できるだけシンプルに（owner 決定 2026-10-28・[D14](../decisions/2026-10-28-ui-white-minimal.md)。Notion・STUDIO の画面が参考）。ページ背景も面も白。区切りは薄いグレーの線と余白で作り、入れ子のカードや塗りの面を作らない。影は浮いている操作要素（ポップオーバー・シート・ダイアログ）だけ。サイドバーだけ `#F7F7F5` のようなごく薄いグレーでよい。
+- 色は semantic token（background / surface / text / muted / border / primary / danger / success）。文字は近い黒（`#1F1F1F` 程度）と 1 段階の muted グレー。primary は NIHO のブランド色 1 色で、CTA と焦点にだけ使う。金額のマイナスを赤で塗らない（記号と muted で表す。赤は警告だけ）。モックの v1 はクリーム地だが、実装は白にする。
 - 数字は tabular figures、右揃え、3 桁区切り、単位は列見出し（「円」を各セルに書かない）。
 - 文字: 本文 15px、表 14px、見出しは大きさより余白で階層を作る。重要な数字は 24〜32px。
 - 行の高さは PC 40px、スマホは 2 段（摘要と金額 / 推定チップ）。

@@ -19,10 +19,11 @@
 
 ### 1.1 アカウントの構造
 
-- `niho-platform` は Connect のプラットフォーム、`niho-kamakura` はそこに OAuth で接続した Standard の連結アカウント。独立した 2 口座ではない。
-- 日本で本人確認済みのアカウントは、事業形態を個人から法人へ編集で変えられず、新規アカウントの作成が公式の案内（Express 向け記事。Standard 向けの同文は未確認）。法人化の手順は [09 D4](09-decisions.md): まず Stripe サポートへ書面で可否を確認し、不可なら株式会社名義で新規作成する。platform を作り替える場合は Connect の再構築と連結アカウントの再接続が要る。
-- 複数アカウントは Stripe の Organizations（最大 75、統合レポート、組織 API キー `sk_org` ＋ `Stripe-Context`）で束ねる。帳簿の取込キーは組織の制限付き（読み取りのみ）キー 1 本にし、組織に入れないアカウントは個別の制限付きキーで読む。
-- 帳簿に入れる対象は「会社が運営するアカウント」だけ。他のホストの連結アカウントは取り込まず、platform 側の `platform_earning`（application fee）だけが会社の売上。
+- 既存の `niho-platform`（Connect のプラットフォーム）と `niho-kamakura`（OAuth で接続した Standard の連結アカウント）は会社名義だが、現在の事業主体（別の法人）の名義。日本で本人確認済みのアカウントは事業形態や法人を編集で変えられない。
+- 決定（[D4](../decisions/2026-10-28-stripe-new-corporate-account.md)）: NIHO株式会社の法人アカウントを新設し、NIHO アプリの決済をその法人アカウントに移す。移転の計画（platform の作り替え、連結アカウントの再接続、顧客と決済手段のコピー、Webhook と鍵の再発行）は niho-app 側の Epic で扱う。
+- 本システムが帳簿に入れる Stripe の口座は、新しい法人アカウントと、その Connect で会社が運営する拠点のアカウントだけ。既存アカウントの履歴は旧事業主体の帳簿であり取り込まない。
+- 会社のアカウントが複数になる場合は Stripe の Organizations（最大 75、統合レポート、組織 API キー `sk_org` ＋ `Stripe-Context`）で束ね、帳簿の取込キーは組織の制限付き（読み取りのみ）キー 1 本にする。
+- 自社拠点の application fee は 0（[D5](../decisions/2026-10-28-own-spot-application-fee-zero.md)）。他のホストの連結アカウントは取り込まず、platform 側の `platform_earning` だけが会社の売上。
 
 ### 1.2 取り込む単位
 
