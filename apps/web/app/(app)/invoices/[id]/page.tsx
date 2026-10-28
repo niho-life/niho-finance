@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { buttonClass } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { entryNo, formatDate } from "@/lib/format";
@@ -241,6 +242,15 @@ export default async function InvoiceDetailPage({
           <>
             {paymentModel ? <RecordPaymentButton model={paymentModel} /> : null}
             <InvoiceOperations model={operations} />
+            {/* プレビューは PDF そのもの (18 §11): drawn from the stored document, in a new tab. */}
+            <a
+              href={`/invoices/${detail.id}/pdf`}
+              target="_blank"
+              rel="noopener"
+              className={buttonClass({ size: "sm", variant: "ghost" })}
+            >
+              PDF
+            </a>
           </>
         }
       />
