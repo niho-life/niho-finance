@@ -37,7 +37,7 @@ export default async function SettingsPage() {
     { label: "ルール", href: null, summary: "準備中" },
     { label: "定期取引", href: null, summary: "準備中" },
     { label: "証憑の規程", href: null, summary: "準備中" },
-    { label: "書き出しとバックアップ", href: null, summary: "準備中" },
+    { label: "書き出しとバックアップ", href: "/settings/export", summary: "freee・弥生" },
     { label: "監査ログ", href: null, summary: "準備中" },
   ];
 

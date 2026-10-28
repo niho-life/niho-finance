@@ -12,6 +12,12 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 | `src/opening.ts` | 開始仕訳の組み立て（純粋関数 `buildOpeningEntries`）・プレビュー・登録（`postOpeningEntries`。1 回だけ） |
 | `src/setup.ts` | ウィザードの進捗を DB から導出（`getSetupProgress`）。保存する状態は「あとで」の 2 列だけ |
 
+## 報告と書き出し（S7）
+
+| ファイル | 内容 |
+| --- | --- |
+| `src/reports-query.ts` | 報告の入力（`loadReportSource`: 設定と全仕訳）、口座の明細の状態（`loadWalletStatus`）、ホームの「やること」（`loadHomeTodos` と `HOME_TODO_SOURCES`。S5・S6・S8 が関数を足す）、書き出しの監査ログ（`recordExport` / `listRecentExports`）、証憑の索引とバックアップの入力（`loadDocumentsForArchive` / `loadBackupSource`）。集計そのものは `@niho-finance/reports` が行う |
+
 書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
 
 ## migration

@@ -62,7 +62,7 @@ export function BottomTabs() {
         </span>
         <span className="sr-only">証憑（準備中）</span>
       </span>
-      <Tab href={null} label="報告">
+      <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>
       <Tab href="/settings" active={isActivePath(pathname, "/settings")} label="その他">
