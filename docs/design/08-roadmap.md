@@ -55,4 +55,4 @@ S1 → S2 → S3 と S4 は並行可 → S5 → S6 と S7 は並行可 → S8。
 
 - インボイス登録した場合: 会員向けの領収書・請求書に登録番号と税率別の表記を加える。
 - 自社拠点への application fee を 0 にする、または内部取引として識別できる metadata を付ける。
-- Stripe アカウントの事業者情報を NIHO株式会社に切り替える（アプリの変更は不要だが、Webhook と鍵の再発行の有無を確認）。
+- NIHO株式会社の法人アカウントを新設し、NIHO アプリの決済を移転する（platform の作り替え、連結アカウントの再接続、顧客と決済手段のコピー、Webhook と鍵の再発行、自社拠点の application fee を 0 に）。[D4](../decisions/2026-10-28-stripe-new-corporate-account.md)・[D5](../decisions/2026-10-28-own-spot-application-fee-zero.md)

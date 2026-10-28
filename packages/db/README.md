@@ -2,6 +2,18 @@
 
 Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voidJournalEntry`）、監査ログの追記を持つパッケージです。台帳の規則そのものは `@niho-finance/ledger` にあり、このパッケージは「1 トランザクションで検証 → 採番 → 登録 → 監査ログ」を受け持ちます。
 
+## 設定と初期化（S2）
+
+| ファイル | 内容 |
+| --- | --- |
+| `src/schemas.ts` | 書き込みの入力の Zod スキーマ（Server Action と共有）。メッセージは利用者向けの日本語 |
+| `src/bootstrap.ts` | 標準データ（税区分・税率規則・セグメント・勘定科目テンプレート）の投入。冪等。seed もこれを使う |
+| `src/settings.ts` | 事業所・会計期間・勘定科目・補助科目・税区分・口座・取引先・セグメント・タグの読み書き。書き込みは 1 トランザクションで監査ログつき。削除はなく無効化 |
+| `src/opening.ts` | 開始仕訳の組み立て（純粋関数 `buildOpeningEntries`）・プレビュー・登録（`postOpeningEntries`。1 回だけ） |
+| `src/setup.ts` | ウィザードの進捗を DB から導出（`getSetupProgress`）。保存する状態は「あとで」の 2 列だけ |
+
+書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
+
 ## migration
 
 migration は 2 種類を併用します。
@@ -39,9 +51,10 @@ npm run test:db     # DB のテスト（test/**/*.db.test.ts）
 `test:db` は次の順で動きます（`vitest.db.config.ts` と `test/support/global-setup.ts`）。
 
 1. `DATABASE_URL`（リポジトリ直下の `.env` か環境変数）から、テスト用の DB `<DB 名>_test`（例: `niho_finance_test`）を決める。`TEST_DATABASE_URL` で上書きできる。`DATABASE_URL` がなければ DB のテストはすべて skip。
-2. テスト用の DB を DROP して作り直し、`prisma migrate deploy` と seed をする。
-3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式）。
+2. テスト用の DB を DROP して作り直し、`prisma migrate deploy` をする。migrate しただけの状態を `<DB 名>_test_empty` に複製してから、テスト用の DB に seed をする。
+3. テストを 1 ファイルずつ順に実行する（採番の並行性、ガード、登録と取消、シード後の試算表の恒等式、設定の読み書きと監査ログ）。`setup.db.test.ts` だけは空の DB（`emptyTestPrisma()`）でウィザードを最初から最後まで進める。
 4. `DATABASE_URL` の DB は読むだけ。seed 済みなら、全会計期間で試算表の恒等式と連番を確かめる（未 seed なら skip）。
+5. 終わったら `<DB 名>_test_empty` を DROP する（`<DB 名>_test` は次の実行まで残る）。
 
 テスト用の DB を作り直すため、接続ユーザーには CREATEDB の権限が要ります（docker compose と CI の PostgreSQL は満たしています）。
 

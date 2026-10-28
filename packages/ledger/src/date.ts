@@ -56,6 +56,33 @@ export function addDays(date: CalendarDate, days: number): CalendarDate {
   return formatUtcDate(new Date(Date.UTC(year, month - 1, day + days)));
 }
 
+/** Year, month (1–12) and day of a valid calendar date. */
+export function dateParts(date: CalendarDate): { year: number; month: number; day: number } {
+  const parts = splitDate(date);
+  if (!parts || !isCalendarDate(date)) throw new RangeError(`"${date}" is not a valid date`);
+  const [year, month, day] = parts;
+  return { year, month, day };
+}
+
+/** The last day of a month, e.g. `(2028, 2)` → `"2028-02-29"`. */
+export function lastDayOfMonth(year: number, month: number): CalendarDate {
+  if (!Number.isSafeInteger(year) || year < 1 || year > 9999) {
+    throw new RangeError(`lastDayOfMonth: ${year} is not a valid year`);
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    throw new RangeError(`lastDayOfMonth: ${month} is not a valid month`);
+  }
+  const yyyy = String(year).padStart(4, "0");
+  const mm = String(month).padStart(2, "0");
+  const dd = String(daysInMonth(year, month)).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}` as CalendarDate;
+}
+
+export function isLastDayOfMonth(date: CalendarDate): boolean {
+  const { year, month } = dateParts(date);
+  return lastDayOfMonth(year, month) === date;
+}
+
 /** Number of days from `from` to `to` (negative when `to` is earlier). */
 export function daysBetween(from: CalendarDate, to: CalendarDate): number {
   const a = splitDate(from);

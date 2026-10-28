@@ -112,7 +112,7 @@ erDiagram
 | accountId / subAccountId | | 紐づく勘定科目。bank→普通預金、card→未払金、cash→現金、stripe→Stripe 残高（資産）、owner→役員借入金 |
 | importer | string? | CSV 形式のキー（例: `gmo_aozora_csv`）、`stripe`、銀行 API のキー |
 | defaultSegmentId | | 拠点の Stripe アカウントは ②、platform は ① |
-| openingBalanceDate / openingBalance | | 開始残高（開始仕訳として登録） |
+| openingBalanceDate / openingBalance | | その日の明細の残高。取込の照合の起点（S4）で、仕訳にはせず帳簿の残高にも足さない。設立と同時に帳簿を始める会社では空欄 |
 | isActive | | |
 
 Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上のキー名、同期カーソル、最終同期日時）を 1 対 1 で持つ。アカウント ID は DB にだけ置く。

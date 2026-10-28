@@ -1,0 +1,37 @@
+# apps/web
+
+NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は [`docs/design/10-settings-and-setup.md`](../../docs/design/10-settings-and-setup.md)（S2）と [`docs/design/05-ui-ux.md`](../../docs/design/05-ui-ux.md)、見た目は [`docs/design/mock/v1.html`](../../docs/design/mock/v1.html) が正です。
+
+## ルート
+
+| パス | 内容 |
+| --- | --- |
+| `/` | ホーム（S7 まで仮置き）。会社名・第 n 期・現預金の合計・やること |
+| `/setup` | 初期化ウィザード。`?step=company / fiscal-year / accounts / wallets / opening / done`。進捗は DB から導出し、`/setup` は続きのステップを開く |
+| `/settings` | 設定の索引 |
+| `/settings/company` | 事業所 |
+| `/settings/fiscal-years` | 会計期間（次の期を作る） |
+| `/settings/accounts` | 勘定科目（一覧の中で直接編集・補助科目はシート） |
+| `/settings/tax-categories` | 税区分と税率規則（追加と有効 / 無効だけ） |
+| `/settings/wallets` | 口座（追加・編集はシート） |
+| `/settings/partners` | 取引先（検索・直接編集） |
+| `/settings/segments` | セグメント |
+| `/settings/memo-tags` | タグ |
+| `/api/health` | 死活と DB の疎通 |
+
+会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/settings` 配下は `/setup` へ redirect します。
+
+## 部品
+
+- `components/ui/`: Button / ButtonLink、Input・Select（native）・Textarea・Checkbox・FormField（`form.tsx`）、Switch、Table（グリッド。行高 40px、768px 未満は 2 段）、Sheet と ConfirmDialog（native `<dialog>`）、Toast（`useToast()`）、EmptyState、PageHeader、MoneyInput。外部の UI ライブラリは使わず、`window.confirm` / `alert` も使わない。
+- `components/settings/inline.tsx`: 一覧の中の直接編集（TextCell / SelectCell / CheckboxCell と `useRowSave`）。blur・Enter・変更で保存し、行の右端に「保存中 / 保存済み / エラー（理由）」を出す。Escape で保存済みの値に戻す。
+- `components/app-shell/`: 左ナビ（PC）と下タブ（スマホ）。準備中の項目は muted の非リンク。
+- 色と字は `app/globals.css` のトークン（`bg-surface`、`text-muted`、`border-border` など）。
+
+## Server Action の約束
+
+- 読みは Server Components（`lib/data.ts` の `db()` は `connection()` で毎回描画にする）、書きは Server Actions（`app/(app)/settings/actions.ts`、`app/setup/actions.ts`）。
+- 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに `NIHO_FINANCE_ACTOR`（既定 `owner`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
+- 結果は `{ ok: true, data } | { ok: false, error, fieldErrors }`（`lib/action-types.ts`）。想定内の失敗（入力・規則）は throw せず返す。`error` は「状態と戻り方」を書いた利用者向けの文。
+- 書いたら `revalidatePath("/", "layout")`。ウィザードは保存してから次のステップへ redirect する。
+- 金額は画面では文字列（`50,000` も `50000` も可）、サーバーで `bigint` にする。

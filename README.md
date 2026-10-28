@@ -42,6 +42,8 @@ npm run test:db            # DB のテスト（niho_finance_test を作り直し
 npm -C apps/web run dev    # http://localhost:3000 （/api/health で DB の疎通を確認できる）
 ```
 
+初期化ウィザードは、会社のない DB で `npm -C apps/web run dev` を起動して `/setup` を開きます（`/` も会社がなければ `/setup` へ移る）。seed 済みの DB を残したまま試すときは、空の DB を作って `DATABASE_URL=postgresql://.../niho_finance_try npm run db:migrate` の後、同じ `DATABASE_URL` で dev を起動します。画面とルートは [apps/web/README.md](apps/web/README.md)。
+
 | コマンド | 内容 |
 | --- | --- |
 | `npm run db:down` | PostgreSQL を止める（データは volume に残る） |
