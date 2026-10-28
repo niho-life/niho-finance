@@ -54,6 +54,8 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   3. 例: 末締め翌月末払い（31・1・31）なら、10/15 の請求書は 11/30 です。20 日締め翌月 10 日払い（20・1・10）なら、10/25 の請求書は 12/10 です。
   4. 条件がない取引先は「請求書の日付の翌月末」にします（help で「取引先の支払条件を入れると既定になります」）。
 - 登録のフォームで、取引先の支払条件をその場で直して「この取引先の支払条件として保存」できます（`partner.update` の監査ログ）。
+- 支払条件は 3 つそろえるか、3 つとも空にします（DB の CHECK でも守る）。何か月後が 0（当月払い）のときは、支払日を締め日以後にします。
+- 支払期日は請求書の日付以後にします。登録で期日を空にすると §3 の既定が入り、期日の変更で空にすると「期日なし」になります（資金繰りは起点の翌日に出金と見る。21 §3.1）。
 
 ## 4. 台帳の操作
 
@@ -68,7 +70,7 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
 - **科目と税区分の既定**:
   - 科目は、取引先の既定の科目、なければ外注費 5100 です。費用・資産の科目から選べます。現預金・口座の科目・仮払仮受は選べません。
   - 税区分は、取引先の既定の税区分、なければ科目の既定の税区分です。
-  - 取引先に登録番号がないときは、課税仕入を「インボイスなし」の区分（`purchase_10_ni` / `purchase_8r_ni`）に寄せます。
+  - 取引先にも証憑（請求書）にも登録番号がないときは、課税仕入を「インボイスなし」の区分（`purchase_10_ni` / `purchase_8r_ni`）に寄せます。請求書に登録番号が書いてあれば適格請求書として扱います。この寄せは仕訳を組む関数の側でも必ずかけます。
 - **セグメント**: 取引先の既定、なければ科目の既定、なければ共通です。
 - **摘要**: 既定は「請求書 <取引先>」です。
 - **仕訳の属性と記録**:
@@ -95,6 +97,7 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   - 証憑を明細にも紐づけるので、明細の「証憑なし」が消えます。
 - **明細なしのとき**: 現金払いや、明細をまだ取り込んでいない場合は `sourceKind = manual` です。
 - 摘要は「支払 <取引先> <証憑の件名か元のファイル名>」です。証憑を支払の仕訳にも紐づけます。
+- 支払日は請求書の日付以後にします。手数料の行は取引先を付けず、セグメントは計上した費用の行のもの（なければ共通）です。
 
 ### 4.3 支払の取消・登録の取消
 
@@ -106,6 +109,7 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   - 計上の仕訳を反対仕訳で取り消すと、状態が「取消」になります。
   - 証憑の列（`payableEntryId` ほか）は消さずに残します（履歴）。登録し直すと新しい仕訳で上書きします。
 - 期日・支払元の予定の変更は台帳に関係しないので、いつでもできます（`payable.update`）。
+- 無効の証憑: 支払の登録と期日の変更は拒否します。支払の取消と登録の取消はできますが、差し替え後の証憑が支払を引き継いでいれば拒否します（引き継いだ側で操作する）。
 
 ## 5. ルートと殻
 
@@ -124,9 +128,9 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
 ## 6. 一覧 `/payables`
 
 - **PageHeader**: 題名「支払」、meta に「未払 n 件 · n 円」。右に「受領した請求書を登録」（primary・sm）で `/payables/new` を開きます。
-- **上の 3 つの数字**（小さな面に横並び。スマホは縦）:
+- **上の 3 つの数字**（小さな面に横並び。スマホは縦。絞り込みに関係なく全体で数える）:
   - 未払の合計
-  - 7 日以内に支払う（件数と金額）
+  - 7 日以内に支払う（件数と金額。期限超過は含めない。ホームのやることの件数は 7 日以内と期限超過の合計）
   - 期限超過（件数と金額。0 でなければ warn の文字）
 - **絞り込み**（GET。URL が正）:
   - 状態: 未払（既定。一部支払を含む）/ 支払済み / すべて。「すべて」でも無効の証憑は出しません。
@@ -172,7 +176,7 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   - 「期日・支払元を変える」（Sheet）
   - 「登録を取り消す」（ghost・danger の文字色 → ConfirmDialog。理由必須。支払が残っていれば出さず、帯で説明）
 - **支払の表**: 日付 ・ 口座 ・ 出金額 ・ 充当額 ・ 手数料 ・ 仕訳 No.（リンク）・ 「取消」。取消済みの支払は出しません（導出なので消える）。
-- **履歴**: 監査ログ（`entity = payable`）の日時順です。
+- **履歴**: 監査ログ（`entity = payable`）と、証憑に紐づく仕訳の取消（明細の画面の「未処理に戻す」・取引の画面の取消）の日時順です。どこから取り消したかを出します（「支払の取消（明細を未処理に戻す）」など）。差し替え前の証憑の履歴もさかのぼって出します。
 - 320px で横スクロールが出ないこと。
 
 ### 7.3 明細から充当 `/payables/apply?statement=<id>`
@@ -193,7 +197,8 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   - `payableWalletId String?`（`Wallet`、支払元の予定）
   - `@@index([payableDueDate])`
   - 差し替え（S6 `replaceDocument`）で新しい証憑に引き継ぎます（追記）。DB のガード（`storage_key` などの不変）には触れません。
-- **`Partner`**: `paymentClosingDay Int?`・`paymentDueMonths Int?`・`paymentDueDay Int?`（CHECK: 1〜31、0〜3）。
+  - 証憑が仕訳を参照するので、バックアップの表の順（`BACKUP_TABLES`）で `document` と `import_batch` を仕訳の後ろへ移します。
+- **`Partner`**: `paymentClosingDay Int?`・`paymentDueMonths Int?`・`paymentDueDay Int?`（CHECK: 3 つそろうか 3 つとも空、1〜31・0〜3・1〜31）。
 
 ### 8.2 `packages/ledger/src/payables.ts`（新規・純粋）
 
@@ -216,13 +221,14 @@ Issue #48 の画面と台帳の仕様です。受け取った請求書（外注�
   - `loadPayableCandidates(db, walletTransactionId, { today })`（§7.3）
   - `loadPaymentCandidates(db, documentId)`（§7.2 の明細の候補）
   - `loadPayableHistory(db, documentId)`
-  - `listPayablesForCashflow(db, { start })`（資金繰りの入力）
+  - `listPayablesForCashflow(db)`（資金繰りの入力。残りは登録済みの支払をすべて引いた額で、起点の扱いは予測の側）
+  - `loadDocumentPayableStatus(db, documentId)`（証憑の詳細の「未払として登録」/「支払を開く」）、`countPayablesDue(db, { today, days })`（ホームのやること）
 - **書き**:
   - `registerPayable`・`updatePayable`・`payPayable`・`cancelPayablePayment`・`cancelPayable`・`updatePartnerPaymentTerms`
   - どれも 1 トランザクションです。ロックの順は、証憑の行 → 明細の行 → 会計期間の行です。
   - 状態の誤りは `SettingsError`（項目があれば `field`）。台帳の誤りは日付・科目の項目に結びます。
 - **S5 への追記**（`packages/db/src/statements.ts`）: `settleWalletTransactionWithEntry(tx, lineId, entryId, { actor })` を公開します（`markSettled` を使い、`settledAt` と監査ログを入れる）。請求の入金（`invoices.ts`）もこれに置き換え、抜けていた `settledAt` をそろえます。
-- **資金繰り**: `packages/db/src/recurring.ts` の `loadCashflowInputs` の `payables: null` を `await listPayablesForCashflow(db, …)` にします（1 行の追記）。予測の関数（`packages/reports`）は変えません（期日を過ぎたものは起点の翌日に出金。21 §3.1）。
+- **資金繰り**: `packages/db/src/recurring.ts` の `loadCashflowInputs` の `payables: null` を `await listPayablesForCashflow(db)` にします（1 行の追記）。予測の関数（`packages/reports`）は変えません（期日を過ぎたものは起点の翌日に出金。21 §3.1）。
 - **ホーム**: `packages/db/src/reports-query.ts` の `HOME_TODO_SOURCES` に `payablesDueSoonTodo` を足します（「7 日以内に支払う請求」n 件・`/payables`。期限超過を含み、あれば tone `warn`）。
 - **テスト**（`test:db`）:
   - 登録 → 一覧 → 明細から一部支払 → 残り → 手数料つきで支払済み → 明細の「未処理に戻す」で残りが戻る
