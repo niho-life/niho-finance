@@ -1,0 +1,2 @@
+# Byte-exact fixtures: BOM, CRLF and Shift_JIS are part of what the tests read.
+*.csv -text
