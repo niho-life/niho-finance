@@ -42,7 +42,7 @@ interface ProviderResult {
 }
 ```
 
-失敗は `ReaderError`（`code`: `unsupported_mime` / `too_large` / `refusal` / `truncated` / `invalid_output` / `api` / `not_configured`、利用者向けの `message`）。`api` の文には鍵・URL を入れない。
+失敗は `ReaderError`（`code`: `unsupported_mime` / `too_large` / `refusal` / `truncated` / `invalid_output` / `api` / `not_configured` / `not_recorded`、利用者向けの `message`、課金された呼び出しなら `usage`）。拒否・切り詰め・形式違いも API は課金するので、`usage` を件数と費用に残す（§9）。`api` の文には鍵・URL・応答の本文を入れず、HTTP の状態コードだけを書く。
 
 ### 2.2 切替（環境変数）
 
@@ -62,7 +62,7 @@ interface ProviderResult {
 - `client.messages.create`。`model` は §2.2、`max_tokens` 4096、`output_config: { effort: "medium", format: { type: "json_schema", schema: READING_JSON_SCHEMA } }`（構造化出力で JSON Schema に従わせる）。Haiku 5.5 の既定の effort は `medium` なので明示する。thinking は既定（adaptive）のまま。
 - 入力: 画像（JPEG・PNG・WebP）は `image` ブロック（base64）、PDF は `document` ブロック（base64）、その後に指示の `text`。HEIC・CSV は読み取らない（`unsupported_mime`）。画像は 5 MB まで（API の上限。超えたら `too_large`「画像が大きすぎます。5 MB 以下にして撮り直すか、PDF にしてください」）。
 - system は固定の指示（日本の領収書・適格請求書・適格簡易請求書の読み方。日付は取引日、合計は税込の支払額、税率ごとの対価は印字どおり税込か税抜かを `taxIncluded` で示す、読めない項目は null、推測で埋めない）。プロンプトに会社のデータを入れない。
-- `stop_reason` が `refusal` なら `refusal`、`max_tokens` なら `truncated`、それ以外で本文が JSON でなければ `invalid_output`。SDK の型つき例外（`Anthropic.APIError` の各派生）は `api` に包む。タイムアウト 60 秒、再試行は SDK の既定（2 回）。
+- `stop_reason` が `refusal` なら `refusal`、`max_tokens` か `model_context_window_exceeded` なら `truncated`、それ以外で本文が JSON でなければ `invalid_output`。SDK の型つき例外（`Anthropic.APIError` の各派生。接続の失敗と時間切れは別の文）は `api` に、それ以外の SDK の例外（認証情報を解決できないなど）は `not_configured` に包む。タイムアウト 60 秒、再試行は SDK の既定（2 回）。SDK は `@anthropic-ai/sdk` 0.133.0（`output_config: { effort, format: { type: "json_schema", schema } }` を型定義で確かめた）。
 - サーバー側の fallbacks（拒否時に別モデルで再実行）は付けない。領収書の読み取りで拒否はまれで、拒否されたら人が手で入れれば足りる（Haiku 5.5 にはサーバー側の fallbacks もない）。
 - 費用の目安（2026-10 の単価）: Haiku 5.5 は入力 $0.10・出力 $0.50 / 100 万トークン。1 枚あたり入力 2 千・出力 1 千トークン程度で約 $0.0007（0.1 円）。Sonnet 5.5（$2 / $10）は約 $0.013（2 円）。月 100 枚なら Haiku 10 円・Sonnet 200 円程度で、月 300 円の予算（[06](06-architecture.md)）に収まる。
 
@@ -86,7 +86,7 @@ interface ProviderResult {
 | `rates[].taxAmount` | integer \| null | その税率の消費税額（印字がなければ null） |
 | `description` | string \| null | 但し書き・品目の要約（60 字まで） |
 
-`parseReading(raw)` が Zod で検査し、正規化する: 登録番号は `normalizeInvoiceRegistrationNumber`、発行者名と但し書きは前後の空白を除いて 200 字・60 字まで、日付は暦日として正しいものだけ（正しくなければ null にして検証で警告）、金額は 0 以上の整数（安全な整数の範囲）を `bigint` に。税率別の内訳には税込の額 `inclusiveAmount` を足す（税込ならそのまま、税抜なら `amount + taxAmount`、税額が null なら `exclusiveToInclusive`）。
+`parseReading(raw)` が Zod で検査し（負の金額・小数・安全な整数を超える金額は提案全体を `invalid_output` にする）、正規化する: 登録番号は `normalizeInvoiceRegistrationNumber`、発行者名と但し書きは前後の空白を除いて 200 字・60 字まで、日付は暦日として正しいものだけ（正しくなければ null にして検証で警告）、金額は 0 以上の整数（安全な整数の範囲）を `bigint` に。税率別の内訳には税込の額 `inclusiveAmount` を足す（税込ならそのまま、税抜なら `amount + taxAmount`、税額が null なら `exclusiveToInclusive`）。
 
 ## 4. 検証層（`validateReading`、純粋関数）
 
@@ -95,7 +95,7 @@ interface ProviderResult {
 | code | 重さ | 条件 | 文 |
 | --- | --- | --- | --- |
 | `illegible` | warning | `legible` が false | 読めない部分があります。画像と見比べてください |
-| `currency` | warning | `currency` が `JPY` 以外 | 円以外の通貨です（USD）。金額は円にして入れてください（金額は提案しない） |
+| `currency` | warning | `currency` が `JPY` 以外（「円」「¥」「YEN」は JPY として扱う） | 円以外の通貨です（USD）。金額は円にして入れてください（金額は提案せず、金額の検査 `total_*`・`rates_*`・`rate_tax` も出さない） |
 | `date_missing` | warning | 日付がない・暦日でない | 取引年月日を読み取れませんでした |
 | `date_future` | warning | 日付 > 今日 | 取引年月日が未来です（2062/11/07）。読み違いがないか確かめてください |
 | `date_old` | warning | 日付 < 今日の 2 年前 | 取引年月日が 2 年以上前です。読み違いがないか確かめてください |
@@ -107,12 +107,12 @@ interface ProviderResult {
 | `registration_format` | error | 登録番号が T＋13 桁でない | 登録番号の形式が違います（T と 13 桁）。読み違いか、番号の誤りです |
 | `registration_check_digit` | error | 検査用数字が合わない（`isValidInvoiceRegistrationNumber`） | 登録番号の検査用数字が合いません。読み違いか、番号の誤りです |
 | `registration_not_found` | warning | 照合で見つからない | 国税庁の公表サイトにこの登録番号がありません |
-| `registration_inactive` | warning | 取引年月日に登録されていない（登録前・失効後・取消後） | 取引年月日（2026/11/07）にはこの番号は登録されていません（登録 2027/04/01） |
+| `registration_inactive` | warning | 取引年月日に登録されていない（登録前・失効後・取消後） | 取引年月日（2026/11/07）にはこの番号は登録されていません（登録 2027/04/01）。日付がなければ「この番号は登録されていません（取消 2025/03/31）」 |
 | `duplicate` | warning | 同じ発行者（登録番号か名前の一致）・日付・合計の証憑が他にある（無効を除く） | 同じ発行者・日付・金額の証憑があります（receipt-1107.jpg） |
 
 - `error` の項目は「提案を保存」で選べない（`updateDocument` が拒否するものを出さない）。
 - 照合の結果がない（アプリケーション ID がない・失敗した）ときは `registration_*` の照合系は出さず、形式と検査用数字だけを検査する。照合の失敗そのものは提案の欄に「国税庁の照合はできませんでした（理由）」と出す（要確認にはしない）。
-- 重複の候補は DB 層が探す（§7 `findReadingDuplicates`）: 取引年月日と金額が同じで、登録番号が同じか、取引先名（マスタの名前・自由入力）の正規化（空白・全角半角・法人格の除去）が一致する、無効でない他の証憑。
+- 重複の候補は DB 層が探す（§7 `findReadingDuplicates`）: 取引年月日と金額が同じで、登録番号が同じか、取引先名（マスタの名前・自由入力）の正規化（空白・全角半角・法人格の除去）が一致する、無効でない他の証憑。保存済みの項目に加えて、他の証憑の読み取り結果（日付・合計・円・発行者・登録番号）とも照らす（保存する前の受信箱で同じ領収書を 2 回撮ったものを拾うため）。
 
 ## 5. 提案の保存までの流れ
 
@@ -145,7 +145,7 @@ interface ProviderResult {
 ### 7.1 schema（列の追加とテーブル 1 つ）
 
 - `partner`: `invoice_registration_name text?`（公表名）、`invoice_registered_on date?`（登録年月日）、`invoice_registration_ended_on date?`（失効年月日・取消年月日の早い方）。既存の `invoice_registration_status`（`unknown` / `verified` 登録あり / `not_found` 未登録 / `revoked` 失効・取消）と `invoice_registration_checked_at` と合わせて使う。番号が変わると S2 の `updatePartner` が状態を `unknown` に戻すので、`unknown` のとき 3 列は読まない（古い値が残っても使わない）。
-- `external_api_usage`（新規。追記のみ）: `id`、`at`、`service`（`reader` | `registry`）、`provider`（`anthropic` / `recorded` / `nta` / `fixture`）、`model?`、`document_id?`（FK → document）、`outcome`（`ok` / `failed`）、`error?`、`request_count`（既定 1）、`item_count`（照合した番号の数など）、`input_tokens`、`output_tokens`、`cost_nano_usd bigint`、`actor`。索引は `(service, at)`。
+- `external_api_usage`（新規。追記のみ。`audit_log` と同じく UPDATE / DELETE / TRUNCATE をトリガで拒否し、service・outcome の値と数の非負を CHECK）: `id`、`at`、`service`（`reader` | `registry`）、`provider`（`anthropic` / `recorded` / `nta` / `fixture`）、`model?`、`document_id?`（FK → document）、`outcome`（`ok` / `failed`）、`error?`、`request_count`（既定 1）、`item_count`（照合した番号の数など）、`input_tokens`、`output_tokens`、`cost_nano_usd bigint`、`actor`。索引は `(service, at)`。
 - `document.extraction`（既存の JSON 列）の形（version 1）:
 
 ```ts
@@ -154,11 +154,11 @@ interface ProviderResult {
   status: "proposed" | "failed",
   readAt: string,              // ISO 8601
   provider: string, model: string,
-  reading?: StoredReading,     // §3 を JSON にしたもの（金額は数値の文字列）
-  issues?: ReadingIssue[],
-  registry?: StoredRegistry | null,   // §6
-  registryError?: string | null,
-  error?: string,              // status = failed のとき
+  reading: StoredReading | null,   // §3 を JSON にしたもの（金額は 10 進の文字列）
+  issues: ReadingIssue[],
+  registry: StoredRegistry | null, // §6。found: false は公表されていない番号
+  registryError: string | null,
+  error: string | null,            // status = failed のとき
 }
 ```
 
@@ -166,16 +166,17 @@ interface ProviderResult {
 
 | 関数 | 内容 |
 | --- | --- |
-| `recordDocumentReading(db, input, { actor })` | §5.2。無効の証憑は拒否 |
+| `performDocumentReading(db, { reader, readFile, registry, today }, { documentId }, { actor })` | §5.1 の一連。外部の呼び出しはトランザクションの外 |
+| `recordDocumentReading(db, input, { actor })` | §5.2。無効の証憑は拒否。失敗した読み取りも reader の行を 1 行残す（トークン 0 でも） |
 | `getDocumentReading(db, documentId)` | `extraction` を検査して型つきで返す（形が古い・壊れていれば `null`） |
 | `applyDocumentReading(db, { documentId, fields }, { actor })` | §5.4 |
-| `buildReadingProposal(db, documentId)` | 詳細の提案の欄の行（項目・提案値・今の値・既定のチェック・選べるか・取引先の当てはめ） |
+| `buildReadingProposal(db, documentId)` | 詳細の提案の欄の行（項目・提案値・今の値・既定のチェック・選べるか・取引先の当てはめ）、税率別の内訳と推定、推定に使った登録状況 `registrationStatus` |
 | `findReadingDuplicates(db, { documentId, txnDate, amount, registrationNumber, issuerName })` | §4 の重複の候補 |
 | `listUnreadInboxDocuments(db, { limit })` | 受信箱のうち、読める形式で `extraction` がない証憑（保存日時の古い順） |
 | `countUnreadInboxDocuments(db)` | 同じ条件の件数 |
 | `loadReadingStates(db, ids)` | 一覧の状態の欄の「提案あり / 要確認 / 読み取れず」 |
-| `summarizeApiUsage(db, { service, from, to })` | 件数・成功・失敗・トークン・費用の合計 |
-| `recordApiUsage(db, row)` | 1 行足す（照合のジョブも使う） |
+| `summarizeApiUsage(db, { service, from, to })` | 件数・成功・失敗・トークン・費用の合計（`from <= at < to`。`api-usage.ts`） |
+| `recordApiUsage(db, row)` | 1 行足す（照合のジョブも使う。`api-usage.ts`） |
 
 ### 7.3 `packages/db/src/registry-check.ts`
 
@@ -183,9 +184,9 @@ interface ProviderResult {
 | --- | --- |
 | `checkPartnerRegistrations(db, lookup, { actor, partnerIds?, now? })` | 有効で、正しい形式の登録番号を持つ取引先（`partnerIds` があればそれだけ）を 10 件ずつ照合し、5 列を更新する。変わった取引先だけ `partner.registry_check`（before / after: 状態・公表名・登録年月日・終了日・照合日時）。照合日時だけ変わる取引先は、監査ログを 1 回分にまとめる（entity `partner`・entityId なし・after に件数）。`external_api_usage` に要求の回数と番号の数。戻り値は件数の内訳と失敗 |
 | `partnerRegistrationAt(partner, date)` | §6 |
-| `registrationStatusLabel(partner)` | 「登録あり（2023/10/01〜）」「未登録」「失効（2025/03/31）」「未照合」 |
+| `registrationStatusLabel(partner)` | 「登録あり（2023/10/01〜）」（終了日が先にあれば「〜2026/12/31」まで）「未登録」「登録終了（2025/03/31）」「未照合」。取引先は失効と取消を区別する列を持たないので「登録終了」とする |
 
-`lookup` は §8 のクライアント（テストはフィクスチャ）。
+`lookup` は §8 のクライアント（テストはフィクスチャ）。照合の間に登録番号が変わった・無効にされた取引先は、結果がその取引先のものではないので書き換えない。
 
 ## 8. 国税庁 Web-API（`packages/importers/src/nta/`）
 
@@ -193,7 +194,7 @@ interface ProviderResult {
 
 - 登録番号指定: `GET https://web-api.invoice-kohyo.nta.go.jp/1/num?id=<アプリケーション ID>&number=T…,T…&type=21&history=1`。1 回に最大 10 件（カンマ区切り）。`type=21` は JSON、`history=1` で登録・失効・取消の履歴も返る（取引日時点の状況を手元で判定できるので、日付指定の `/1/valid` は使わない）。
 - 応答（リソース定義書 1.5 版）: ヘッダ `lastUpdateDate`・`count`・`divideNumber`・`divideSize`、明細 `announcement[]` の `sequenceNumber`・`registratedNumber`・`process`（01 新規 / 02 変更 / 03 失効 / 04 取消）・`kind`（1 個人 / 2 法人）・`latest`（1 最新）・`registrationDate`・`updateDate`・`disposalDate`（取消年月日）・`expireDate`（失効年月日）・`name`・`kana`・`tradeName` ほか。値はすべて文字列、空は `""`。見つからない番号は `announcement` に出ない。
-- `parseNtaResponse(json)` → 番号ごとの `NtaRegistration { number, name, kind, registeredOn, endedOn, endReason: "expired" | "revoked" | null, lastUpdateDate }`（履歴のうち `latest = "1"` を正とし、失効・取消の年月日は履歴全体から最も新しいもの）。`statusAt(registration | null, date)` が §6 の判定。
+- `parseNtaResponse(json)` → 番号ごとの `NtaRegistration { number, name, kind, registeredOn, endedOn, endReason: "expired" | "revoked" | null, lastUpdateDate }`（履歴のうち `latest = "1"` を正とし、失効・取消の年月日は履歴全体から最も新しいもの。終了日が最新の登録日より前なら登録し直したものとして終了なし）。`statusAt(registration | null, date)` が §6 の判定。
 - `createNtaClient({ applicationId, fetch?, minIntervalMs = 1000, cacheTtlMs = 24h, now? })` → `lookup(numbers)`: 重複を除き、正しい形式の番号だけを 10 件ずつ順に要求する。要求の間は 1 秒以上空ける（数値のレート制限は公表されていないため低頻度にする）。結果は番号ごとにプロセス内で 24 時間キャッシュする。戻り値は `{ registrations: Map<number, NtaRegistration | null>, requestCount, failures }`。
 - 失敗: 2xx 以外・JSON でない・ネットワークの失敗は `NtaApiError`（利用者向けの文「国税庁の公表サイトに接続できませんでした（HTTP 503）」。URL にアプリケーション ID が入るので、文にもログにも URL を出さない）。その 10 件は `failures` に入れ、続きは要求する。再試行はしない（月次のジョブがまた回る）。
 - `createFixtureNtaLookup(registrations)`: 架空の公表情報で答える（テストと開発用。`NIHO_FINANCE_NTA_MODE=fixture`、本番では使わない）。
@@ -203,7 +204,7 @@ interface ProviderResult {
 | 変数 | 内容 |
 | --- | --- |
 | `NIHO_FINANCE_NTA_APPLICATION_ID` | アプリケーション ID（13 桁）。ローカルは `.env`、本番は Secret Manager から結ぶ。なければ照合の操作を出さない |
-| `NIHO_FINANCE_NTA_MODE` | `fixture` で架空の公表情報を使う（`NIHO_FINANCE_ENV=prod` では無視） |
+| `NIHO_FINANCE_NTA_MODE` | `fixture` で架空の公表情報を使う（`NIHO_FINANCE_ENV=prod` では無視。開発で ID と両方あるときは fixture が優先） |
 
 - 利用規約: アプリケーション ID の届出が要る。公表情報の保存（自社の取引先の状況と日付だけを持つ）は [04 §9](04-integrations.md) の要確認に残す。
 
@@ -245,7 +246,7 @@ interface ProviderResult {
 ### 10.3 設定 › 取引先 `/settings/partners`
 
 - 列「照合」を 登録番号 の右に足す（PC）。値は `registrationStatusLabel` と照合日（muted・小）。スマホは Sheet に「照合」の行。
-- 検索フォームの右に「照合する」（secondary・sm。アプリケーション ID があるときだけ）→ 有効な取引先の正しい登録番号をすべて照合（ConfirmDialog「n 件の登録番号を国税庁の公表サイトで照合します」）。トースト「12 件を照合しました（登録あり 10 · 未登録 1 · 失効 1）」、失敗があれば「1 件は照合できませんでした（理由）」。
+- 検索フォームの右に「照合する」（secondary・sm。アプリケーション ID があるときだけ）→ 有効な取引先の正しい登録番号をすべて照合（ConfirmDialog「n 件の登録番号を国税庁の公表サイトで照合します」）。トースト「12 件を照合しました（登録あり 10 · 未登録 1 · 登録終了 1）」、失敗があれば「1 件は照合できませんでした（理由）」。
 - 表の下の注記: アプリケーション ID があるとき「登録番号は形式と検査用数字を確かめ、国税庁の公表サイトで照合します（毎月 1 日に再照合）」、ないとき「登録番号は形式と検査用数字を確かめます。国税庁の公表サイトとの照合は、アプリケーション ID を設定すると使えます」。
 
 ## 11. 月次の再照合ジョブ `POST /api/jobs/registry-check`
