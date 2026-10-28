@@ -18,6 +18,7 @@ import {
   payableAmounts,
   payableDefaults,
   payableDueDateProblem,
+  payableHistoryLabel,
   payablePaymentDescription,
   payableState,
   payableTaxCategoryCode,
@@ -667,6 +668,16 @@ describe("the form's defaults and the vocabulary", () => {
         invoiceDate: null,
       }),
     ).toMatchObject({ taxCategoryCode: "purchase_10", segmentId: "seg_contract", dueDate: null });
+    // A customer's sales category is no default for a purchase: the account's is taken.
+    expect(
+      payableDefaults({
+        partner: { ...partner, defaultTaxCategoryCode: "sales_10" },
+        account: outsource,
+        fallbackSegmentId: null,
+        documentRegistrationNumber: "T9999999999999",
+        invoiceDate: null,
+      }).taxCategoryCode,
+    ).toBe("purchase_10");
   });
 
   it("finds the partner in a statement line by name or kana", () => {
@@ -689,5 +700,12 @@ describe("the form's defaults and the vocabulary", () => {
     expect(AUDIT_ENTITY_LABELS.payable).toBe("支払");
     for (const action of PAYABLE_AUDIT_ACTIONS) expect(auditActionLabel(action)).toBeTruthy();
     expect(auditActionLabel("payable.pay")).toBe("支払の登録");
+    expect(payableHistoryLabel({ action: "payable.cancel_payment", via: null })).toBe("支払の取消");
+    expect(payableHistoryLabel({ action: "payable.cancel_payment", via: "statement" })).toBe(
+      "支払の取消（明細を未処理に戻す）",
+    );
+    expect(payableHistoryLabel({ action: "payable.cancel", via: "entries" })).toBe(
+      "登録の取消（取引の画面）",
+    );
   });
 });

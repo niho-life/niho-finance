@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { LedgerValidationError, type CalendarDate } from "@niho-finance/ledger";
+import {
+  LedgerValidationError,
+  payableHistoryLabel,
+  type CalendarDate,
+} from "@niho-finance/ledger";
 import type { FiscalYear, Partner, PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
@@ -188,8 +192,9 @@ describe.skipIf(!hasTestDatabase)("payables (支払)", () => {
     }));
   }
 
-  async function actionsOf(documentId: string): Promise<string[]> {
-    return (await loadPayableHistory(prisma, documentId)).map((row) => row.action);
+  /** The history as the detail names its rows (`payableHistoryLabel`). */
+  async function historyOf(documentId: string): Promise<string[]> {
+    return (await loadPayableHistory(prisma, documentId)).map(payableHistoryLabel);
   }
 
   async function detailOf(documentId: string, today: CalendarDate = "2056-11-01") {
@@ -406,7 +411,7 @@ describe.skipIf(!hasTestDatabase)("payables (支払)", () => {
       ),
     ).toEqual({ documentId: document.id, dueDate: "2056-12-10", walletId: bank.id });
     expect((await detailOf(document.id)).plannedWallet).toMatchObject({ id: bank.id });
-    expect(await actionsOf(document.id)).toEqual(["payable.register", "payable.update"]);
+    expect(await historyOf(document.id)).toEqual(["未払の登録", "期日・支払元の変更"]);
   });
 
   it("books 「インボイスなし」 in a tax-exclusive year and names the field of a ledger refusal", async () => {
@@ -731,12 +736,13 @@ describe.skipIf(!hasTestDatabase)("payables (支払)", () => {
     expect((await loadPayableCandidates(prisma, first, { today: "2056-12-05" }))?.problem).toMatch(
       "処理済み",
     );
-    expect(await actionsOf(document.id)).toEqual([
-      "payable.register",
-      "payable.pay",
-      "payable.pay",
-      "payable.cancel_payment",
-      "payable.pay",
+    expect(await historyOf(document.id)).toEqual([
+      "未払の登録",
+      "支払の登録",
+      "支払の登録",
+      "支払の取消（明細を未処理に戻す）",
+      "支払の取消",
+      "支払の登録",
     ]);
   });
 
@@ -834,12 +840,13 @@ describe.skipIf(!hasTestDatabase)("payables (支払)", () => {
       options,
     );
     expect((await detailOf(document.id)).state).toBe("cancelled");
-    expect(await actionsOf(document.id)).toEqual([
-      "payable.register",
-      "payable.pay",
-      "payable.cancel_payment",
-      "payable.cancel",
-      "payable.register",
+    expect(await historyOf(document.id)).toEqual([
+      "未払の登録",
+      "支払の登録",
+      "支払の取消",
+      "登録の取消",
+      "未払の登録",
+      "登録の取消（取引の画面）",
     ]);
   });
 
@@ -956,12 +963,87 @@ describe.skipIf(!hasTestDatabase)("payables (支払)", () => {
       { paidOn: "2056-12-10", walletId: bank.id, amount: "11000", walletTransactionId: "" },
       options,
     );
-    expect(await actionsOf(next)).toEqual(["payable.register", "payable.pay"]);
+    expect(await historyOf(next)).toEqual(["未払の登録", "支払の登録"]);
     expect((await detailOf(next)).state).toBe("paid");
 
     // The audit log names the payable.
     const targets = await describeAuditTargets(prisma, [{ entity: "payable", entityId: next }]);
     expect(targets.get(`payable:${next}`)).toBe("支払 テスト外注株式会社 差し替え後.pdf");
+  });
+
+  it("shows the voids made on the statement and the transaction screens in the history", async () => {
+    const document = await received({ originalName: "履歴 1 月分.pdf" });
+    const registered = await registerPayable(
+      prisma,
+      registration(document.id, {
+        invoiceDate: "2057-01-05",
+        amount: "44,000",
+        dueDate: "2057-01-31",
+      }),
+      options,
+    );
+    // Paid from a statement line, put back on the statement screen.
+    const line = await outflow(bank, "2057-01-10", -44_000n);
+    await payPayable(
+      prisma,
+      document.id,
+      { paidOn: "2057-01-10", walletId: bank.id, amount: "44000", walletTransactionId: line },
+      options,
+    );
+    await reopenWalletTransaction(prisma, line, { reason: "別の振込だった" }, options);
+    // Paid by hand, voided on the transaction screen.
+    const byHand = await payPayable(
+      prisma,
+      document.id,
+      { paidOn: "2057-01-20", walletId: bank.id, amount: "44000", walletTransactionId: "" },
+      options,
+    );
+    await voidJournalEntryWithOpenDate(
+      prisma,
+      byHand.entry.id,
+      { reason: "二重に登録した" },
+      options,
+    );
+    // The registration voided on the transaction screen.
+    await voidJournalEntryWithOpenDate(
+      prisma,
+      registered.entry.id,
+      { reason: "請求書の取り下げ" },
+      options,
+    );
+
+    const history = await loadPayableHistory(prisma, document.id);
+    expect(history.map(payableHistoryLabel)).toEqual([
+      "未払の登録",
+      "支払の登録",
+      "支払の取消（明細を未処理に戻す）",
+      "支払の登録",
+      "支払の取消（取引の画面）",
+      "登録の取消（取引の画面）",
+    ]);
+    expect(history.map((row) => row.reason)).toEqual([
+      null,
+      null,
+      "別の振込だった",
+      null,
+      "二重に登録した",
+      "請求書の取り下げ",
+    ]);
+    expect(history.map((row) => row.via)).toEqual([
+      null,
+      null,
+      "statement",
+      null,
+      "entries",
+      "entries",
+    ]);
+    expect(history[4]).toMatchObject({
+      actor,
+      action: "payable.cancel_payment",
+      before: { entryId: byHand.entry.id, entryNo: byHand.entry.no },
+    });
+    expect((await detailOf(document.id)).state).toBe("cancelled");
+    await ignoreWalletTransaction(prisma, line, { reason: "テストの後始末" }, options);
   });
 
   it("leaves nothing open or undated for the other test files", async () => {

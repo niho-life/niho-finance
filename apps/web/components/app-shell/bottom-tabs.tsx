@@ -46,11 +46,12 @@ const MORE_PATHS = [
   "/imports",
   "/calendar",
   "/invoices",
+  "/payables",
   "/closing",
   "/settings",
 ];
 
-/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・期限・請求・決算・設定). */
+/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・期限・請求・支払・決算・設定). */
 export function BottomTabs() {
   const pathname = usePathname();
   const inMore = MORE_PATHS.some((path) => isActivePath(pathname, path));

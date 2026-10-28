@@ -49,6 +49,7 @@ import {
   type Money,
   type PayableAmounts,
   type PayableDefaults,
+  type PayableHistoryVia,
   type PayableLedgerLine,
   type PayableState,
   type PaymentTerms,
@@ -460,7 +461,13 @@ export interface PayableHistoryRow {
   id: string;
   at: Date;
   actor: string;
+  /** `payable.*` (`payableHistoryLabel` names it). */
   action: string;
+  /**
+   * `null`: done on the payables screen. Otherwise an entry of the payable voided elsewhere: the
+   * statement screen (「未処理に戻す」) or the transaction screen.
+   */
+  via: PayableHistoryVia | null;
   before: Prisma.JsonValue | null;
   after: Prisma.JsonValue | null;
   reason: string | null;
@@ -1031,9 +1038,23 @@ export async function getPayableDetail(
   };
 }
 
+function jsonRecord(value: Prisma.JsonValue | null): Prisma.JsonObject | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function jsonString(value: Prisma.JsonValue | null, key: string): string | null {
+  const item = jsonRecord(value)?.[key];
+  return typeof item === "string" ? item : null;
+}
+
 /**
- * The audit log of the payable (`entity = payable`), oldest first (25 §7.2): the document's rows and
- * those of the documents it replaced (the payable moved with the replacement). Read only.
+ * The history of the payable, oldest first (25 §7.2): its audit log (`entity = payable`) on the
+ * document and on the documents it replaced (the payable moved with the replacement), and the
+ * voids of its entries made elsewhere, which change the rest too (derived): a payment put back
+ * with its statement line (「未処理に戻す」, via `statement`) or voided on the transaction screen
+ * (via `entries`), and a registration voided on the transaction screen (`payable.cancel` via
+ * `entries`). Those rows are the `journal_entry.void` of the audit log (its time, actor, reason).
+ * Read only.
  */
 export async function loadPayableHistory(db: Db, documentId: string): Promise<PayableHistoryRow[]> {
   const ids = [documentId];
@@ -1046,19 +1067,100 @@ export async function loadPayableHistory(db: Db, documentId: string): Promise<Pa
     current = document?.supersedesId ?? null;
     if (current) ids.push(current);
   }
-  const rows = await db.auditLog.findMany({
+  const own = await db.auditLog.findMany({
     where: { entity: "payable", entityId: { in: ids } },
     orderBy: [{ at: "asc" }, { id: "asc" }],
   });
-  return rows.map((row) => ({
+
+  // The entries the payables screen registered and voided itself (already in its own rows).
+  const registrations = new Set<string>();
+  const voidedHere = new Set<string>();
+  for (const row of own) {
+    const registered = row.action === "payable.register" ? jsonString(row.after, "entryId") : null;
+    if (registered) registrations.add(registered);
+    if (row.action === "payable.cancel_payment" || row.action === "payable.cancel") {
+      const voided = jsonString(row.before, "entryId");
+      if (voided) voidedHere.add(voided);
+    }
+  }
+  for (const document of await db.document.findMany({
+    where: { id: { in: ids } },
+    select: { payableEntryId: true },
+  })) {
+    if (document.payableEntryId) registrations.add(document.payableEntryId);
+  }
+
+  const voided = await db.journalEntry.findMany({
+    where: {
+      status: "voided",
+      kind: { not: "reversal" },
+      id: { notIn: [...voidedHere] },
+      documentLinks: { some: { documentId: { in: ids } } },
+    },
+    select: {
+      id: true,
+      no: true,
+      sourceKind: true,
+      sourceId: true,
+      lines: { where: { ...payableLineWhere, side: "debit" }, select: { amount: true } },
+    },
+  });
+  const elsewhere = voided.filter(
+    (entry) => registrations.has(entry.id) || entry.lines.some((line) => line.amount > 0n),
+  );
+  const voidRows = await db.auditLog.findMany({
+    where: {
+      entity: "journal_entry",
+      action: "journal_entry.void",
+      entityId: { in: elsewhere.map((entry) => entry.id) },
+    },
+  });
+  // A payment from a statement line put back on the statement screen: the line's 「未処理に戻す」
+  // row says which entry it left.
+  const lineIds = elsewhere.flatMap((entry) =>
+    entry.sourceKind === "wallet_txn" && entry.sourceId ? [entry.sourceId] : [],
+  );
+  const reopened = new Set(
+    (
+      await db.auditLog.findMany({
+        where: {
+          entity: "wallet_transaction",
+          action: "wallet_transaction.reopen",
+          entityId: { in: lineIds },
+        },
+        select: { before: true },
+      })
+    ).flatMap((row) => jsonString(row.before, "journalEntryId") ?? []),
+  );
+  const entries = new Map(elsewhere.map((entry) => [entry.id, entry]));
+  const rows: PayableHistoryRow[] = own.map((row) => ({
     id: row.id,
     at: row.at,
     actor: row.actor,
     action: row.action,
+    via: null,
     before: row.before,
     after: row.after,
     reason: row.reason,
   }));
+  for (const row of voidRows) {
+    const entry = row.entityId ? entries.get(row.entityId) : undefined;
+    if (!entry) continue;
+    const registration = registrations.has(entry.id);
+    rows.push({
+      id: row.id,
+      at: row.at,
+      actor: row.actor,
+      action: registration ? "payable.cancel" : "payable.cancel_payment",
+      via: !registration && reopened.has(entry.id) ? "statement" : "entries",
+      before: { entryId: entry.id, entryNo: entry.no },
+      after: row.after,
+      reason: row.reason,
+    });
+  }
+  return rows.sort((a, b) =>
+    a.at.getTime() !== b.at.getTime() ? a.at.getTime() - b.at.getTime() : a.id < b.id ? -1 : 1,
+  );
 }
 
 /** 「未払として登録」 or 「支払を開く」 on a document's detail (25 §5); `null` without the document. */

@@ -13,6 +13,7 @@ import {
   type TaxSplit,
 } from "./simple-entry";
 import { descriptionKey, partnerNameKey } from "./suggest";
+import { getTaxCategory } from "./tax-categories";
 import type {
   EntryKind,
   EntryStatus,
@@ -75,8 +76,30 @@ export const PAYABLE_AUDIT_ACTION_LABELS: Readonly<Record<PayableAuditAction, st
   "payable.update": "期日・支払元の変更",
   "payable.pay": "支払の登録",
   "payable.cancel_payment": "支払の取消",
-  "payable.cancel": "未払の登録の取消",
+  "payable.cancel": "登録の取消",
 };
+
+export const PAYABLE_HISTORY_VIAS = ["statement", "entries"] as const;
+/**
+ * Where an entry of the payable was voided outside the payables screen: 明細の画面の「未処理に戻す」
+ * or the transaction screen. The history shows those voids too (the rest moved with them).
+ */
+export type PayableHistoryVia = (typeof PAYABLE_HISTORY_VIAS)[number];
+
+export const PAYABLE_HISTORY_VIA_LABELS: Readonly<Record<PayableHistoryVia, string>> = {
+  statement: "明細を未処理に戻す",
+  entries: "取引の画面",
+};
+
+/** A row of the payable's history: 「支払の取消」, 「支払の取消（明細を未処理に戻す）」 … */
+export function payableHistoryLabel(row: {
+  action: string;
+  via: PayableHistoryVia | null;
+}): string {
+  const base = (PAYABLE_AUDIT_ACTION_LABELS as Readonly<Record<string, string>>)[row.action];
+  const label = base ?? "その他";
+  return row.via ? `${label}（${PAYABLE_HISTORY_VIA_LABELS[row.via]}）` : label;
+}
 
 // ---------------------------------------------------------------------------
 // Payment terms and the due date (25 §3)
@@ -220,7 +243,8 @@ export interface PayableDefaults {
 
 /**
  * The first values of the registration (25 §4.1): the partner's account (else 外注費), the partner's
- * tax category (else the account's) moved to 「インボイスなし」 without a registration number, the
+ * tax category (else the account's; never a sales one) moved to 「インボイスなし」 without a
+ * registration number, the
  * partner's segment (else the account's, else 共通), the due date of the partner's terms and
  * 「請求書 <取引先>」.
  */
@@ -236,7 +260,12 @@ export function payableDefaults(input: {
 }): PayableDefaults {
   const { partner, account } = input;
   const qualified = Boolean(partner?.invoiceRegistrationNumber || input.documentRegistrationNumber);
-  const tax = partner?.defaultTaxCategoryCode ?? account?.defaultTaxCategoryCode ?? null;
+  // A sales category (a customer's default) is no default for a purchase.
+  const tax =
+    [partner?.defaultTaxCategoryCode, account?.defaultTaxCategoryCode].find(
+      (code): code is string =>
+        typeof code === "string" && getTaxCategory(code)?.direction !== "sales",
+    ) ?? null;
   return {
     accountId: account?.id ?? null,
     taxCategoryCode: tax === null ? null : payableTaxCategoryCode(tax, qualified),
