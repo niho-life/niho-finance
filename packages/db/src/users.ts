@@ -57,7 +57,7 @@ export const UNREGISTERED_USER_MESSAGE =
 export const VIEWER_CANNOT_WRITE_MESSAGE =
   "閲覧の役割では保存できません。必要なら管理者に役割の変更を頼んでください";
 export const OWNER_ONLY_MESSAGE =
-  "この操作は管理者だけができます（締め・事業所・会計期間・証憑の規程・利用者）";
+  "この操作は管理者だけができます（締め・事業所・会計期間・証憑の規程・銀行 API の接続・利用者）";
 
 const LAST_OWNER_MESSAGE =
   "管理者がいなくなるため変えられません。先にほかの人を管理者にしてください";

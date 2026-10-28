@@ -51,6 +51,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     case "redirect":
       return NextResponse.redirect(new URL(decision.location, request.url));
     case "forbidden_page": {
+      // The page is drawn with 200: Next renders a rewritten page with its own status. The refusal is
+      // the page itself (nothing of the requested page is rendered); Server Actions and APIs get the
+      // status (`refuse`).
       const target = new URL("/forbidden", request.url);
       target.searchParams.set("reason", decision.reason);
       return NextResponse.rewrite(target, { status: decision.status });

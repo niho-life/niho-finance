@@ -59,7 +59,7 @@ v1 は 1 人（IAP で認証したメール）で、許可された人は誰で�
 - 単体テストが `"use server"` の全ファイルを読み、export した関数ごとに最初の 2 文がこの形であること、管理者だけの操作が `"owner"` であることを確かめる。新しい Server Action を足したレーンが入れ忘れると落ちる。
 - 拒否の文言:
   - 閲覧: 「閲覧の役割では保存できません。必要なら管理者に役割の変更を頼んでください」
-  - 管理者だけの操作: 「この操作は管理者だけができます（締め・事業所・会計期間・証憑の規程・利用者）」
+  - 管理者だけの操作: 「この操作は管理者だけができます（締め・事業所・会計期間・証憑の規程・銀行 API の接続・利用者）」
   - 未登録: 「このアカウントは利用者に登録されていません。管理者に追加を頼んでください」
 
 ### 3.2 route
@@ -77,10 +77,11 @@ v1 は 1 人（IAP で認証したメール）で、許可された人は誰で�
 
 - App Router のレイアウトは画面の移動で再実行されない（Partial Rendering）ため、画面の制限は `apps/web/proxy.ts`（Next 16 の proxy。Node の実行環境）で行う。proxy は画面・RSC の読み込み・Server Action・route のすべての要求の前に走る。
 - proxy は actor と同じ検証で利用者を解決し（DB の `app_user` を 1 回引く）、
-  - 未登録 → `/forbidden?reason=unregistered` に rewrite（403）。
-  - 閲覧 → 許す path だけ通す: `/reports` とその下、`/settings/export` とその下、`/forbidden`。`/` は `/reports` へ redirect。ほかの画面は `/forbidden?reason=role` に rewrite（403）。Server Action の POST（`Next-Action` 付き）は 403 の本文だけ返す。
+  - 未登録 → `/forbidden?reason=unregistered` に rewrite。
+  - 閲覧 → 許す path だけ通す: `/reports` とその下、`/settings/export` とその下、`/forbidden`。`/` は `/reports` へ redirect。ほかの画面は `/forbidden?reason=role` に rewrite。Server Action の POST（`Next-Action` 付き）と `/api/*` は 403 の本文だけ返す。
   - 管理者・経理・最初の管理者 → そのまま通す。
-  - 本番で IAP の署名がない・検証できない → `/forbidden?reason=unverified`（401）。
+  - 本番で IAP の署名がない・検証できない → `/forbidden?reason=unverified`（Server Action と `/api/*` は 401）。
+  - 権限の画面は HTTP の status 200 で描かれる（Next は rewrite した画面を自分の status で描く。403 を返すには experimental の `forbidden()` が要るので使わない）。拒否は画面の中身で、求めた画面は何も描かない。
 - proxy の対象から外すもの: `/_next/*`、`/favicon.ico` などの静的ファイル、`/api/health`、`/api/jobs/*`。
 - proxy は「早めに断る」層で、本当の検査は §3.1・§3.2 の入口（Next の推奨どおり、データに近い所で検査する）。proxy が DB を引けないときは通さない（500）。
 - 権限の画面 `/forbidden`（アプリの殻の外。ナビなし）: 見出し「この画面は開けません」と理由（閲覧: 「閲覧の役割で開けるのは 報告 と 書き出し だけです」、未登録: §3.1 の文言、未検証: 「ログイン情報を確認できませんでした。画面を読み込み直してください」）、閲覧には「報告へ」のリンク。
