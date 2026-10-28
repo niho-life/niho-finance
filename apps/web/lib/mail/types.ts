@@ -9,8 +9,13 @@ export interface MailAttachment {
 export interface MailMessage {
   /** Defaults to `NIHO_FINANCE_MAIL_TO`. */
   to?: string[];
-  /** `[NIHO finance] ` is put in front. */
+  /** `[NIHO finance] ` is put in front, unless `prefixSubject` is `false`. */
   subject: string;
+  /**
+   * `false` sends the subject as it is: mail to customers (請求書の送付, 18-invoicing §11), where
+   * the internal prefix would read oddly. Defaults to `true` (notices to the owner).
+   */
+  prefixSubject?: boolean;
   /** Plain text (no HTML). */
   text: string;
   attachments?: MailAttachment[];

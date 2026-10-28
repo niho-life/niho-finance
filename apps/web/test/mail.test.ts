@@ -47,6 +47,20 @@ describe("sendMail", () => {
     expect(createTransport).not.toHaveBeenCalled();
   });
 
+  it("sends the subject as it is with prefixSubject: false (mail to customers)", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await sendMail(
+      {
+        to: ["billing@example.com"],
+        subject: "請求書（INV-2026-0001）のご送付",
+        text: "t",
+        prefixSubject: false,
+      },
+      BASE,
+    );
+    expect(loggedLines(log)[0]?.subject).toBe("請求書（INV-2026-0001）のご送付");
+  });
+
   it("uses the message's recipients over NIHO_FINANCE_MAIL_TO", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     await sendMail({ to: ["accountant@example.com"], subject: "s", text: "t" }, BASE);

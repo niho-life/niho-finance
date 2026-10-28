@@ -1355,4 +1355,39 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
     ).toContain("架空カード");
     expect(await loadInvoicesForDeposit(prisma, newId(), { today: "2051-12-16" })).toBeNull();
   });
+
+  it("records every mail of a paid document, while marking it sent by hand stays once (18 §11)", async () => {
+    const invoice = await issued({ issueDate: "2051-12-05" });
+    await recordInvoicePayment(
+      prisma,
+      invoice.id,
+      payment({ paidOn: "2051-12-06", amount: "138,622" }),
+      options,
+    );
+    await markInvoiceSent(prisma, invoice.id, { sentTo: "郵送" }, options);
+    expect(
+      settingsError(
+        await rejectionOf(markInvoiceSent(prisma, invoice.id, { sentTo: "郵送" }, options)),
+      ).message,
+    ).toContain("送付の記録があります");
+
+    const mailed = await markInvoiceSent(
+      prisma,
+      invoice.id,
+      { sentTo: "billing@example.com", mailSubject: "請求書（再送）" },
+      options,
+    );
+    expect(mailed.status).toBe("paid");
+    const detail = await getInvoiceDetail(prisma, invoice.id, { today: "2051-12-07" });
+    expect(detail?.sentTo).toBe("billing@example.com");
+    const sends = (await loadInvoiceHistory(prisma, invoice.id)).filter(
+      (row) => row.action === "invoice.send",
+    );
+    expect(sends).toHaveLength(2);
+    expect(sends[1]?.after).toMatchObject({
+      status: "paid",
+      sentTo: "billing@example.com",
+      mailSubject: "請求書（再送）",
+    });
+  });
 });

@@ -2035,7 +2035,8 @@ export async function markInvoiceSent(
       case "void":
         throw new SettingsError("無効の書類は送付済みにできません");
       case "paid":
-        if (current.sentAt !== null) {
+        // A paid document is marked sent once by hand; a mail (re)sending is always recorded.
+        if (current.sentAt !== null && data.mailSubject === null) {
           throw new SettingsError("送付の記録があります。画面を読み込み直してください");
         }
         break;
@@ -2055,7 +2056,12 @@ export async function markInvoiceSent(
       entity: "invoice",
       entityId: id,
       before: { status: current.status, sentAt: current.sentAt, sentTo: current.sentTo },
-      after: { status: row.status, sentAt: row.sentAt, sentTo: row.sentTo },
+      after: {
+        status: row.status,
+        sentAt: row.sentAt,
+        sentTo: row.sentTo,
+        ...(data.mailSubject === null ? {} : { mailSubject: data.mailSubject }),
+      },
     });
     return toRecord(row);
   });

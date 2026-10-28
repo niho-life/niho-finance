@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
+import { invoicePdfFileNames } from "@/lib/pdf/invoice";
 import { entryNo, formatDate } from "@/lib/format";
 import { InvoiceChecklistView } from "../_components/invoice-checklist";
 import { InvoiceDocument } from "../_components/invoice-document";
@@ -24,6 +25,7 @@ import { documentName, listHref } from "../_components/list-query";
 import { RecordPaymentButton, type PaymentSheetModel } from "../_components/payment-controls";
 import { PaymentsSection } from "../_components/payments-section";
 import { SavePdfButton } from "../_components/save-pdf-button";
+import { buildInvoiceMailDraft } from "../_lib/mail-draft";
 
 export const metadata: Metadata = { title: "請求の詳細" };
 
@@ -247,6 +249,13 @@ export default async function InvoiceDetailPage({
     canVoid: actions.canVoid,
     canCopy: detail.status !== "draft",
     convertTo: actions.convertTo,
+    mail:
+      detail.status === "draft" || detail.status === "void"
+        ? null
+        : {
+            ...buildInvoiceMailDraft(detail),
+            attachmentName: invoicePdfFileNames(detail).utf8FileName,
+          },
   };
 
   const meta = [
