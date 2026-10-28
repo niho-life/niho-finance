@@ -1,6 +1,6 @@
 -- 償却資産申告の元データ (#49, docs/design/16-year-end.md §14). Additive only: the municipality the
 -- return goes to, and per fixed asset the kind of the return form (1–6) and an explicit exclusion.
--- Named after 20261029001500_bank_api so that it sorts after it.
+-- Named after 20261029020000_users_and_expenses so that it sorts after it.
 
 -- AlterTable
 ALTER TABLE "company" ADD COLUMN     "property_tax_municipality" TEXT;

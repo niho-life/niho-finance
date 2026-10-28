@@ -15,6 +15,7 @@ import {
 import { redirect } from "next/navigation";
 import { createElement } from "react";
 import { actor } from "@/lib/actor";
+import { authorizeRoute } from "@/lib/authz";
 import { csvResponse, pdfResponse } from "@/lib/pdf/download";
 import { renderPdf } from "@/lib/pdf/render";
 import { isReturnExportFormat, returnYearOf } from "../_lib/year";
@@ -33,6 +34,8 @@ const EXPORT_KIND = "depreciable-assets-return";
  * back to the page.
  */
 export async function GET(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("accountant");
+  if (denied) return denied;
   const prisma = getPrismaClient();
   if (!(await getSetupProgress(prisma)).ready) redirect("/setup");
 

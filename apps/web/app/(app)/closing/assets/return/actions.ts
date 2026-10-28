@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { attempt, formValues } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /**
  * 申告先 「保存」 (16 §14.4): the municipality of the head office on the company, written with the
@@ -13,6 +14,8 @@ import { actor } from "@/lib/actor";
 export async function savePropertyTaxMunicipalityAction(
   formData: FormData,
 ): Promise<ActionResult<{ municipality: string | null }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(async () =>
     setPropertyTaxMunicipality(
       getPrismaClient(),

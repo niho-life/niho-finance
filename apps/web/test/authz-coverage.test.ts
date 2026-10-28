@@ -42,6 +42,7 @@ const OWNER_ACTIONS: Readonly<Record<string, readonly string[] | "all">> = {
 /** The argument of `authorizeRoute` per route (23 §3.2); `/api/health` and `/api/jobs/*` are not users'. */
 const ROUTE_GUARDS: Readonly<Record<string, string>> = {
   "(app)/closing/statements/export/route.ts": '"accountant"',
+  "(app)/closing/assets/return/export/route.ts": '"accountant"',
   "(app)/invoices/[id]/pdf/route.ts": '"accountant"',
   "(app)/payroll/runs/[id]/payslips/[employeeId]/pdf/route.ts": '"accountant"',
   "(app)/reports/export/route.ts": '"viewer"',
