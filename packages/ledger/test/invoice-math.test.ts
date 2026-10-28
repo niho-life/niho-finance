@@ -547,6 +547,8 @@ describe("issuing an invoice: 売掛金 / 売上", () => {
         fc.constantFrom<AccountingMethod>("tax_inclusive", "tax_exclusive"),
         (lines, inc, method) => {
           const totals = totalsOf(lines, { pricesIncludeTax: inc });
+          // Lines below 1 yen each (0.01 × 1 円) can total 0 yen: such a document is never issued.
+          fc.pre(totals.total > 0n);
           const entry = buildInvoiceIssueEntry(issueInput(totals), postingContext(method));
           expect(validateEntry(entry, validationContext(method))).toEqual({ ok: true });
           const revenueTax = entry.lines
