@@ -94,6 +94,15 @@ function Bands({ detail, blocked }: { detail: JournalEntryDetail; blocked: boole
     bands.push(
       <Band key="blocked" tone="warn">
         {blocked ? `訂正できません。${detail.blockedReason}` : detail.blockedReason}
+        {/* An entry of 請求 is voided on its document (decision 2026-10-29). */}
+        {detail.sourceKind === "invoice" && detail.sourceId ? (
+          <Link
+            href={`/invoices/${detail.sourceId}`}
+            className="ml-2 font-bold underline underline-offset-4"
+          >
+            請求書を開く
+          </Link>
+        ) : null}
       </Band>,
     );
   }

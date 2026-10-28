@@ -270,6 +270,15 @@ export {
   type WalletBalance,
 } from "./queries";
 export {
+  CASHFLOW_PAYMENT_RULE_KEYS,
+  countActiveRecurringItems,
+  createRecurringItem,
+  listRecurringItems,
+  loadCashflowInputs,
+  updateRecurringItem,
+  type RecurringItemSettings,
+} from "./recurring";
+export {
   confirmPayrollRun,
   createEmployee,
   EMPLOYEE_WARNING_CODES,
