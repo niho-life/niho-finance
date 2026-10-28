@@ -16,12 +16,16 @@ const ACCOUNTS = {
   ownerLoan: { id: "acc_2400", code: "2400", name: "役員借入金" },
 };
 
+const INPUT_TAX = { id: "acc_1400", code: "1400", name: "仮払消費税" };
+
 function context(
   accountingMethod: "tax_inclusive" | "tax_exclusive" = "tax_inclusive",
+  inputTaxAccount: OpeningContext["inputTaxAccount"] = INPUT_TAX,
 ): OpeningContext {
   return {
     fiscalYear: { id: "fy1", startDate: "2026-11-02", endDate: "2027-03-31", accountingMethod },
     accounts: ACCOUNTS,
+    inputTaxAccount,
     wallets: new Map([
       [
         "w_bank",
@@ -54,6 +58,7 @@ function context(
 const LEDGER_ACCOUNTS = new Map<string, AccountRef>(
   [
     { id: "acc_1100", code: "1100", kind: "asset" },
+    { id: "acc_1400", code: "1400", kind: "asset" },
     { id: "acc_1700", code: "1700", kind: "asset" },
     { id: "acc_1710", code: "1710", kind: "asset" },
     { id: "acc_2400", code: "2400", kind: "liability" },
@@ -122,12 +127,55 @@ describe("buildOpeningEntries", () => {
     expect(entries[2]?.lines[1]).toMatchObject({ accountId: "acc_1100", subAccountId: "sub_bank" });
   });
 
-  it("refuses taxable purchases in a tax-exclusive year and inactive wallets", () => {
-    expect(() => buildOpeningEntries(input(), context("tax_exclusive"))).toThrow(SettingsError);
+  it("splits taxable costs of a tax-exclusive year into the cost and 仮払消費税 (11 §1)", () => {
+    const entries = buildOpeningEntries(input(), context("tax_exclusive"));
+    // 3,300 tax-inclusive at 10% → 3,000 for 開業費 and 300 for 仮払消費税, paid 3,300.
+    expect(
+      entries[2]?.lines.map((line) => [line.side, line.accountId, line.amount, line.taxAmount]),
+    ).toEqual([
+      ["debit", "acc_1710", 3_000n, 300n],
+      ["debit", "acc_1400", 300n, 0n],
+      ["credit", "acc_1100", 3_300n, 0n],
+    ]);
+    expect(entries[2]?.lines[1]).toMatchObject({
+      taxCategoryCode: "na",
+      segmentId: "seg_corporate",
+    });
+    // Costs outside the tax are not split.
+    expect(entries[1]?.lines).toHaveLength(2);
+    for (const entry of entries) {
+      const result = validateEntry(entry, {
+        fiscalYear: {
+          startDate: "2026-11-02",
+          endDate: "2027-03-31",
+          lockedThrough: null,
+          status: "open",
+          consumptionTax: "general",
+          accountingMethod: "tax_exclusive",
+        },
+        accounts: LEDGER_ACCOUNTS,
+      });
+      expect(result).toEqual({ ok: true });
+    }
+  });
+
+  it("refuses a missing 仮払消費税 account, a taxable cost without a rule and inactive wallets", () => {
     try {
-      buildOpeningEntries(input(), context("tax_exclusive"));
+      buildOpeningEntries(input(), context("tax_exclusive", null));
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(SettingsError);
+      expect((error as SettingsError).field).toBe("startupCosts.0.taxCategoryCode");
+      expect((error as SettingsError).message).toContain("仮払消費税");
+    }
+    try {
+      buildOpeningEntries(input(), { ...context(), taxRules: [] });
+      expect.unreachable();
     } catch (error) {
       expect((error as SettingsError).field).toBe("startupCosts.0.taxCategoryCode");
+      expect((error as SettingsError).message).toBe(
+        "税区分「課税仕入 10%」の税率が 2026/12/01 に設定されていません。設定 › 税区分 で足してください",
+      );
     }
     expect(() =>
       buildOpeningEntries(

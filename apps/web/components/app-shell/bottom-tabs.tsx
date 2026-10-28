@@ -39,9 +39,13 @@ function Tab({
   );
 }
 
-/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 設定). */
+/** The sections reached through その他 on phones (11 §2). */
+const MORE_PATHS = ["/more", "/entries", "/settings"];
+
+/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・設定). */
 export function BottomTabs() {
   const pathname = usePathname();
+  const inMore = MORE_PATHS.some((path) => isActivePath(pathname, path));
   return (
     <nav
       aria-label="メイン"
@@ -65,7 +69,7 @@ export function BottomTabs() {
       <Tab href={null} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>
-      <Tab href="/settings" active={isActivePath(pathname, "/settings")} label="その他">
+      <Tab href="/more" active={inMore} label="その他">
         <NavIcon name="more" className="size-[22px]" />
       </Tab>
     </nav>
