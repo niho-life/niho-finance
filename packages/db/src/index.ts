@@ -24,6 +24,47 @@ export {
 } from "./closing";
 export { fromDbDate, fromDbDateOrNull, todayInJapan, toDbDate } from "./dates";
 export {
+  attachImportBatchDocument,
+  countDocuments,
+  countInboxDocuments,
+  DOCUMENT_PAGE_SIZE,
+  exportDocumentIndex,
+  findDocumentBySha256,
+  findImportBatchDocument,
+  findLinkCandidates,
+  getDocumentDetail,
+  getDocumentFile,
+  getRecordsPolicy,
+  linkDocument,
+  listDocumentLinks,
+  loadDocumentIndex,
+  registerDocument,
+  replaceDocument,
+  saveRecordsPolicy,
+  searchDocuments,
+  unlinkDocument,
+  updateDocument,
+  voidDocument,
+  type DocumentCounts,
+  type DocumentDetail,
+  type DocumentFile,
+  type DocumentHistoryEntry,
+  type DocumentImportBatch,
+  type DocumentIndexRecord,
+  type DocumentLinkCandidates,
+  type DocumentLinkCounts,
+  type DocumentLinkEntry,
+  type DocumentLinkTarget,
+  type DocumentListRow,
+  type DocumentRef,
+  type DocumentRegistration,
+  type DocumentSearchResult,
+  type JournalEntryCandidate,
+  type LinkedDocument,
+  type RecordsPolicy,
+  type WalletTransactionCandidate,
+} from "./documents";
+export {
   chainedEntryIds,
   correctJournalEntry,
   ENTRY_PAGE_SIZE,
@@ -154,6 +195,7 @@ export {
   type SetupStep,
   type SkippableSetupStep,
 } from "./setup";
+export { runInTransaction, TRANSACTION_OPTIONS, type Tx } from "./transaction";
 export type { PrismaClient } from "@prisma/client";
 export {
   DEADLINE_WINDOW_DAYS,

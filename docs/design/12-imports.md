@@ -305,7 +305,7 @@ Issue #5 の条件に加えて:
 ## 8. 引き渡し
 
 - S5（#6）: `finishImportBatch` の `afterImport` にルールの自動登録を渡す。`category` と `valueDate` を入金照合（payout と銀行の入金）と推定に使う。明細のヘッダに「CSV 取込」「Stripe 同期」の導線を足す。
-- S6（#7）: `ImportBatch.fileBytes` / `fileSha256` / `originalName` を証憑（`statement`）にして `documentId` を結び、`file_bytes` を落とす。
+- S6（#7）: `ImportBatch.fileBytes` / `fileSha256` / `originalName` を証憑（`statement`）にして `documentId` を結び、`file_bytes` を落とす。→ 結線済み（S6 の PR #27）: CSV の取込の直後に証憑にして `fileBytes` を空にする。列を落とすのは、本番で全件が空になったのを確かめた後の migration。
 - S7（#8）: ホームのやることに取込の失敗と残高の警告、口座カードに最終取込。
 - S8（#9）: Cloud Scheduler（06:00 JST、OIDC）、Secret Manager の鍵、失敗のメール。`verifyJobRequest` を他のジョブでも使う。
 - v2 #17（銀行 API）: 同じ `WalletTransactionDraft` と `insertWalletTransactions` を `source = api` で使う。

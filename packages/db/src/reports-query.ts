@@ -16,6 +16,7 @@ import type {
 import type { Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { countInboxDocuments } from "./documents";
 import { requireCompanyRow } from "./settings";
 import { countPendingWalletTransactions } from "./statements";
 
@@ -233,17 +234,20 @@ export const pendingStatementsTodo: HomeTodoSource = async (db) => {
   ];
 };
 
-/** 未紐づけの証憑 n 件 (the entry is S6's: `href` becomes `/documents` there). */
+/**
+ * 受信箱の証憑 n 件 (S6, 13-documents §3.2): documents not linked yet, or linked but without a
+ * date, an amount or a partner (未整理). The month is closed with the inbox empty (07 §2).
+ */
 export const inboxDocumentsTodo: HomeTodoSource = async (db) => {
-  const count = await db.document.count({ where: { status: "inbox" } });
+  const count = await countInboxDocuments(db);
   if (count === 0) return [];
   return [
     {
       key: "inbox-documents",
       badge: String(count),
       tone: "warn",
-      label: "未紐づけの証憑",
-      href: null,
+      label: "受信箱の証憑",
+      href: "/documents",
     },
   ];
 };

@@ -7,6 +7,7 @@ import {
   addDays,
   AUDIT_ENTITY_LABELS,
   displayDate,
+  DOCUMENT_KIND_LABELS,
   isAuditEntity,
   type AuditEntity,
   type CalendarDate,
@@ -149,6 +150,14 @@ export async function describeAuditTargets(
     for (const row of await db.partner.findMany({ where: { id: of("partner") }, select }))
       label("partner", row.id, row.name);
   }
+  if (ids.has("document")) {
+    const documents = await db.document.findMany({
+      where: { id: of("document") },
+      select: { id: true, kind: true, originalName: true },
+    });
+    for (const row of documents)
+      label("document", row.id, row.originalName ?? DOCUMENT_KIND_LABELS[row.kind]);
+  }
   if (ids.has("segment")) {
     for (const row of await db.segment.findMany({ where: { id: of("segment") }, select }))
       label("segment", row.id, row.name);
@@ -206,7 +215,13 @@ export async function listAuditLog(
   return {
     rows: rows.map((row) => {
       const target = row.entityId ? (targets.get(key(row.entity, row.entityId)) ?? null) : null;
-      const standard = row.entity === "standard_data" ? AUDIT_ENTITY_LABELS.standard_data : null;
+      // Rows about a kind of target as a whole: 標準データ, and 索引簿の書き出し (証憑, no id).
+      const standard =
+        row.entity === "standard_data"
+          ? AUDIT_ENTITY_LABELS.standard_data
+          : row.entity === "document" && row.entityId === null
+            ? AUDIT_ENTITY_LABELS.document
+            : null;
       return {
         id: row.id,
         at: row.at,

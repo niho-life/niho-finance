@@ -7,6 +7,7 @@ import {
 import type { PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  countInboxDocuments,
   listRecentExports,
   loadBackupSource,
   loadCashPosition,
@@ -85,7 +86,7 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
 
   it("lists pending statements, inbox documents and the deadlines within 7 days", async () => {
     const pending = await prisma.walletTransaction.count({ where: { status: "pending" } });
-    const inbox = await prisma.document.count({ where: { status: "inbox" } });
+    const inbox = await countInboxDocuments(prisma);
     const far = await loadHomeTodos(prisma, "2026-12-15");
     expect(far.filter((row) => row.tone === "date")).toEqual([]);
     expect(far.find((row) => row.key === "pending-statements")?.badge).toBe(
