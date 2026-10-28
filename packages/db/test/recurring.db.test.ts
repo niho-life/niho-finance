@@ -363,8 +363,10 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
       expect(inputs.deadlines).toBeNull();
     });
 
-    it("gives the open payment deadlines in the period, without amounts", async () => {
+    it("gives the open payment deadlines in the period, with the pay runs' amounts", async () => {
       const deadlines = await rolledBack(prisma, async (tx) => {
+        // Other files (payroll) leave deadlines behind: start from an empty calendar.
+        await tx.calendarItem.deleteMany();
         const add = (
           title: string,
           dueDate: CalendarDate,
@@ -391,16 +393,19 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
         await add("届出", "2027-02-01", { kind: "filing", ruleKey: "notice.other" });
         await add("90 日後の納付", "2027-03-01");
         await add("期間の後の納付", "2027-03-02");
+        // A payroll deadline no confirmed pay run pays into has nothing to pay (22-payroll §7.2).
+        await add("源泉所得税の納付（支給なし）", "2027-01-10", {
+          ruleKey: "payroll.withholding.2030-01",
+        });
         return (await loadCashflowInputs(tx, window)).deadlines;
       });
-      // The seeded 確定申告 (2027-05-31) is outside the period.
       expect(deadlines).toEqual([
         { date: "2027-01-10", title: "源泉所得税の納付", amount: null },
         { date: "2027-02-28", title: "法人税等の中間申告・納付", amount: null },
         { date: "2027-03-01", title: "90 日後の納付", amount: null },
       ]);
       // Nothing stayed.
-      expect(await prisma.calendarItem.count({ where: { fiscalYearId: null } })).toBe(0);
+      expect(await prisma.calendarItem.count({ where: { title: "90 日後の納付" } })).toBe(0);
     });
   });
 });

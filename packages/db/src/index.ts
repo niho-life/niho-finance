@@ -101,6 +101,7 @@ export {
 export { isUniqueViolation, SettingsError } from "./errors";
 export { newId } from "./ids";
 export {
+  attachInvoicePdf,
   cancelInvoicePayment,
   createInvoiceDraft,
   discardInvoiceDraft,
@@ -193,6 +194,46 @@ export {
   updateRecurringItem,
   type RecurringItemSettings,
 } from "./recurring";
+export {
+  confirmPayrollRun,
+  createEmployee,
+  EMPLOYEE_WARNING_CODES,
+  employeeCoverage,
+  getPayrollRun,
+  listEmployees,
+  listPayrollRuns,
+  listPayrollSchedule,
+  loadPayrollDraft,
+  loadPayslip,
+  markPayrollPaymentDone,
+  postPayrollPayment,
+  previewPayrollPayment,
+  previewPayrollRun,
+  regularPayRevisionDeadline,
+  setEmployeeActive,
+  updateEmployee,
+  type EmployeeRecord,
+  type EmployeeWarning,
+  type EmployeeWarningCode,
+  type EmployeeWriteResult,
+  type PayrollDraft,
+  type PayrollDraftEmployee,
+  type PayrollEntryPreview,
+  type PayrollEntryPreviewLine,
+  type PayrollPaymentPreview,
+  type PayrollPaymentResult,
+  type PayrollPreview,
+  type PayrollRunDetail,
+  type PayrollRunItemValues,
+  type PayrollRunListRow,
+  type PayrollRunTotals,
+  type PayrollRunValues,
+  type PayrollScheduleRow,
+  type PayrollSchedulePreviewRow,
+  type PayrollTableRefs,
+  type PayrollWriteOptions,
+  type Payslip,
+} from "./payroll";
 export * from "./schemas";
 export * from "./settings";
 export {

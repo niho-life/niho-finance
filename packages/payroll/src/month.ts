@@ -40,6 +40,20 @@ function formatYearMonth(year: number, month: number): YearMonth {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}` as YearMonth;
 }
 
+/** The month `months` after (negative: before) `value`, e.g. `("2026-01", -1)` → `"2025-12"`. */
+export function shiftYearMonth(value: YearMonth, months: number): YearMonth {
+  if (!Number.isSafeInteger(months)) {
+    throw new RangeError(`shiftYearMonth: ${months} is not a whole number of months`);
+  }
+  const { year, month } = yearMonthParts(value);
+  const index = year * 12 + (month - 1) + months;
+  const shiftedYear = (index - (((index % 12) + 12) % 12)) / 12;
+  if (shiftedYear < 1 || shiftedYear > 9999) {
+    throw new RangeError(`shiftYearMonth: year ${shiftedYear} is out of range`);
+  }
+  return formatYearMonth(shiftedYear, (((index % 12) + 12) % 12) + 1);
+}
+
 /** The month a date belongs to, e.g. `"2026-12-25"` → `"2026-12"`. */
 export function yearMonthOf(date: CalendarDate): YearMonth {
   const { year, month } = dateParts(date);

@@ -19,6 +19,7 @@ import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { SettingsError } from "./errors";
 import { newId } from "./ids";
 import { INVOICE_LIST_LIMIT, listInvoices } from "./invoices";
+import { listPayrollSchedule } from "./payroll";
 import {
   recurringItemCreateSchema,
   recurringItemUpdateSchema,
@@ -383,8 +384,9 @@ function toForecastItem(row: RecurringItem): CashflowRecurringItem {
 /**
  * What the forecast reads besides the book (21 §3.1): every recurring item (the forecast counts
  * the active ones), the open payment deadlines of `start < due ≤ start + days` (`null` while the
- * calendar has no row at all), and what issued invoices still wait for (18-invoicing). Amounts of
- * deadlines (#14, #20) and received invoices are not connected yet: `null`.
+ * calendar has no row at all) with the amounts the pay runs give (22-payroll §7.2), and what
+ * issued invoices still wait for (18-invoicing). 法人税等 (#14) has no amount yet, and received
+ * invoices are not connected yet (`null`).
  */
 export async function loadCashflowInputs(
   db: Db,
@@ -414,11 +416,15 @@ export async function loadCashflowInputs(
         completedAt: true,
       },
     });
-    deadlines = items.map((item) => ({
-      date: fromDbDate(item.dueDate),
-      title: item.title,
-      amount: null,
-    }));
+    // 源泉所得税・住民税・社会保険料 of the confirmed pay runs carry their derived amount
+    // (22-payroll §7.2); a payroll deadline with nothing left to pay is not a payment at all.
+    const payroll = new Map((await listPayrollSchedule(db)).map((row) => [row.id, row.amount]));
+    deadlines = [];
+    for (const item of items) {
+      const amount = payroll.get(item.id);
+      if (amount !== undefined && amount <= 0n) continue;
+      deadlines.push({ date: fromDbDate(item.dueDate), title: item.title, amount: amount ?? null });
+    }
   }
 
   // 未入金の請求: issued and sent invoices (not drafts, paid or void ones) with a balance left.

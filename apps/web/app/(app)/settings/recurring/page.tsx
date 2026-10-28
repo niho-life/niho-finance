@@ -93,6 +93,9 @@ export default async function RecurringPage() {
         カード払いの定期取引は線を動かしません。カードの引落しを銀行の定期取引（科目:
         未払金）として登録してください
       </p>
+      <p className="mt-1 text-[12px] text-muted">
+        給与を確定すると、源泉所得税・住民税・社会保険料の納付は額つきで線に入ります。定期取引に重ねて登録しないでください
+      </p>
     </>
   );
 }
