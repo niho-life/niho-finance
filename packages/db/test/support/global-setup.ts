@@ -17,8 +17,8 @@ function databaseName(url: string): string {
 
 /**
  * Drops and recreates the test database, applies the migrations with `prisma migrate deploy`,
- * copies it (migrated, still empty) to the empty test database, then seeds the test database.
- * The teardown drops the empty test database.
+ * copies it (migrated, still empty) to the empty and the restore test databases, then seeds the
+ * test database. The teardown drops the empty and the restore test databases.
  */
 export default async function setup(): Promise<(() => Promise<void>) | undefined> {
   const database = resolveTestDatabase();
@@ -28,11 +28,13 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
   }
   const name = databaseName(database.testUrl);
   const emptyName = databaseName(database.emptyUrl);
+  const restoreName = databaseName(database.restoreUrl);
   const { host, port } = describeDatabaseUrl(database.testUrl);
 
   const admin = new PrismaClient({ datasourceUrl: database.mainUrl });
   try {
     await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${emptyName}" WITH (FORCE)`);
+    await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${restoreName}" WITH (FORCE)`);
     await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
     await admin.$executeRawUnsafe(`CREATE DATABASE "${name}"`);
 
@@ -43,6 +45,7 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
     });
     // Nothing is connected to the migrated test database yet, so it can serve as a template.
     await admin.$executeRawUnsafe(`CREATE DATABASE "${emptyName}" TEMPLATE "${name}"`);
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${restoreName}" TEMPLATE "${name}"`);
   } finally {
     await admin.$disconnect();
   }
@@ -54,13 +57,14 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
     await prisma.$disconnect();
   }
   console.log(
-    `[test:db] ${name} at ${host}:${port}: recreated, migrated and seeded; ${emptyName}: migrated only.`,
+    `[test:db] ${name} at ${host}:${port}: recreated, migrated and seeded; ${emptyName}, ${restoreName}: migrated only.`,
   );
 
   return async () => {
     const teardown = new PrismaClient({ datasourceUrl: database.mainUrl });
     try {
       await teardown.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${emptyName}" WITH (FORCE)`);
+      await teardown.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${restoreName}" WITH (FORCE)`);
     } finally {
       await teardown.$disconnect();
     }

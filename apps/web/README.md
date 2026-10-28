@@ -17,7 +17,10 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/settings/partners` | 取引先（検索・直接編集） |
 | `/settings/segments` | セグメント |
 | `/settings/memo-tags` | タグ |
-| `/api/health` | 死活と DB の疎通 |
+| `/api/health` | 死活と DB の疎通、`service`（`web` / `jobs`）と `gitSha` |
+| `/api/jobs/backup` | POST。日次エクスポート（`backup-export`）。`NIHO_FINANCE_SERVICE=jobs` のときだけ動き、画面のサービスでは 404 |
+| `/api/jobs/calendar` | POST。期限の暦の生成と通知メール（`calendar-notify`）。同上 |
+| `/api/jobs/mail-check` | POST。「送信の確認」を 1 通送る（手動。`scripts/run-job.sh mail-check`）。同上 |
 
 会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/settings` 配下は `/setup` へ redirect します。
 
@@ -27,11 +30,14 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 - `components/settings/inline.tsx`: 一覧の中の直接編集（TextCell / SelectCell / CheckboxCell と `useRowSave`）。blur・Enter・変更で保存し、行の右端に「保存中 / 保存済み / エラー（理由）」を出す。Escape で保存済みの値に戻す。
 - `components/app-shell/`: 左ナビ（PC）と下タブ（スマホ）。準備中の項目は muted の非リンク。
 - 色と字は `app/globals.css` のトークン（`bg-surface`、`text-muted`、`border-border` など）。
+- `lib/mail/`: メール送信（`sendMail`。件名に `[NIHO finance] ` を前置、本文はプレーンテキスト）。`NIHO_FINANCE_MAIL=log` はログに出すだけ、`smtp` は送る。失敗は throw せず `{ ok: false, error }`。
+- `lib/jobs/run.ts`: ジョブの共通入口（`runJob`）。`NIHO_FINANCE_SERVICE=jobs` 以外は 404、結果は `job.finished` の 1 行のログと 200 / 500（throw しない）。ジョブの書き込みの actor は `system`。
 
 ## Server Action の約束
 
 - 読みは Server Components（`lib/data.ts` の `db()` は `connection()` で毎回描画にする）、書きは Server Actions（`app/(app)/settings/actions.ts`、`app/setup/actions.ts`）。
-- 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに `NIHO_FINANCE_ACTOR`（既定 `owner`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
+- 書き込みは必ず `@niho-finance/db` の repository を通す。入力は repository の Zod スキーマで検証され、監査ログに actor（`lib/actor.ts` の `actor()`）で残る。直接編集の action は行の編集できる項目だけを受け付ける（`inlinePatch`）。
+- actor は IAP が付ける署名ヘッダー（`x-goog-iap-jwt-assertion`）を検証した email。`NIHO_FINANCE_ENV=prod` でヘッダーがない・検証に失敗したときは `ActorError` で書き込みを拒み、`{ ok: false, error }`（「ログイン情報を確認できませんでした…」）を返す。ローカル（IAP なし）は `NIHO_FINANCE_ACTOR`（既定 `owner`）。
 - 結果は `{ ok: true, data } | { ok: false, error, fieldErrors }`（`lib/action-types.ts`）。想定内の失敗（入力・規則）は throw せず返す。`error` は「状態と戻り方」を書いた利用者向けの文。
 - 書いたら `revalidatePath("/", "layout")`。ウィザードは保存してから次のステップへ redirect する。
 - 金額は画面では文字列（`50,000` も `50000` も可）、サーバーで `bigint` にする。
