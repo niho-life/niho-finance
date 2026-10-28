@@ -14,7 +14,7 @@
 
 スマホのホーム画面から 1 回で開き、[05 §1](05-ui-ux.md) の 3 つの仕事（残高を見る・明細を片付ける・レシートを撮る）を手早く済ませるための作りです。帳簿は毎回サーバーから最新を読み、端末に残しません。追加の手順は [mobile.md](../ops/mobile.md) に書きます。
 
-- **マニフェスト** `GET /app.webmanifest`（`app/app.webmanifest/route.ts`。中身は `lib/pwa/manifest.ts`）
+- **マニフェスト** `public/app.webmanifest`（静的ファイル。`GET /app.webmanifest`）
   - 名前は「NIHO finance」、`lang: "ja"`。`id`・`start_url`・`scope` は `/`（ホーム）。
   - 背景色とテーマ色は白 `#ffffff`（D14）。
   - アイコンは `public/icons/` の 192px・512px と maskable の 512px。緑（primary）の地に白の印で、原本は `icon.svg`。
@@ -29,12 +29,12 @@
   - 出すもの: `apple-touch-icon`（180px）、`apple-mobile-web-app-title`、status bar の `default`、`format-detection: telephone=no`（金額の数字を電話番号のリンクにしない）。
   - 出さないもの: `apple-mobile-web-app-capable`。iOS 16.4〜18 ではこれがあると Web アプリの窓で開くため。
 - **Service Worker** `public/sw.js`（scope `/`）は帳簿をキャッシュしない
-  - Cache Storage に置くのは `/offline` の 1 件だけ。activate のときに他のキャッシュを消す。
-  - 扱うのは GET のページ遷移（`mode: "navigate"`）だけ。navigation preload を使ってネットワークから取り、通信に失敗したときだけ `/offline` を返す。
+  - Cache Storage に置くのは `/offline.html` の 1 件だけ。activate のときに他のキャッシュを消す。
+  - 扱うのは GET のページ遷移（`mode: "navigate"`）だけ。navigation preload を使ってネットワークから取り、通信に失敗したときだけ `/offline.html` を返す。
   - HTTP のエラーと IAP の 302 は、そのままブラウザに渡す。
   - fetch・Server Actions・RSC・API・静的ファイル・証憑のファイルには触れない。
   - 登録はルートの layout の client 部品（`components/pwa/`）が行う。
-- **接続がない画面** `/offline`（`app/offline/route.ts`）
+- **接続がない画面** `public/offline.html`（`GET /offline.html`）
   - 自己完結の HTML。CSS と文言を中に持ち、外の CSS・JS を読まない。
   - 見出しは「接続がありません」。本文は「帳簿は最新の内容だけを表示するため、つながっていない間は開けません」。CTA は「開き直す」。
   - オンラインに戻ると自動で開き直す。
@@ -52,6 +52,10 @@
   - iOS: ホーム画面の Web アプリは、Safari とクッキーが別。範囲外の Google のサインインは、Safari View Controller のシートで開く。戻り先がシートのままだと nonce が見つからず、サインインが終わらない。これには報告が割れているので、実機で確かめる。
   - そこで iOS は Safari で開くのを既定にする。iOS 26 以降で出る「Web アプリとして開く」は、オフにして追加する。
   - 実機で Web アプリの窓でもサインインが通るとわかったら、`display` を `standalone` に替える（[決定](../decisions/2026-10-29-pwa-display-and-cache.md)）。
+- **入口の検査から外す**: `proxy.ts`（23 §3.3）の対象から、`sw.js`・`app.webmanifest`・`offline.html`・`icons/` を外す
+  - これらは帳簿を含まない静的ファイルで、誰が通れるかは IAP が決める。
+  - 外さないと閲覧の人には 403 になり、要求のたびに利用者を DB で引く。
+  - route にしないのも同じ理由。route は先頭で `authorizeRoute` が要る（23 §3.2）。
 - **配備**: Next の standalone の出力は `public/` を含まない。Dockerfile の runtime で `apps/web/public` を写す。
 
 ## 2. 共通の決まり

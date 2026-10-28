@@ -16,6 +16,6 @@
   - 帳簿を端末に残さないので、古い残高や明細が表示されることはない。
 - 影響:
   - iOS では Safari のアドレスバーが残る。
-  - 実機で Web アプリの窓でもサインインが通るとわかったら、`apps/web/lib/pwa/manifest.ts` の `display` を `standalone` に替え、`apple-mobile-web-app-capable` も出す。
+  - 実機で Web アプリの窓でもサインインが通るとわかったら、`apps/web/public/app.webmanifest` の `display` を `standalone` に替え、`apple-mobile-web-app-capable` も出す。
   - 接続がない間は帳簿を見られない。
   - 詳しくは [10 §1.1](../design/10-settings-and-setup.md) と [mobile.md](../ops/mobile.md)。
