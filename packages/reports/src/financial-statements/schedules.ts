@@ -34,6 +34,58 @@ export interface FixedAssetScheduleRow {
 
 export type FixedAssetScheduleTotals = Omit<FixedAssetScheduleRow, "assetType" | "kind">;
 
+/**
+ * One asset of the year in the 固定資産台帳 (#14, `loadFixedAssetLedger`): what the schedule groups
+ * by account, and what moves 減価償却累計額 onto the 無形固定資産 it belongs to (17 §4.1).
+ */
+export interface FixedAssetRegisterRow {
+  accountId: string;
+  /** 定額法・定率法: the depreciation is credited to 減価償却累計額 (1590), not to the asset. */
+  indirect: boolean;
+  openingBookValue: Money;
+  increase: Money;
+  decrease: Money;
+  depreciation: Money;
+  closingBookValue: Money;
+  /** The depreciation posted through the year end on an asset still held (0 once removed). */
+  accumulatedDepreciation: Money;
+}
+
+/** The register's assets summed per account (資産の種類 = the account's name), in code order. */
+export function fixedAssetScheduleRows(
+  register: readonly FixedAssetRegisterRow[],
+  accounts: readonly FinancialStatementsAccount[],
+  kindOf: (accountId: string) => FixedAssetScheduleRow["kind"],
+): FixedAssetScheduleRow[] {
+  const byAccount = new Map<string, FixedAssetScheduleRow>();
+  for (const asset of register) {
+    const account = accounts.find((candidate) => candidate.id === asset.accountId);
+    if (!account) throw new Error(`reports: account ${asset.accountId} is not in the source`);
+    const row = byAccount.get(account.id) ?? {
+      assetType: account.name,
+      kind: kindOf(account.id),
+      openingBookValue: 0n,
+      increase: 0n,
+      decrease: 0n,
+      depreciation: 0n,
+      closingBookValue: 0n,
+      accumulatedDepreciation: 0n,
+      closingAcquisitionCost: 0n,
+    };
+    row.openingBookValue += asset.openingBookValue;
+    row.increase += asset.increase;
+    row.decrease += asset.decrease;
+    row.depreciation += asset.depreciation;
+    row.closingBookValue += asset.closingBookValue;
+    row.accumulatedDepreciation += asset.accumulatedDepreciation;
+    row.closingAcquisitionCost += asset.closingBookValue + asset.accumulatedDepreciation;
+    byAccount.set(account.id, row);
+  }
+  return [...accounts]
+    .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+    .flatMap((account) => byAccount.get(account.id) ?? []);
+}
+
 export interface FixedAssetSchedule {
   rows: readonly FixedAssetScheduleRow[];
   tangible: FixedAssetScheduleTotals;

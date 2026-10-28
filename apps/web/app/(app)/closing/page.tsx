@@ -372,9 +372,27 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
               ),
             };
       case "statements_report":
+        // 決算書 (#15, 17-financial-statements §3): the statements and what is left in their 確認.
+        return {
+          actions: (
+            <ButtonLink href={`/closing/statements?fy=${year.no}`} variant="secondary" size="sm">
+              決算書を開く
+            </ButtonLink>
+          ),
+        };
       case "export":
-        // 準備中 (#15): the summary says why; no entry point yet.
-        return {};
+        // 書き出し (#15): 計算書類 (PDF), 財務諸表 CSV and the other files of the year.
+        return {
+          actions: (
+            <ButtonLink
+              href={`/closing/statements?fy=${year.no}#exports`}
+              variant="secondary"
+              size="sm"
+            >
+              書き出す
+            </ButtonLink>
+          ),
+        };
     }
   }
 

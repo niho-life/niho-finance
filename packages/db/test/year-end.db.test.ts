@@ -505,8 +505,9 @@ describe.skipIf(!hasTestDatabase)("year-end closing (決算)", () => {
       [6, "na"],
       [7, "done"],
       [8, "todo"],
-      [9, "pending"],
-      [10, "pending"],
+      // 決算書・書き出し (#15): the year is open and nothing is downloaded yet.
+      [9, "todo"],
+      [10, "todo"],
     ]);
     expect(checklist.closing).toMatchObject({
       netIncome: 186_500n,

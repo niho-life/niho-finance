@@ -9,6 +9,8 @@ import { ZodError } from "zod";
 import {
   createAccount,
   loadFinancialStatementsSource,
+  loadFixedAssetRegister,
+  loadStatementsChecklistSteps,
   loadStatementsExportStatus,
   recordExport,
   saveStatementSettings,
@@ -32,9 +34,9 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
   beforeAll(async () => {
     prisma = testPrisma();
     year = await createFiscalYear(prisma, {
-      no: 71,
-      startDate: "2071-04-01",
-      endDate: "2072-03-31",
+      no: 95,
+      startDate: "2095-04-01",
+      endDate: "2096-03-31",
     });
   });
 
@@ -49,7 +51,10 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     const source = await loadFinancialStatementsSource(prisma);
     expect(source.company.name).toBe(SEED_COMPANY.name);
     expect(source.company.address).toBe(SEED_COMPANY.address);
-    expect(source.company.representative).toBe(SEED_COMPANY.representative);
+    // The statements print 「代表取締役」 themselves (17 §4.6): the title typed with the name is dropped.
+    expect(source.company.representative).toBe(
+      SEED_COMPANY.representative.replace(/^代表取締役\s*/, ""),
+    );
     expect(source.accounts).toHaveLength(await prisma.account.count());
     for (const account of source.accounts) expect(account).toHaveProperty("eTaxCode");
     expect(source.partners).toHaveLength(await prisma.partner.count());
@@ -76,7 +81,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
       year.id,
       {
         issuedShares: "１０,０００",
-        shareholdersMeetingOn: "2072-05-28",
+        shareholdersMeetingOn: "2096-05-28",
         announcementPublishedOn: "",
         notes: {
           depreciation: `  ${DEFAULT_DEPRECIATION_POLICY}\r\n  `,
@@ -92,7 +97,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
       { actor },
     );
     expect(saved.issuedShares).toBe(10000);
-    expect(saved.shareholdersMeetingOn).toBe("2072-05-28");
+    expect(saved.shareholdersMeetingOn).toBe("2096-05-28");
     expect(saved.notes.depreciation).toBe(DEFAULT_DEPRECIATION_POLICY);
     // An empty text is kept as "" (left out on purpose); a text never sent stays null (雛形).
     expect(saved.notes.accountingPolicyChanges).toBe("");
@@ -119,7 +124,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     });
     expect(audits[0]?.after).toEqual({
       issuedShares: 10000,
-      shareholdersMeetingOn: "2072-05-28",
+      shareholdersMeetingOn: "2096-05-28",
       simplifiedTaxClass: 3,
       notes: {
         depreciation: DEFAULT_DEPRECIATION_POLICY,
@@ -164,7 +169,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     expect(await zodMessage({ issuedShares: "1万" })).toEqual([
       "発行済株式の総数は株数の整数で入力してください",
     ]);
-    expect(await zodMessage({ shareholdersMeetingOn: "2072/05/28" })).toEqual([
+    expect(await zodMessage({ shareholdersMeetingOn: "2096/05/28" })).toEqual([
       "株主総会の日は 2026-11-02 の形の日付にしてください",
     ]);
     expect(await zodMessage({ simplifiedTaxClass: "7" })).toEqual([
@@ -181,18 +186,18 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     ]);
 
     const beforeEnd = await rejectionOf(
-      saveStatementSettings(prisma, year.id, { shareholdersMeetingOn: "2072-03-31" }, { actor }),
+      saveStatementSettings(prisma, year.id, { shareholdersMeetingOn: "2096-03-31" }, { actor }),
     );
     expect(beforeEnd).toBeInstanceOf(SettingsError);
     expect((beforeEnd as SettingsError).field).toBe("shareholdersMeetingOn");
     expect((beforeEnd as SettingsError).message).toBe(
-      "株主総会の日は期末日（2072/03/31）より後の日にしてください",
+      "株主総会の日は期末日（2096/03/31）より後の日にしてください",
     );
     const beforeMeeting = await rejectionOf(
       saveStatementSettings(
         prisma,
         year.id,
-        { shareholdersMeetingOn: "2072-05-28", announcementPublishedOn: "2072-05-27" },
+        { shareholdersMeetingOn: "2096-05-28", announcementPublishedOn: "2096-05-27" },
         { actor },
       ),
     );
@@ -207,11 +212,11 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
 
   it("tells whether 計算書類 and 財務諸表 CSV were downloaded for the year", async () => {
     const own = await createFiscalYear(prisma, {
-      no: 72,
-      startDate: "2072-04-01",
-      endDate: "2073-03-31",
+      no: 96,
+      startDate: "2096-04-01",
+      endDate: "2097-03-31",
     });
-    const range = { from: "2072-04-01", to: "2073-03-31" } as const;
+    const range = { from: "2096-04-01", to: "2097-03-31" } as const;
     expect(await loadStatementsExportStatus(prisma, own.id)).toEqual({
       financialStatementsAt: null,
       etaxCsvAt: null,
@@ -220,12 +225,12 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     // Another year's download does not count.
     await recordExport(
       prisma,
-      { kind: "financial-statements", format: "pdf", fiscalYearNo: 73, ...range },
+      { kind: "financial-statements", format: "pdf", fiscalYearNo: 97, ...range },
       { actor },
     );
     await recordExport(
       prisma,
-      { kind: "financial-statements", format: "pdf", fiscalYearNo: 72, ...range },
+      { kind: "financial-statements", format: "pdf", fiscalYearNo: 96, ...range },
       { actor },
     );
     const half = await loadStatementsExportStatus(prisma, own.id);
@@ -234,12 +239,27 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     expect(half.done).toBe(false);
     await recordExport(
       prisma,
-      { kind: "etax-csv", format: "zip", fiscalYearNo: 72, encoding: "sjis", ...range },
+      { kind: "etax-csv", format: "zip", fiscalYearNo: 96, encoding: "sjis", ...range },
       { actor },
     );
     const done = await loadStatementsExportStatus(prisma, own.id);
     expect(done.etaxCsvAt).toBeInstanceOf(Date);
     expect(done.done).toBe(true);
+
+    // The year-end checklist's 決算書 and 書き出し (17 §10): the year is open, the files are out.
+    const steps = await loadStatementsChecklistSteps(prisma, own.id);
+    expect(steps.statements.done).toBe(false);
+    expect(steps.statements.summary).toContain("期が締め済みではありません");
+    expect(steps.export).toEqual({
+      done: true,
+      summary: "計算書類（PDF）と財務諸表 CSV を書き出し済み",
+    });
+    // Assets of other test files (bought in earlier years) may be in force here: only the shape.
+    for (const row of await loadFixedAssetRegister(prisma, own.id)) {
+      expect(row.closingBookValue).toBe(
+        row.openingBookValue + row.increase - row.decrease - row.depreciation,
+      );
+    }
   });
 
   it("checks and normalizes 勘定科目コード on 設定 › 勘定科目", async () => {

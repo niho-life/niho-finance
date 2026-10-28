@@ -18,6 +18,7 @@ import {
   statementSettingsDefaults,
   toFinancialStatementsSource,
   type AccountDetailRow,
+  type FixedAssetRegisterRow,
   type FixedAssetScheduleRow,
   type ReportSource,
 } from "../../src";
@@ -275,10 +276,73 @@ describe("附属明細書", () => {
     expect(schedule.tangible.closingBookValue).toBe(302_500n);
     expect(schedule.intangible.closingBookValue).toBe(0n);
     expect(schedule.inconsistentRows).toEqual([]);
+    const register: FixedAssetRegisterRow = {
+      accountId: "acc:1510",
+      indirect: true,
+      openingBookValue: 0n,
+      increase: 330_000n,
+      decrease: 0n,
+      depreciation: 27_500n,
+      closingBookValue: 302_500n,
+      accumulatedDepreciation: 27_500n,
+    };
+    const connected = buildFinancialStatements(BOOK, FY1.id, { fixedAssets: [register] });
+    expect(connected.schedules.fixedAssets.rows).toEqual([{ ...row, assetType: "工具器具備品" }]);
+    expect(connected.issues.map((issue) => issue.kind)).not.toContain("fixedAssets");
     const wrong = buildFinancialStatements(BOOK, FY1.id, {
-      fixedAssets: [{ ...row, closingBookValue: 300_000n }],
+      fixedAssets: [{ ...register, closingBookValue: 300_000n }],
     });
     expect(wrong.issues.map((issue) => issue.kind)).toContain("fixedAssets");
+  });
+
+  it("shows 無形固定資産 net of the amortisation #14 credits to 減価償却累計額", () => {
+    const software = entry({
+      id: "sw1",
+      fy: FY1,
+      no: 91,
+      date: "2026-12-01",
+      description: "ソフトウェアの取得",
+      lines: [
+        { side: "debit", account: "1520", amount: 120_000n },
+        { side: "credit", account: "2400", amount: 120_000n },
+      ],
+    });
+    const amortisation = entry({
+      id: "sw2",
+      fy: FY1,
+      no: 92,
+      date: "2027-03-31",
+      description: "減価償却",
+      kind: "adjusting",
+      lines: [
+        { side: "debit", account: "5460", amount: 8_000n },
+        { side: "credit", account: "1590", amount: 8_000n },
+      ],
+    });
+    const book = withSource({ entries: [...BOOK.entries, software, amortisation] });
+    const asset = (accountId: string, cost: bigint, depreciation: bigint) => ({
+      accountId,
+      indirect: true,
+      openingBookValue: 0n,
+      increase: cost,
+      decrease: 0n,
+      depreciation,
+      closingBookValue: cost - depreciation,
+      accumulatedDepreciation: depreciation,
+    });
+    const report = buildFinancialStatements(book, FY1.id, {
+      fixedAssets: [asset("acc:1510", 330_000n, 27_500n), asset("acc:1520", 120_000n, 8_000n)],
+    });
+    const lines = report.balanceSheet.lines;
+    const amount = (code: string) => lines.find((l) => l.code === code)?.amount;
+    expect(amount("10A220110")).toBe(112_000n); // ソフトウエア, net
+    expect(amount("10A220330")).toBe(112_000n); // 無形固定資産合計
+    expect(amount("10A210920")).toBe(-27_500n); // 減価償却累計額 of 有形固定資産 only
+    expect(amount("10A210950")).toBe(302_500n); // 有形固定資産合計
+    expect(amount("10A000020")).toBe(buildFinancialStatements(book, FY1.id).balanceSheet.assets);
+    expect(report.checks.balanceSheetBalanced).toBe(true);
+    expect(report.schedules.fixedAssets.intangible.closingBookValue).toBe(112_000n);
+    expect(report.schedules.fixedAssets.intangible.closingAcquisitionCost).toBe(120_000n);
   });
 
   it("lists provisions under the provision titles", () => {

@@ -7,6 +7,7 @@
  * sheet of 成立の日 (the opening entries on the founding date).
  */
 import {
+  ACCUMULATED_DEPRECIATION_CODE,
   formatYen,
   INPUT_TAX_ACCOUNT_CODE,
   OUTPUT_TAX_ACCOUNT_CODE,
@@ -33,6 +34,8 @@ import {
   buildFixedAssetSchedule,
   buildProvisionSchedule,
   buildSgaSchedule,
+  fixedAssetScheduleRows,
+  type FixedAssetRegisterRow,
   type FixedAssetScheduleRow,
   type SupplementarySchedules,
 } from "./schedules";
@@ -101,11 +104,17 @@ export const FISCAL_YEAR_STATE_NOTES: Readonly<Record<FiscalYearStatus, string |
 
 export const NO_ENTRIES_MESSAGE = "この期の仕訳がありません。取引から登録します";
 
+/** The code section of 無形固定資産 (A22) in the e-Tax tables. */
+const INTANGIBLE_SECTION = "A22";
+
 export interface FinancialStatementsOptions {
   /** The editions to choose from (tests add a newer one). Defaults to every edition. */
   editions?: readonly EtaxEdition[];
-  /** 固定資産台帳 (#14) as schedule rows; `null` / omitted until it is connected. */
-  fixedAssets?: readonly FixedAssetScheduleRow[] | null;
+  /**
+   * 固定資産台帳 (#14) of the year: the 附属明細書's fixed-asset schedule, and the 減価償却累計額 of
+   * 無形固定資産 shown off their accounts (17 §4.1). `null` / omitted: the schedule waits for it.
+   */
+  fixedAssets?: readonly FixedAssetRegisterRow[] | null;
 }
 
 export interface FinancialStatementsChecks {
@@ -219,6 +228,27 @@ export function buildFinancialStatements(
   const endNet = addNet(beforeNet, yearNet);
   const openingNet = netByAccount(parts.opening);
 
+  // 無形固定資産 are shown net of their amortisation (会社計算規則 81 条), but #14 credits the
+  // 定額法 of software to 減価償却累計額 like the tangible assets: that part of 1590 moves onto the
+  // asset's account, so 1590 is left as the deduction of 有形固定資産 only.
+  const register = options.fixedAssets ?? null;
+  const assetKind = (accountId: string): FixedAssetScheduleRow["kind"] => {
+    const code = codes.get(accountId);
+    return code && etaxCodeSection(code.code) === INTANGIBLE_SECTION ? "intangible" : "tangible";
+  };
+  const accumulatedAccount = accounts.find(
+    (account) => account.code === ACCUMULATED_DEPRECIATION_CODE && account.kind === "asset",
+  );
+  if (register && accumulatedAccount) {
+    for (const asset of register) {
+      if (!asset.indirect || asset.accumulatedDepreciation === 0n) continue;
+      if (assetKind(asset.accountId) !== "intangible") continue;
+      const amount = asset.accumulatedDepreciation;
+      endNet.set(asset.accountId, (endNet.get(asset.accountId) ?? 0n) - amount);
+      endNet.set(accumulatedAccount.id, (endNet.get(accumulatedAccount.id) ?? 0n) + amount);
+    }
+  }
+
   let priorProfit: Money = 0n;
   for (const account of accounts) {
     if (account.kind === "revenue" || account.kind === "expense") {
@@ -325,7 +355,9 @@ export function buildFinancialStatements(
     incomeStatement.lines.find((line) => line.code === edition.layout.keyTotals.sga)?.amount ??
     incomeStatement.groupTotals.sga;
   const schedules: SupplementarySchedules = {
-    fixedAssets: buildFixedAssetSchedule(options.fixedAssets ?? null),
+    fixedAssets: buildFixedAssetSchedule(
+      register ? fixedAssetScheduleRows(register, accounts, assetKind) : null,
+    ),
     provisions: buildProvisionSchedule({
       edition,
       accounts,

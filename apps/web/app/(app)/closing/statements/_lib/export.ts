@@ -2,6 +2,7 @@ import {
   getPrismaClient,
   getSetupProgress,
   loadFinancialStatementsSource,
+  loadFixedAssetRegister,
   recordExport,
   todayInJapan,
   type StatementExportKind,
@@ -192,7 +193,9 @@ export async function exportStatements(request: Request): Promise<Response> {
 
   const target = parseTarget(params);
   if (named === null || !target) back("export");
-  const report = buildFinancialStatements(source, year.id, { fixedAssets: null });
+  const report = buildFinancialStatements(source, year.id, {
+    fixedAssets: await loadFixedAssetRegister(prisma, year.id),
+  });
   if (report.empty) back("empty");
 
   const written = await write(target, source, year, report, back);

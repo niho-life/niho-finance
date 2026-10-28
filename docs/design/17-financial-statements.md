@@ -93,7 +93,7 @@ PageHeader は題名「決算書」、meta に「第 n 期 2026/11/02 – 2027/0
 | PL | 売上総利益（10F000010）・営業利益（10F000110）・経常利益（10F000130）・税引前当期純利益（10F000150）・法人税等（10F100060）・当期純利益（10F000160） | `incomeSubtotals`（S7 の `statements.ts`）と同じ式。損失はマイナス |
 | PL | 販売費及び一般管理費合計（10E201330）・営業外収益合計（10D200740）・営業外費用合計（10E300910）・特別利益合計（10D300670）・特別損失合計（10E401090） | 区分の合計。該当がなければ出さない |
 
-貸借対照表の固定資産は、勘定科目コードの区分（A21 有形 / A22 無形 / A23 投資その他）で 3 つに分ける（会社計算規則 74 条）。勘定科目の `group` は `fixed_assets` 1 つなので、この区別はコードが正。減価償却累計額（1590）は有形固定資産の一括の控除項目（10A210920）として有形固定資産の末尾に出す（同 79 条ただし書）。無形固定資産（ソフトウェア）の償却は直接法（帳簿価額を直接減らす）を前提にする（#14 への申し送り）。
+貸借対照表の固定資産は、勘定科目コードの区分（A21 有形 / A22 無形 / A23 投資その他）で 3 つに分ける（会社計算規則 74 条）。勘定科目の `group` は `fixed_assets` 1 つなので、この区別はコードが正。減価償却累計額（1590）は有形固定資産の一括の控除項目（10A210920）として有形固定資産の末尾に出す（同 79 条ただし書）。無形固定資産は償却累計額を控除した残額で出す（同 81 条）。#14 は定額法のソフトウェアも 1590 に計上するので、固定資産台帳（`loadFixedAssetLedger`）の定額法・定率法の無形固定資産の償却累計額を 1590 からその資産の科目へ移して表示する（資産合計は変わらない）。台帳にない 1590 の動き（手入力）は有形固定資産の控除のまま。
 
 ### 4.2 貸借対照表・損益計算書・開始貸借対照表
 
@@ -155,7 +155,7 @@ PageHeader は題名「決算書」、meta に「第 n 期 2026/11/02 – 2027/0
 
 | 表 | 作り方 |
 | --- | --- |
-| 有形固定資産及び無形固定資産の明細 | 固定資産台帳（#14 の `FixedAsset`）から資産の種類ごとに 期首帳簿価額 ・ 当期増加額 ・ 当期減少額 ・ 当期償却額 ・ 期末帳簿価額 ・ 減価償却累計額 ・ 期末取得原価。#14 の merge までは表を空にし「固定資産台帳の反映後に出ます」と出す（入力の型 `FixedAssetScheduleRow[] | null` を先に決め、#14 が渡す） |
+| 有形固定資産及び無形固定資産の明細 | 固定資産台帳（#14 の `loadFixedAssetLedger`。登録を取り消していない、期末までに取得し期首より前に除却していない資産）を科目（資産の種類 = 科目の名前）ごとに合算し 期首帳簿価額 ・ 当期増加額 ・ 当期減少額 ・ 当期償却額 ・ 期末帳簿価額 ・ 減価償却累計額 ・ 期末取得原価（= 期末帳簿価額 ＋ 減価償却累計額）。有形 / 無形は勘定科目コードの区分（A22 が無形）。台帳を読めないとき（`null`）は表を空にし「固定資産台帳の反映後に出ます」 |
 | 引当金の明細 | コード表で引当金の見出し（10B100300・10B200110）の配下に入る科目ごとに 期首残高 ・ 当期増加額 ・ 当期減少額（目的使用 / その他）・ 期末残高。目的使用とその他は帳簿で区別できないので、同じ仕訳に収益の科目の貸方があれば「その他（戻入）」、なければ「目的使用」と推定する。科目がなければ「該当がありません」 |
 | 販売費及び一般管理費の明細 | `sga` の科目ごとの金額（科目の名前）と合計。合計は損益計算書の販売費及び一般管理費と一致 |
 
@@ -318,9 +318,10 @@ PageHeader は題名「決算書」、meta に「第 n 期 2026/11/02 – 2027/0
 
 ## 10. 決算のチェックリストとの接続（#14）
 
-- #14 の `/closing` のチェックリストの「決算書」は、期が締め済み（`closed`）で、§3 の確認に警告がなく、発行済株式数が入っていれば完了（緑）。判定は `packages/reports` の `financialStatementsReadiness(report)` が返す（`{ done: boolean; issues: string[] }`）。
-- 「書き出し」は、その期の `export.download` の監査ログに `financial-statements`（PDF）と `etax-csv` があれば完了。判定は `packages/db` の `loadStatementsExportStatus(db, fiscalYearId)`。
-- 附属明細書の固定資産の明細は #14 の `FixedAsset` を `FixedAssetScheduleRow[]` にして渡す（#14 の merge 後に繋ぐ。§4.7）。
+- #14 の `/closing` のチェックリストの 9「決算書」は、期が締め済み（`closed`）で、§3 の確認に警告がなく、発行済株式数が入っていれば完了（緑）。判定は `packages/reports` の `financialStatementsReadiness(report)`（`{ done; issues }`）。未完了の要約は残りの最初の 1 件（と件数）。入口は「決算書を開く」（`/closing/statements?fy=n`）。
+- 10「書き出し」は、その期の `export.download` の監査ログに `financial-statements`（PDF）と `etax-csv`（zip または種類ごとの CSV）があれば完了。判定は `packages/db` の `loadStatementsExportStatus(db, fiscalYearId)`。入口は「書き出す」（`/closing/statements?fy=n#exports`）。
+- 2 つの要約と状態は `loadStatementsChecklistSteps(db, fiscalYearId)` が返し、#14 の `loadYearEndChecklist` が使う。
+- 附属明細書の固定資産の明細と無形固定資産の表示は `loadFixedAssetRegister(db, fiscalYearId)`（#14 の `loadFixedAssetLedger` の行）を `buildFinancialStatements` の `fixedAssets` に渡す（§4.1・§4.7）。
 
 ## 11. データと層
 
@@ -330,7 +331,7 @@ PageHeader は題名「決算書」、meta に「第 n 期 2026/11/02 – 2027/0
   - `etax/editions.ts`（版の一覧と選び方。§6.1）・`etax/mapping.ts`（§6.2・§6.3）・`etax/hot010.ts`（§5 の行と CSV）・`etax/jis.ts`（§5.4）。
   - `statements.ts`（§4.1〜§4.3 の行。期首・期末の集計、決算振替の除外、成立の日）・`notes.ts`（§4.4）・`business-report.ts`（§4.6）・`schedules.ts`（§4.7）・`account-details.ts`（§7）・`consumption-tax.ts`（§8）・`announcement.ts`（§9 の HTML）・`readiness.ts`（§10）。
   - テスト: 架空の第 1 期（設立の開始仕訳、売上・経費・固定資産・役員借入金・取消と訂正）と第 2 期のフィクスチャで、BS の貸借一致・PL の当期純利益 = 試算表・SS の期末 = BS の純資産、決算振替の前後で同じ出力、HOT010 のゴールデン（Shift_JIS のバイト列）と階層番号・コードの重複の検査、架空の新しい版を足しても過去の期の CSV が変わらないこと、版のファイルの SHA-256、消費税の税区分の合計 = 2310 / 1400 の合計（税抜経理）・`taxAmount` の合計（税込経理）・経過措置、内訳データの合計 = BS / PL、JIS の変換と不可の文字。
-- `packages/db/src/financial-statements-query.ts`: `loadFinancialStatementsSource(db)`、`saveStatementSettings(db, fiscalYearId, input, { actor })`（監査ログ `statements.update`）、`loadStatementsExportStatus(db, fiscalYearId)`。テスト（`test:db`）: seed の帳簿で読み込み・保存と監査ログ。
+- `packages/db/src/financial-statements-query.ts`: `loadFinancialStatementsSource(db)`、`loadFixedAssetRegister(db, fiscalYearId)`、`saveStatementSettings(db, fiscalYearId, input, { actor })`（監査ログ `statements.update`）、`loadStatementsExportStatus(db, fiscalYearId)`、`loadStatementsChecklistSteps(db, fiscalYearId)`。テスト（`test:db`）: seed の帳簿で読み込み・保存と監査ログ。
 - `apps/web`
   - `app/(app)/closing/statements/{page.tsx, consumption-tax/page.tsx, export/route.ts, actions.ts}`、`_components/`（表・勘定式・設定のフォーム）、`_pdf/`（計算書類・開始貸借対照表・事業報告・附属明細書）。
   - `app/(app)/settings/export/page.tsx` に節を 1 つ、`settings/export/labels.ts` に書き出しの種類の名前を追記。`settings/accounts/accounts-table.tsx` に列を追記。

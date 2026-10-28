@@ -6,7 +6,10 @@
  */
 import type { TaxRateRule } from "@niho-finance/ledger";
 import {
+  buildFinancialStatements,
   EMPTY_STATEMENT_SETTINGS,
+  financialStatementsReadiness,
+  type FixedAssetRegisterRow,
   normalizeStatementSettings,
   toFinancialStatementsSource,
   type FinancialStatementsSource,
@@ -15,6 +18,7 @@ import {
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull } from "./dates";
 import { SettingsError } from "./errors";
+import { loadFixedAssetLedger } from "./fixed-assets";
 import { EXPORT_AUDIT_ACTION, loadReportSource } from "./reports-query";
 import { statementSettingsSchema, type StatementSettingsInput } from "./schemas";
 import { requireCompanyRow, type WriteOptions } from "./settings";
@@ -48,6 +52,27 @@ async function loadTaxRateRules(db: Db): Promise<TaxRateRule[]> {
     deductiblePercent: rule.deductiblePercent,
     enabled: rule.enabled,
     ...(rule.note ? { note: rule.note } : {}),
+  }));
+}
+
+/**
+ * The 固定資産台帳 (#14) of one fiscal year as the statements take it (17 §4.1, §4.7): each asset's
+ * movements of the year, and whether its depreciation went to 減価償却累計額 (定額法・定率法).
+ */
+export async function loadFixedAssetRegister(
+  db: Db,
+  fiscalYearId: string,
+): Promise<FixedAssetRegisterRow[]> {
+  const ledger = await loadFixedAssetLedger(db, fiscalYearId);
+  return ledger.rows.map((row) => ({
+    accountId: row.accountId,
+    indirect: row.method === "straight_line" || row.method === "declining_balance",
+    openingBookValue: row.openingBookValue,
+    increase: row.increase,
+    decrease: row.decrease,
+    depreciation: row.depreciation,
+    closingBookValue: row.closingBookValue,
+    accumulatedDepreciation: row.accumulated,
   }));
 }
 
@@ -254,5 +279,47 @@ export async function loadStatementsExportStatus(
     financialStatementsAt,
     etaxCsvAt,
     done: financialStatementsAt !== null && etaxCsvAt !== null,
+  };
+}
+
+/** One of the two steps of the year-end checklist #15 fills (16-year-end §3, 17 §10). */
+export interface StatementsChecklistStep {
+  done: boolean;
+  summary: string;
+}
+
+/**
+ * 決算のチェックリストの「決算書」と「書き出し」 (17 §10): 決算書 is done when the year is closed with
+ * nothing left in its 確認 and the 発行済株式の総数 entered; 書き出し when 計算書類 (PDF) and 財務諸表
+ * CSV have been downloaded for the year.
+ */
+export async function loadStatementsChecklistSteps(
+  db: Db,
+  fiscalYearId: string,
+): Promise<{ statements: StatementsChecklistStep; export: StatementsChecklistStep }> {
+  const source = await loadFinancialStatementsSource(db);
+  const report = buildFinancialStatements(source, fiscalYearId, {
+    fixedAssets: await loadFixedAssetRegister(db, fiscalYearId),
+  });
+  const readiness = financialStatementsReadiness(report);
+  const exports = await loadStatementsExportStatus(db, fiscalYearId);
+  const left = readiness.issues.length;
+  return {
+    statements: {
+      done: readiness.done,
+      summary: readiness.done
+        ? "確認が済み、書き出せます"
+        : `${readiness.issues[0] ?? ""}${left > 1 ? `（ほか ${left - 1} 件）` : ""}`,
+    },
+    export: {
+      done: exports.done,
+      summary: exports.done
+        ? "計算書類（PDF）と財務諸表 CSV を書き出し済み"
+        : exports.financialStatementsAt
+          ? "財務諸表 CSV（e-Tax）を書き出します"
+          : exports.etaxCsvAt
+            ? "計算書類（PDF）を書き出します"
+            : "計算書類（PDF）と財務諸表 CSV（e-Tax）を書き出します",
+    },
   };
 }

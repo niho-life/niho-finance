@@ -13,6 +13,7 @@ import {
   type StatementIssue,
   type StatementIssueKind,
 } from "@niho-finance/reports";
+import { loadFixedAssetRegister } from "@niho-finance/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -184,12 +185,14 @@ function safeUrl(url: string | null): string | null {
  */
 export default async function StatementsPage({ searchParams }: PageProps<"/closing/statements">) {
   const raw = await searchParams;
-  const { source, today } = await loadStatementsBook();
+  const { prisma, source, today } = await loadStatementsBook();
   const years = [...source.fiscalYears].sort((a, b) => a.no - b.no);
   const fiscalYear = resolveStatementsYear(years, firstParam(raw.fy), today);
   if (!fiscalYear) return <NoFiscalYear title="決算書" />;
 
-  const report = buildFinancialStatements(source, fiscalYear.id, { fixedAssets: null });
+  const report = buildFinancialStatements(source, fiscalYear.id, {
+    fixedAssets: await loadFixedAssetRegister(prisma, fiscalYear.id),
+  });
   const fyNo = fiscalYear.no;
   const etaxProblem = report.empty ? null : etaxCharacterProblem(report);
   const errorKey = firstParam(raw.error);
