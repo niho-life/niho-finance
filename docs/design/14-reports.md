@@ -238,3 +238,102 @@ Issue #8 の条件に加えて:
 - beancount の書き出しが `bean-check` を通り、末尾の残高が試算表と一致する。
 - 書き出しが監査ログに残り、設定の「最近の書き出し」に出る。
 - 320px で報告の各タブが閲覧でき、ホームが欠けない。PDF の日本語が崩れない。
+
+## 15. 受け渡しパッケージ `/settings/export/package`（#55）
+
+税理士や将来の経理担当に、期を指定して 1 つの zip で渡す（[07 §7](07-operations.md)）。中身はすべて既存の書き出しと同じ関数で作り、形式を増やさない。
+
+### 15.1 画面
+
+設定 › 書き出しとバックアップ に節「受け渡しパッケージ」を足し（追記だけ）、`/settings/export/package` を開く入口にする。
+
+- 条件の GET フォーム: 期（第 n 期の select。既定は「今日が前の期の期末から 3 か月以内ならその前の期、それ以外は今日を含む期」。[17 §2](17-financial-statements.md) と同じ）、「証憑のファイルを含める」（チェック。既定は外す）。
+- 中身の一覧（§15.2 の表を、その期で実際に入るものだけ。締めていない期は「決算書は締めた期だけ入ります」）。証憑は「n 件・約 n MB」（その期の証憑の `byteSize` の合計）を出す。
+- 「書き出す」: 大きさの見積り（§15.4）が上限以下ならその場で zip をダウンロード。超えるときは「作成を依頼」になり、ジョブで作る。依頼すると下の「作成した受け渡しパッケージ」に「作成中」で出る。
+- 作成した受け渡しパッケージ: 監査ログ `export.package` の直近 10 件の依頼（日時 ・ 期 ・ 証憑を含むか ・ 状態〔作成中 / 作成済み / 失敗〕・ 大きさ ・ 依頼者）。作成済みの行に「ダウンロード」（`/settings/export/package/download?request=<id>`。署名付き URL への 302）。作成中が 30 分を超えたら「失敗した可能性があります。もう一度依頼してください」。
+- スマホ（768px 未満）でも操作できる（表は 期・状態・ダウンロード の 3 列に畳む）。320px で欠けない。
+- 閲覧（#21 の viewer）以上が取れる。#21 の merge 後は route と Server Action の入口で `authorizeRoute` / `authorizeAction` に閲覧を渡す。
+
+### 15.2 zip の中身
+
+ファイル名は ASCII（`<from>` `<to>` は `YYYYMMDD`）。zip の名前は `handover_fy<n>_<from>-<to>.zip`。
+
+| パス | 内容 | 形式 | 入る条件 |
+| --- | --- | --- | --- |
+| `README.txt` | 会社名・期・作成日時・中身の一覧（パス・説明・形式・件数・SHA-256）・注意（§15.3） | UTF-8（BOM 付き）・CRLF | いつも |
+| `manifest.json` | 機械向けの一覧（パス・件数・バイト数・SHA-256・作成日時・期・バージョン） | UTF-8 | いつも |
+| `books/journal_<from>-<to>.csv` | 仕訳帳（§7 の CSV。取消済み・反対仕訳を含む） | UTF-8 BOM | いつも |
+| `books/general-ledger_<from>-<to>.csv` | 総勘定元帳（§8 の CSV を全科目分、科目コードの順に縦につなぐ。先頭の列に科目コード・科目） | UTF-8 BOM | いつも |
+| `books/trial-balance_<from>-<to>.pdf` / `.csv` | 試算表（§3。全社・期首〜期末） | PDF / UTF-8 BOM | いつも |
+| `books/monthly_<from>-<to>.csv` | 月次推移（§4。全社） | UTF-8 BOM | いつも |
+| `books/journal-freee_<from>-<to>.csv` | freee の仕訳インポート形式（§11.1） | UTF-8 | いつも |
+| `books/journal-yayoi_<from>-<to>.csv` | 弥生の仕訳形式（§11.2） | Shift_JIS | いつも |
+| `closing/fixed-assets_<from>-<to>.csv` | 固定資産台帳（#14 の `loadFixedAssetLedger` の行: 資産・科目・取得日・取得価額・償却方法・耐用年数・期首帳簿価額・当期増加・当期減少・当期償却額・期末帳簿価額・減価償却累計額・除却日・償却資産税・特例） | UTF-8 BOM | いつも（資産がなければ見出しだけ） |
+| `closing/consumption-tax_<from>-<to>.csv` | 消費税の集計（[17 §8](17-financial-statements.md)。免税の期は「参考」の行つき） | UTF-8 BOM | いつも |
+| `statements/financial-statements_<from>-<to>.pdf` | 計算書類一式（[17 §4](17-financial-statements.md)） | PDF | 締めた期（`closed`）だけ |
+| `statements/account-details_<from>-<to>.csv` | 勘定科目内訳の元データ（17 §7） | UTF-8 BOM | 締めた期だけ |
+| `statements/etax/HOT010_3.0_{BS,PL,SS,NT}.csv` | 財務諸表 CSV（17 §5） | Shift_JIS | 締めた期で、e-Tax で使えない文字がないとき（あれば README に理由を書いて入れない） |
+| `documents/index.csv` | 証憑の索引簿（[13 §7](13-documents.md) の列 ＋ 末尾に「パッケージ内のファイル」） | UTF-8 BOM | いつも（その期の証憑。証憑がなければ見出しだけ） |
+| `documents/files/<証憑ID>.<拡張子>` | 証憑のファイル（S7 の `archiveFileName` と同じ名前） | 元の形式 | 「証憑のファイルを含める」のとき |
+
+- 期の範囲: `from`〜`to` は会計期間の期首〜期末。証憑は S7 の証憑一式と同じ選び方（取引日が期の中、取引日のないものは保存日が期の中。`loadDocumentsForArchive`）。無効にした証憑も索引に出す（状態の列で分かる）。
+- 索引簿とファイルは 1 対 1: 「パッケージ内のファイル」の列は、ファイルを含めるときは `documents/files/…`、含めないときは空。保存先から取れなかったファイルは列に「（取得できませんでした）」と書き、README の注意にも件数を出す。
+- 決算書の PDF は `/closing/statements` と同じもの（固定資産台帳を渡す）。
+
+### 15.3 README
+
+```
+受け渡しパッケージ
+会社: 架空商事株式会社
+期間: 第1期 2026/11/02 – 2027/03/31（締め済み）
+作成: 2027/05/10 14:03（作成者 owner@example.com）
+
+■ 中身
+books/journal_20261102-20270331.csv
+  仕訳帳。UTF-8（BOM 付き）・CSV。412 件。SHA-256 3f…
+…
+■ 形式
+- CSV は特記のない限り UTF-8（BOM 付き）・CRLF・ダブルクォートで囲む。金額は符号付きの整数（円）、日付は YYYY/MM/DD。
+- Shift_JIS のファイル: journal-yayoi・etax/HOT010_*
+■ 注意
+- 証憑のファイルは含めていません（索引簿だけ）。 / 証憑 3 件のファイルを取得できませんでした（索引簿の「パッケージ内のファイル」を参照）。
+- 決算書は締めた期だけ入ります。
+- このパッケージは作成時点の帳簿から作りました。後から訂正した仕訳は入りません。
+```
+
+- 「中身」は zip に入れたファイルと同じ順・同じ数（README と manifest.json 自身を除く）。件数は CSV のデータ行数（見出しを除く）・PDF のページ数は書かない・証憑ファイルは 1 行に「documents/files/（n 件）」とまとめず 1 件ずつ書く（1 対 1 を目で確かめられるように）。
+
+### 15.4 その場で作るか、ジョブで作るか
+
+- 見積り = 証憑を含めるときの証憑の `byteSize` の合計 ＋ 帳簿の分（2 MB とみなす）。**20 MB 以下**ならその場で作ってダウンロード（画面のサービスの応答の上限 32 MiB・タイムアウト 60 秒に収める）。超えるときはジョブ。
+- ジョブ: 画面のサービスが Cloud Tasks のキュー（S8 の `niho-finance-manual`）に、ジョブ用サービスの `/api/jobs/handover-package` への POST を積む（OIDC は Scheduler と同じサービスアカウント、audience はジョブ用サービスの URL。本文は `{ requestId, fiscalYearId, includeDocuments, requestedBy }`）。ジョブは同じ関数で zip を作り、バックアップバケットの `packages/<作成日時>_fy<n>_<requestId>.zip` に置く（保持ポリシーの下で残る）。証憑は 1 件ずつ読み、zip はストリームで書いてメモリに全体を持たない。
+- ダウンロード: `/settings/export/package/download?request=<id>` が監査ログの「作成済み」の行のキーを確かめ、V4 の署名付き GET URL（10 分、`response-content-disposition` に zip の名前）へ 302。
+- ローカル（`NIHO_FINANCE_TASKS_QUEUE` がない）: 依頼はその場でジョブの関数を動かし、`NIHO_FINANCE_BACKUP_DIR` に置いて、ダウンロードは本体を返す。本番でキューがないときは「大きいパッケージを作る設定がありません。証憑のファイルを外して書き出します」。
+- 配備（S8 の `scripts/` に追記）: 画面のサービスに `NIHO_FINANCE_TASKS_QUEUE`・`NIHO_FINANCE_JOB_URL`・`NIHO_FINANCE_JOB_SERVICE_ACCOUNT`・`NIHO_FINANCE_BACKUP_BUCKET` を渡す。実行用のサービスアカウントに、キューへの `roles/cloudtasks.enqueuer` と、Scheduler のサービスアカウントへの `roles/iam.serviceAccountUser`（タスクに OIDC を付けるため）。費用はタスク数件で 0 円。
+
+### 15.5 監査ログ `export.package`
+
+entity `export`、`after.phase` で段階を分ける（行は書き換えない）。
+
+| phase | いつ | actor | after の中身 |
+| --- | --- | --- | --- |
+| `downloaded` | その場で作ってダウンロードした | 操作した人 | `delivery: "direct"`・期・証憑を含むか・ファイル数・証憑の数・取得できなかった証憑の数・バイト数 |
+| `requested` | ジョブを依頼した | 操作した人 | `requestId`・期・証憑を含むか・見積り |
+| `ready` / `failed` | ジョブが置いた / 失敗した | `system` | `requestId`・キー・ファイル数・バイト数（`failed` は利用者向けの理由） |
+| `downloaded` | 作成済みをダウンロードした | 操作した人 | `delivery: "signed-url"`・`requestId` |
+
+「最近の書き出し」（§10）にも `export.package` を出す（種類「受け渡しパッケージ」）。
+
+### 15.6 データと層
+
+- `packages/reports/src/handover-package.ts`（純粋。I/O なし）: 中身の一覧（`HandoverPackageEntry`: パス・説明・形式・件数・バイト列または取得関数）から README と manifest を作り、`fflate` のストリームの zip に順に書く `writeHandoverPackage(plan, sink)`（`sink(chunk, final)`）。証憑は取得関数で 1 件ずつ読む。固定資産台帳の CSV の行（`fixedAssetLedgerCsvRows`）と、索引簿に「パッケージ内のファイル」を足した行（`handoverDocumentIndexRows`）もここ。
+- `apps/web/app/(app)/settings/export/package/`: `page.tsx`・`actions.ts`（依頼）・`download/route.ts`・`_lib/`（中身を集める: S7 の CSV の行と PDF、#15 の決算書の PDF・CSV、#14 の台帳、S6 の索引簿と保存先）。PDF は既存の `_pdf` の部品をそのまま呼ぶ。
+- ジョブ: `apps/web/app/api/jobs/handover-package/route.ts`（S8 の `runJob` と `verifyJobRequest`。本文の `requestId` ごとに 1 回だけ置く）と `apps/web/lib/jobs/handover-package.ts`。Cloud Tasks への投入は `apps/web/lib/jobs/enqueue.ts`（REST、ADC のアクセストークン）。
+- テスト: `packages/reports` でフィクスチャの期から計画を作り、README の一覧 = zip の中身（README・manifest を除く）、manifest の SHA-256 = 中身、索引簿の行と `documents/files/` が 1 対 1（含める / 含めない / 取得できない）、締めていない期に決算書が入らない、ストリームで書いた zip を展開して元と一致。`test:db` で監査ログの段階と、依頼 → 作成済み → ダウンロードの解決。
+
+### 15.7 受け入れ条件
+
+Issue #55 の条件に加えて:
+
+- その場で作った zip と、ジョブで作った zip（ローカルのジョブ）の中身が同じ。
+- 1280px と 320px で依頼・状態・ダウンロードが使える。
