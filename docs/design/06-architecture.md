@@ -61,7 +61,7 @@ v1 は `run.app` の URL をブックマークで使う。独自ドメイン（�
 | ジョブ | 周期 | 内容 |
 | --- | --- | --- |
 | `stripe-sync` | 毎日 06:00 JST | 2 アカウントの balance transactions をカーソルから取得して明細化。失敗はメール |
-| `bank-sync`（v2） | 毎日 | 銀行 API の入出金明細を取得 |
+| `bank-sync`（v2） | 毎日 06:15 JST | 銀行 API の入出金明細を前回から 3 日重ねて取得（[19](19-bank-api.md)）。失敗は記録し、失効なら再接続を案内 |
 | `backup-export` | 毎日 03:00 JST | 仕訳・明細・設定を CSV / JSON / beancount で GCS に書く。Cloud SQL の自動バックアップとは別 |
 | `calendar-notify` | 毎日 09:00 JST | 7 日以内・当日の期限をメール |
 | `invoice-registry-verify`（v2） | 毎月 | 取引先の登録番号を国税庁 API で照合 |
