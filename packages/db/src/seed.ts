@@ -45,6 +45,8 @@ export interface SeedResult {
   companyId: string;
   fiscalYearId: string;
   entryCount: number;
+  /** A book seeded before the statements existed got the rules and statement lines (no entries). */
+  statementsAdded?: boolean;
 }
 
 interface SeedLine {
@@ -272,7 +274,10 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
       where: { companyId: existing.id },
       orderBy: { no: "asc" },
     });
+    // A book seeded before the statements existed gets them once (no new entries).
+    const statementsAdded = await seedStatementsIntoExistingBook(tx, existing.id);
     return {
+      statementsAdded,
       seeded: false,
       companyId: existing.id,
       fiscalYearId: fiscalYear?.id ?? "",
@@ -693,4 +698,98 @@ async function seedStatements(
     });
   }
   return { rules: ruleIds.length, lines: STATEMENT_LINES.length, pending };
+}
+
+/**
+ * A book seeded before S5 (`seed.apply` without statements) gets the rules and the statement lines
+ * once, so that `npm run db:seed` brings an existing development database up to date without a
+ * reset. Only when it has no rule and no statement line yet and the sample wallets, partners and
+ * entries are all still there; otherwise nothing is written. No entries are added.
+ */
+async function seedStatementsIntoExistingBook(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+): Promise<boolean> {
+  if ((await tx.rule.count()) > 0 || (await tx.walletTransaction.count()) > 0) return false;
+  const accountIds = new Map(
+    (await tx.account.findMany({ select: { id: true, code: true } })).map((row) => [
+      row.code,
+      row.id,
+    ]),
+  );
+  const segmentIds = new Map(
+    (await tx.segment.findMany({ select: { id: true, code: true } })).map((row) => [
+      row.code,
+      row.id,
+    ]),
+  );
+  const walletIds = new Map<string, string>();
+  for (const row of await tx.wallet.findMany({ select: { id: true, name: true } })) {
+    const wallet = WALLETS.find((item) => item.name === row.name);
+    if (wallet) walletIds.set(wallet.sub, row.id);
+  }
+  const partnerIds = new Map<string, string>();
+  for (const partner of PARTNERS) {
+    const row = await tx.partner.findFirst({ where: { name: partner.name }, select: { id: true } });
+    if (row) partnerIds.set(partner.key, row.id);
+  }
+  const entryIds = new Map<string, string>();
+  for (const entry of ENTRIES) {
+    if (!entry.key) continue;
+    const row = await tx.journalEntry.findFirst({
+      where: {
+        entryDate: toDbDate(entry.date),
+        description: entry.description,
+        kind: entry.kind,
+        status: "posted",
+      },
+      orderBy: { no: "asc" },
+      select: { id: true },
+    });
+    if (row) entryIds.set(entry.key, row.id);
+  }
+  const wallets: readonly SeedWallet[] = ["bank", "card", "cash", "stripe"];
+  const complete =
+    wallets.every((key) => walletIds.has(key)) &&
+    PARTNERS.every((partner) => partnerIds.has(partner.key)) &&
+    ENTRIES.every((entry) => !entry.key || entryIds.has(entry.key));
+  if (!complete) return false;
+
+  // The kana and defaults the partner suggestion uses (15 §4), where the book has none yet.
+  for (const partner of PARTNERS) {
+    const id = lookup(partnerIds, partner.key, "partner");
+    const row = await tx.partner.findUniqueOrThrow({ where: { id } });
+    await tx.partner.update({
+      where: { id },
+      data: {
+        nameKana: row.nameKana ?? partner.nameKana ?? null,
+        defaultAccountId:
+          row.defaultAccountId ??
+          (partner.defaults ? (accountIds.get(partner.defaults.account) ?? null) : null),
+        defaultSegmentId:
+          row.defaultSegmentId ??
+          (partner.defaults ? (segmentIds.get(partner.defaults.segment) ?? null) : null),
+        defaultTaxCategoryCode: row.defaultTaxCategoryCode ?? partner.defaults?.tax ?? null,
+      },
+    });
+  }
+  const statements = await seedStatements(tx, {
+    accountIds,
+    segmentIds,
+    partnerIds,
+    entryIds,
+    walletIds,
+  });
+  await appendAuditLog(tx, {
+    actor: SEED_ACTOR,
+    action: "seed.apply",
+    entity: "company",
+    entityId: companyId,
+    after: {
+      rules: statements.rules,
+      statementLines: statements.lines,
+      pendingStatementLines: statements.pending,
+    },
+  });
+  return true;
 }

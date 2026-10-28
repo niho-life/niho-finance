@@ -28,6 +28,7 @@ import {
   type LedgerError,
   type LedgerErrorCode,
   type Money,
+  type SourceKind,
   type SimpleEntryContext,
   type StatementLine,
   type SuggestAccount,
@@ -863,8 +864,20 @@ export async function reopenWalletTransaction(
       await reopen(row);
       return { reopenedIds: [row.id], reversal: null };
     }
-    if (!data.reason) throw new SettingsError("理由を入力してください", { field: "reason" });
     await tx.$queryRaw`SELECT "id" FROM "journal_entry" WHERE "id" = ${entryId} FOR UPDATE`;
+    const entry = await tx.journalEntry.findUniqueOrThrow({
+      where: { id: entryId },
+      select: { status: true, sourceKind: true, sourceId: true },
+    });
+    // 照合 (the line was matched to an entry posted otherwise: by hand, or for the other line of a
+    // transfer): only this line is unlinked; the entry stays as it is.
+    if (!ownsEntry(entry, row.id)) {
+      await reopen(row);
+      return { reopenedIds: [row.id], reversal: null };
+    }
+    if (entry.status === "posted" && !data.reason) {
+      throw new SettingsError("理由を入力してください", { field: "reason" });
+    }
     // A line linked meanwhile (照合 before this transaction locked the entry) goes back too.
     const linked = await tx.walletTransaction.findMany({
       where: { journalEntryId: entryId },
@@ -873,10 +886,6 @@ export async function reopenWalletTransaction(
     const late = linked.map((item) => item.id).filter((item) => !rows.has(item));
     for (const [lateId, lateRow] of await lockRows(tx, late)) rows.set(lateId, lateRow);
 
-    const entry = await tx.journalEntry.findUniqueOrThrow({
-      where: { id: entryId },
-      select: { status: true },
-    });
     let reversal: ReopenResult["reversal"] = null;
     if (entry.status === "posted") {
       const voided = await voidJournalEntryWithOpenDate(
@@ -1236,6 +1245,11 @@ export interface StatementEntrySummary {
   replacedByNo: number | null;
   /** 「地代家賃」「消耗品費 ほか 1 行」「振替 → 架空銀行 普通」. */
   summary: string;
+  /**
+   * The entry was posted for this line (`sourceKind = wallet_txn`, `sourceId` = the line): 未処理に戻す
+   * voids it. Otherwise the line was only matched to it (照合) and 未処理に戻す unlinks the line.
+   */
+  ownsEntry: boolean;
 }
 
 export interface StatementRow {
@@ -1298,6 +1312,8 @@ const listInclude = {
       id: true,
       no: true,
       status: true,
+      sourceKind: true,
+      sourceId: true,
       replacedBy: { select: { no: true } },
       lines: {
         orderBy: { lineNo: "asc" },
@@ -1351,7 +1367,13 @@ function entrySummary(row: ListRow, wallets: readonly WalletRef[]): StatementEnt
     status: entry.status,
     replacedByNo: entry.replacedBy?.no ?? null,
     summary,
+    ownsEntry: ownsEntry(entry, row.id),
   };
+}
+
+/** The entry was posted for this line (not a hand-written entry or another line's, 照合). */
+function ownsEntry(entry: { sourceKind: SourceKind; sourceId: string | null }, lineId: string) {
+  return entry.sourceKind === "wallet_txn" && entry.sourceId === lineId;
 }
 
 function storedError(suggestion: Prisma.JsonValue): string | null {

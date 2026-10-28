@@ -568,6 +568,18 @@ describe.skipIf(!hasTestDatabase)("statements (明細)", () => {
           ),
         ),
       ).toEqual({ code: "CANDIDATE_MISMATCH", field: "counterpart" });
+
+      // 未処理に戻す on the matched line only unlinks it: the entry it was matched to stays posted.
+      const unlinked = await reopenWalletTransaction(prisma, repaid, {}, { actor });
+      expect(unlinked).toEqual({ reopenedIds: [repaid], reversal: null });
+      expect(await lineState(repaid)).toMatchObject({ status: "pending", journalEntryId: null });
+      expect(await lineState(out)).toMatchObject({
+        status: "transfer",
+        journalEntryId: first.entry.id,
+      });
+      expect(
+        (await prisma.journalEntry.findUniqueOrThrow({ where: { id: first.entry.id } })).status,
+      ).toBe("posted");
     });
 
     it("refuses counterparts that do not match: amount, ±5 days, the same wallet, a fee", async () => {
@@ -760,9 +772,15 @@ describe.skipIf(!hasTestDatabase)("statements (明細)", () => {
         { counterpart: `txn:${out}` },
         { actor },
       );
+      // The entry was posted for the line the owner settled (`into`): from that line, 未処理に戻す
+      // voids it and both lines go back; the list tells the two apart (`ownsEntry`).
+      const listed = await listWalletTransactions(prisma, { status: "transfer", q: "テスト 両替" });
+      expect(
+        Object.fromEntries(listed.rows.map((row) => [row.id, row.entry?.ownsEntry ?? null])),
+      ).toEqual({ [out]: false, [into]: true });
       const reopened = await reopenWalletTransaction(
         prisma,
-        out,
+        into,
         { reason: "相手の誤り" },
         { actor },
       );

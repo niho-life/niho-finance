@@ -17,6 +17,7 @@ import type { Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { requireCompanyRow } from "./settings";
+import { countPendingWalletTransactions } from "./statements";
 
 const entrySelect = {
   id: true,
@@ -217,9 +218,9 @@ export interface HomeTodo {
 /** A source of rows for 「やること」. S5 / S6 / S8 add theirs to `HOME_TODO_SOURCES`. */
 export type HomeTodoSource = (db: Db, today: CalendarDate) => Promise<HomeTodo[]>;
 
-/** 未処理の明細 n 件 (the entry is S5's: `href` becomes `/statements` there). */
+/** 未処理の明細 n 件 → 明細 (15-statements §2; the count is `countPendingWalletTransactions`). */
 export const pendingStatementsTodo: HomeTodoSource = async (db) => {
-  const count = await db.walletTransaction.count({ where: { status: "pending" } });
+  const count = await countPendingWalletTransactions(db);
   if (count === 0) return [];
   return [
     {
@@ -227,7 +228,7 @@ export const pendingStatementsTodo: HomeTodoSource = async (db) => {
       badge: String(count),
       tone: "count",
       label: "未処理の明細",
-      href: null,
+      href: "/statements",
     },
   ];
 };
