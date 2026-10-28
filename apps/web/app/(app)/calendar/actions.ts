@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of /calendar (24 §2): 完了にする / 未完了に戻す as the signed-in user
@@ -24,10 +25,14 @@ async function write(run: () => Promise<unknown>): Promise<ActionResult> {
 
 /** 完了にする. */
 export async function completeCalendarItemAction(id: string): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => completeCalendarItem(prisma(), parseId(id), await by()));
 }
 
 /** 未完了に戻す. */
 export async function reopenCalendarItemAction(id: string): Promise<ActionResult> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(async () => reopenCalendarItem(prisma(), parseId(id), await by()));
 }

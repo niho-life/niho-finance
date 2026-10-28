@@ -17,6 +17,7 @@ import { attempt } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import type { BankAuthorizedView, BankSyncView } from "./types";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of 銀行 API の接続 (19-bank-api §1.1, §6.4). Inputs are checked with the
@@ -58,6 +59,8 @@ function toSyncView({
 export async function connectBankAction(
   walletId: unknown,
 ): Promise<ActionResult<BankAuthorizedView>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () => {
       const input = bankWalletInputSchema.parse({ walletId });
@@ -73,6 +76,8 @@ export async function connectBankAction(
 export async function chooseBankAccountAction(
   values: unknown,
 ): Promise<ActionResult<BankSyncView>> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () =>
       connectBankAccount(
@@ -87,6 +92,8 @@ export async function chooseBankAccountAction(
 
 /** 今すぐ同期 (`syncBankWalletAction`, 19-bank-api §3.5). */
 export async function syncBankWalletAction(walletId: unknown): Promise<ActionResult<BankSyncView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       syncBankWallet(prisma(), bankWalletInputSchema.parse({ walletId }), {
@@ -99,6 +106,8 @@ export async function syncBankWalletAction(walletId: unknown): Promise<ActionRes
 
 /** 接続を外す: the lines and the history stay; the tokens and the account go with the connection. */
 export async function disconnectBankAction(walletId: unknown): Promise<ActionResult> {
+  const denied = await authorizeAction("owner");
+  if (denied) return denied;
   return write(
     async () => disconnectBankLink(prisma(), bankWalletInputSchema.parse({ walletId }), await by()),
     () => null,

@@ -3,6 +3,7 @@ import { exchangeAuthorizationCode } from "@niho-finance/importers";
 import { handleBankCallback } from "@/lib/bank/oauth-routes";
 import { actor } from "@/lib/actor";
 import { appEnvironment } from "@/lib/env";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
  * wallet, registered with GMO as `NIHO_FINANCE_GMO_AOZORA_REDIRECT_URI`.
  */
 export async function GET(request: Request): Promise<Response> {
+  const denied = await authorizeRoute("owner");
+  if (denied) return denied;
   return handleBankCallback(request, {
     config: () => resolveBankApiConfig(),
     exchange: (auth, code, nonce) => exchangeAuthorizationCode(auth, code, { nonce }),

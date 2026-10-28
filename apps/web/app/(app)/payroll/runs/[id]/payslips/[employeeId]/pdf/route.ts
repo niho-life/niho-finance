@@ -6,6 +6,7 @@ import { pdfResponse } from "@/lib/pdf/download";
 import { PayslipDocument } from "@/lib/pdf/payslip";
 import { renderPdf } from "@/lib/pdf/render";
 import { payslipData, payslipFileNames } from "../../../../../_lib/payslip-lines";
+import { authorizeRoute } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string; employeeId: string }> },
 ): Promise<Response> {
+  const denied = await authorizeRoute("accountant");
+  if (denied) return denied;
   const prisma = getPrismaClient();
   if (!(await getSetupProgress(prisma)).ready) redirect("/setup");
 

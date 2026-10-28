@@ -15,6 +15,7 @@ import { z } from "zod";
 import { attempt, parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 
 /*
  * Server Actions of 設定 › ルール (15 §10), also called by 「ルールにする」 on /statements. The
@@ -50,6 +51,8 @@ const saved = (rule: { id: string; displayName: string }): SavedRule => ({
 });
 
 export async function createRuleAction(values: unknown): Promise<ActionResult<SavedRule>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => createRule(prisma(), valuesSchema.parse(values) as RuleCreateInput, await by()),
     saved,
@@ -60,6 +63,8 @@ export async function updateRuleAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SavedRule>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateRule(prisma(), parseId(id), valuesSchema.parse(values) as RuleUpdateInput, await by()),
@@ -71,6 +76,8 @@ export async function setRuleActiveAction(
   id: string,
   isActive: boolean,
 ): Promise<ActionResult<SavedRule>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => setRuleActive(prisma(), parseId(id), parseBoolean(isActive), await by()),
     saved,
@@ -90,6 +97,8 @@ export async function countRuleMatchesAction(values: {
   walletId: string;
   match: unknown;
 }): Promise<ActionResult<RuleMatchTotals>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(() => {
     const input = z.object({ walletId: z.string().max(64), match: z.unknown() }).parse(values);
     return countRuleMatches(prisma(), { walletId: input.walletId || null, match: input.match });
@@ -114,6 +123,8 @@ export interface AppliedRule {
 
 /** 既存の未処理への適用: settles the pending lines this rule wins, as the import would. */
 export async function applyRuleAction(id: string): Promise<ActionResult<AppliedRule>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () => applyRuleToPending(prisma(), parseId(id), await by()),
     (result) => ({

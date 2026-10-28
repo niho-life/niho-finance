@@ -27,7 +27,7 @@ import { createPartnerAction, setPartnerActiveAction, updatePartnerAction } from
 
 const COLUMNS = {
   columns:
-    "minmax(140px,1.3fr) minmax(110px,1fr) 92px 150px 150px 110px 150px 96px minmax(64px,120px)",
+    "minmax(140px,1.3fr) minmax(110px,1fr) 92px 150px 160px 150px 110px 150px 96px minmax(64px,120px)",
   mobileColumns: "minmax(0,1fr) minmax(0,1fr)",
 };
 
@@ -35,6 +35,33 @@ const KIND_OPTIONS = PARTNER_KINDS.map((kind) => ({
   value: kind,
   label: PARTNER_KIND_LABELS[kind],
 }));
+
+/** 照合 of a partner (20-reader §10.3), worded on the server. */
+export interface RegistrationCell {
+  /** 「登録あり（2023/10/01〜）」「未登録」「登録終了（2025/03/31）」「未照合」 */
+  label: string;
+  /** The day of the last lookup, `2026/11/01`. */
+  checkedOn: string | null;
+}
+
+/** 照合: the label and the day it was looked up; 「—」 without a registration number. */
+function RegistrationStatus({
+  partner,
+  registration,
+}: {
+  partner: PartnerSettings;
+  registration: RegistrationCell | undefined;
+}) {
+  if (!partner.invoiceRegistrationNumber) return <span className="text-muted">—</span>;
+  return (
+    <span className="flex min-w-0 flex-col leading-snug">
+      <span className="text-[13px] break-words">{registration?.label ?? "未照合"}</span>
+      {registration?.checkedOn ? (
+        <span className="num text-[11px] text-muted">{registration.checkedOn}</span>
+      ) : null}
+    </span>
+  );
+}
 
 interface Options {
   accounts: readonly SelectOption[];
@@ -124,10 +151,12 @@ function cells(partner: PartnerSettings, options: Options, row: Save) {
 function PartnerRow({
   partner,
   options,
+  registration,
   onOpen,
 }: {
   partner: PartnerSettings;
   options: Options;
+  registration: RegistrationCell | undefined;
   onOpen: () => void;
 }) {
   const row = useRowSave((patch) => updatePartnerAction(partner.id, patch));
@@ -138,6 +167,9 @@ function PartnerRow({
       <Td sm="hide">{cell.nameKana}</Td>
       <Td>{cell.kind}</Td>
       <Td>{cell.invoiceRegistrationNumber}</Td>
+      <Td sm="hide">
+        <RegistrationStatus partner={partner} registration={registration} />
+      </Td>
       <Td sm="hide">{cell.defaultAccountId}</Td>
       <Td sm="hide">{cell.defaultSegmentId}</Td>
       <Td sm="hide">{cell.defaultTaxCategoryCode}</Td>
@@ -166,10 +198,12 @@ function PartnerRow({
 function PartnerSheet({
   partner,
   options,
+  registration,
   onClose,
 }: {
   partner: PartnerSettings;
   options: Options;
+  registration: RegistrationCell | undefined;
   onClose: () => void;
 }) {
   const row = useRowSave((patch) => updatePartnerAction(partner.id, patch));
@@ -190,6 +224,9 @@ function PartnerSheet({
       <SheetField label="カナ">{cell.nameKana}</SheetField>
       <SheetField label="区分">{cell.kind}</SheetField>
       <SheetField label="登録番号">{cell.invoiceRegistrationNumber}</SheetField>
+      <SheetField label="照合">
+        <RegistrationStatus partner={partner} registration={registration} />
+      </SheetField>
       <SheetField label="既定の科目">{cell.defaultAccountId}</SheetField>
       <SheetField label="既定のセグメント">{cell.defaultSegmentId}</SheetField>
       <SheetField label="既定の税区分">{cell.defaultTaxCategoryCode}</SheetField>
@@ -255,8 +292,14 @@ export function PartnersTable({
   accounts,
   segments,
   taxOptions,
+  registrations,
+  ntaEnabled = false,
 }: {
   partners: PartnerSettings[];
+  /** 照合 by partner ID. */
+  registrations?: ReadonlyMap<string, RegistrationCell>;
+  /** The application ID is set: the numbers are looked up at the publication. */
+  ntaEnabled?: boolean;
 } & Options) {
   const [showInactive, setShowInactive] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -267,12 +310,13 @@ export function PartnersTable({
 
   return (
     <>
-      <Table label="取引先" minWidth={1120}>
+      <Table label="取引先" minWidth={1300}>
         <TableHead {...COLUMNS}>
           <Th>名前</Th>
           <Th sm="hide">カナ</Th>
           <Th>区分</Th>
           <Th>登録番号</Th>
+          <Th sm="hide">照合</Th>
           <Th sm="hide">既定の科目</Th>
           <Th sm="hide">既定のセグメント</Th>
           <Th sm="hide">既定の税区分</Th>
@@ -289,6 +333,7 @@ export function PartnersTable({
             key={partner.id}
             partner={partner}
             options={options}
+            registration={registrations?.get(partner.id)}
             onOpen={() => setOpenId(partner.id)}
           />
         ))}
@@ -300,13 +345,16 @@ export function PartnersTable({
         onToggle={() => setShowInactive(!showInactive)}
       />
       <p className="mt-2 text-[12px] text-muted">
-        登録番号は形式と検査用数字を確かめます（国税庁の公表サイトとの照合はあとで対応します）。
+        {ntaEnabled
+          ? "登録番号は形式と検査用数字を確かめ、国税庁の公表サイトで照合します（毎月 1 日に再照合）"
+          : "登録番号は形式と検査用数字を確かめます。国税庁の公表サイトとの照合は、アプリケーション ID を設定すると使えます"}
       </p>
       {opened ? (
         <PartnerSheet
           key={opened.id}
           partner={opened}
           options={options}
+          registration={registrations?.get(opened.id)}
           onClose={() => setOpenId(null)}
         />
       ) : null}

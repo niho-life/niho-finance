@@ -205,6 +205,25 @@ export async function describeAuditTargets(
     for (const row of await db.fixedAsset.findMany({ where: { id: of("fixed_asset") }, select }))
       label("fixed_asset", row.id, row.name);
   }
+  // 「利用者 架空 太郎」, the email without a name (23 §4).
+  if (ids.has("user")) {
+    const users = await db.user.findMany({
+      where: { id: of("user") },
+      select: { id: true, email: true, name: true },
+    });
+    for (const user of users) label("user", user.id, user.name ?? user.email);
+  }
+  // 「立替精算 2026/11/05 タクシー代」 (23 §5.2).
+  if (ids.has("expense_claim")) {
+    const claims = await db.expenseClaim.findMany({
+      where: { id: of("expense_claim") },
+      select: { id: true, spentOn: true, description: true },
+    });
+    for (const claim of claims) {
+      const date = displayDate(fromDbDate(claim.spentOn));
+      label("expense_claim", claim.id, `${date} ${claim.description}`);
+    }
+  }
   if (ids.has("recurring_item")) {
     const where = { id: of("recurring_item") };
     for (const row of await db.recurringItem.findMany({ where, select }))
