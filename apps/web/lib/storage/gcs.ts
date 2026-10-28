@@ -26,6 +26,11 @@ export interface GcsDocumentStorageOptions {
   /** `NIHO_FINANCE_GCS_BUCKET` */
   bucket: string;
   now?: () => Date;
+  /**
+   * The bucket client. Defaults to `new Storage().bucket(bucket)` with ADC, loaded on first use;
+   * tests pass a client with fictional credentials (signing works offline).
+   */
+  bucketClient?: () => Bucket | Promise<Bucket>;
 }
 
 /** HTTP status of a GCS API error (404 missing, 412 precondition failed). */
@@ -41,9 +46,9 @@ export function createGcsDocumentStorage(options: GcsDocumentStorageOptions): Do
 
   async function fileOf(key: string): Promise<File> {
     if (!isSafeDocumentKey(key)) throw new RangeError(`unsafe document key "${key}"`);
-    bucket ??= import("@google-cloud/storage").then(({ Storage }) =>
-      new Storage().bucket(options.bucket),
-    );
+    bucket ??= options.bucketClient
+      ? Promise.resolve(options.bucketClient())
+      : import("@google-cloud/storage").then(({ Storage }) => new Storage().bucket(options.bucket));
     return (await bucket).file(key);
   }
 

@@ -13,6 +13,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { entryNo, formatDate, formatDateTime } from "@/lib/format";
+import { EntryDocuments } from "../../documents/_components/entry-documents";
 import { EntryHistory } from "../_components/entry-history";
 import { EntryLinesTable } from "../_components/entry-lines-table";
 import { listHref } from "../_components/list-query";
@@ -144,6 +145,7 @@ export default async function EntryDetailPage({
       <h2 className="mb-3 text-[17px] font-bold break-words">{detail.description}</h2>
       <Bands detail={detail} blocked={query.blocked === "correct"} />
       <EntryLinesTable detail={detail} />
+      <EntryDocuments entryId={detail.id} />
       <p className="mt-2 text-[12px] text-muted">
         第 {detail.fiscalYear.no} 期 · 生成元 {SOURCE_KIND_LABELS[detail.sourceKind]}
       </p>

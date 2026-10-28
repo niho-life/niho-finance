@@ -60,9 +60,9 @@
 - 状態の帯（該当するものだけ）: 「無効（2026/11/08 · 理由: …）」。「差し替え済み → （新しいファイル名）」（リンク）。差し替え後の側には「（元のファイル名）の差し替え」（リンク）。
 - 配置: PC は 2 列（左にプレビュー、右 380px に項目と操作）。スマホは縦（プレビューは高さ 50vh まで）。
 - プレビュー: 画像は `<img>`、PDF は `<iframe>`、それ以外（HEIC・CSV）は「この形式はプレビューできません」。下に「ファイルを開く」（新しいタブ。`/api/documents/[id]/file`）、大きさ、形式、SHA-256（`<code>` で小さく。改ざん検知の根拠として見せる）、証憑 ID。
-- 項目（一覧の中の直接編集と同じ部品。blur / Enter で保存、右上に 保存中 / 保存済み / エラー）: 種別（select）、取引年月日（date）、金額（`MoneyInput`。0 以上）、取引先（select: 有効な取引先＋「その他（名前を入力）」）、取引先名（「その他」のときだけ。文字）、登録番号（T + 13 桁。形式と検査用数字を検証）、メモ。無効の証憑は読み取り専用で、帯に「無効にした証憑は変えられません。必要なら差し替えます」。
+- 項目（一覧の中の直接編集と同じ部品。blur / Enter で保存、右上に 保存中 / 保存済み / エラー）: 種別（select）、取引年月日（date）、金額（`MoneyInput`。0 以上）、取引先（select: 有効な取引先＋「その他（名前を入力）」）、取引先名（「その他」のときだけ。文字）、登録番号（T + 13 桁。形式と検査用数字を検証）、メモ。無効の証憑は読み取り専用で、帯に「無効にした証憑は変えられません。正しいファイルは新しい証憑として保存します」（無効の証憑は差し替えられない）。
 - 紐づけ: 「仕訳 No. 12 · 2026/11/05 · クラウドサービス利用料 · 1,650」（`/entries/[id]` へのリンク）、「明細 架空カード · 2026/11/07 · AMAZON · 3,980」、「請求書 INV-2026-0001」。各行に「外す」（ConfirmDialog。理由なし）。
-- 候補「同じ金額・近い日付」: 金額があるとき、|金額| が同じで日付が取引年月日 ±7 日（取引年月日が空なら保存日の 30 日前〜保存日）の 明細（未処理を先に、登録済みも）と 仕訳（登録済み。反対仕訳と取消済みを除く。金額は借方合計）を各 10 件まで、日付の近い順。すでに紐づく相手は除く。行に「紐づける」（primary・sm）。
+- 候補「同じ金額・近い日付」: 金額があるとき、|金額| が同じで日付が取引年月日 ±7 日（取引年月日が空なら保存日の 30 日前〜保存日）の 明細（未処理を先に、登録済みも）と 仕訳（登録済み。反対仕訳と取消済みを除く。金額は借方合計）を各 10 件まで、日付の近い順。すでに紐づく相手は除き、ほかの証憑（無効を除く）がすでに紐づく相手は「証憑あり」と示して後ろに並べる。行に「紐づける」（primary・sm）。
 - 金額が空のとき（撮ったばかりの領収書）: 候補「近い日付の未処理の明細」として、取引年月日 ±7 日（空なら保存日の 7 日前〜翌日）の未処理の明細を金額を問わず日付の近い順に 10 件出す（仕訳は出さない）。見出しの下に「金額を入れると、同じ金額の明細と取引に絞り込めます」。紐づけると日付・金額が明細から埋まる。これで「カメラのタブ → 撮影 → 紐づける」の 3 操作で明細に結べる（受け入れ条件）。
 - 紐づけると、証憑の取引年月日・金額・取引先が空なら相手から埋める（明細: 日付と |金額|、振込人名があれば取引先名。仕訳: 日付と借方合計、行の取引先が 1 つならその取引先）。埋めた項目は `document.update` として別に監査ログに残る。
 - 「この証憑から取引を登録」（secondary）: `/entries/new?type=expense&date=<取引年月日>&amount=<金額>&partner=<取引先 ID>&document=<証憑 ID>`。S3 の merge 後に足す。S3 のフォームはこれらを初期値にし（#4 にコメントして頼む）、`document` は登録後の自動紐づけ用で未対応なら無視してよい。
@@ -84,7 +84,7 @@
 - キー（`keys.ts`）: `documents/<yyyy>/<mm>/<ulid>.<ext>`。yyyy/mm は保存時刻の JST、拡張子は MIME から。キーに元のファイル名を入れない。
 - `local`（`local.ts`）: `NIHO_FINANCE_STORAGE_DIR`（既定 `<repo root>/tmp/documents`。`tmp/` は `.gitignore` 済み）。送信先は `PUT /api/documents/upload?key=…&mime=…&size=…&exp=…&sig=…`（`key` `mime` `size` `exp` の HMAC-SHA256。鍵は `NIHO_FINANCE_UPLOAD_SECRET`、未設定ならプロセスごとの乱数）。受け口は署名と期限を確かめ、`Content-Type` と大きさが一致する本体だけを書き、既にあるキーには書かない。
 - `gcs`（`gcs.ts`）: `@google-cloud/storage`（apps/web の依存に足す）。`NIHO_FINANCE_GCS_BUCKET`。認証は ADC（Cloud Run のサービスアカウント。署名は IAM の signBlob）。送信は V4 の署名付き PUT（15 分、`Content-Type` を固定）、閲覧は V4 の署名付き GET（10 分、`response-content-disposition` でファイル名）。
-- S8 に渡すバケットの要件: バージョニング ON、削除保護（保持ポリシー 7 年・ロックしない）、均一なバケットレベルのアクセス、非公開。CORS: アプリの origin から `PUT`、ヘッダー `Content-Type`、`maxAgeSeconds` 3600。サービスアカウントに `storage.objects.create` と `storage.objects.get`（削除は与えない）、自身への `roles/iam.serviceAccountTokenCreator`（signBlob）。検証に失敗して参照されないオブジェクトはライフサイクルで 30 日後に消してよい（アプリは削除しない）。
+- S8 に渡すバケットの要件: バージョニング ON、削除保護（保持ポリシー 7 年・ロックしない）、均一なバケットレベルのアクセス、公開アクセスの防止。CORS: アプリの origin（Cloud Run の URL）から `PUT`、ヘッダー `Content-Type`、`maxAgeSeconds` 3600。サービスアカウントに `storage.objects.create` と `storage.objects.get`（削除と上書きの権限は与えない）、自身への `roles/iam.serviceAccountTokenCreator`（署名付き URL の signBlob）。ライフサイクルの削除は置かない。送信の途中で検証に失敗したオブジェクト（どの `Document` からも参照されない）は保持ポリシーの下で残るが、量は小さく、証憑一式の書き出し（S7）は `Document` から辿るので混ざらない。
 - 受け付ける形式（`mime.ts`。純粋関数は `packages/ledger/src/documents.ts`）: `image/jpeg` `image/png` `image/webp` `image/heic` `image/heif` `application/pdf` `text/csv`。ブラウザの `type` が空か `application/octet-stream` / `text/plain` / `application/vnd.ms-excel` のときは拡張子から決める。`complete` では先頭バイトで形式を確かめる（JPEG `FF D8 FF`、PNG の署名、WEBP の `RIFF….WEBP`、HEIC / HEIF の `ftyp`、PDF の `%PDF`。CSV は UTF-8 か Shift_JIS として読めること）。合わなければ「ファイルの中身が形式と合いません」。
 
 ## 7. API

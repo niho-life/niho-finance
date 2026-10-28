@@ -1,6 +1,6 @@
 # apps/web
 
-NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は [`docs/design/10-settings-and-setup.md`](../../docs/design/10-settings-and-setup.md)（S2）、[`docs/design/11-transactions.md`](../../docs/design/11-transactions.md)（S3）と [`docs/design/05-ui-ux.md`](../../docs/design/05-ui-ux.md)、見た目は [`docs/design/mock/v1.html`](../../docs/design/mock/v1.html) が正です。
+NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は [`docs/design/10-settings-and-setup.md`](../../docs/design/10-settings-and-setup.md)（S2）、[`docs/design/11-transactions.md`](../../docs/design/11-transactions.md)（S3）、[`docs/design/13-documents.md`](../../docs/design/13-documents.md)（S6）と [`docs/design/05-ui-ux.md`](../../docs/design/05-ui-ux.md)、見た目は [`docs/design/mock/v1.html`](../../docs/design/mock/v1.html) が正です。
 
 ## ルート
 
@@ -12,22 +12,28 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/entries/new` | 取引の登録。`?type=income / expense / transfer / voucher`（既定は支出） |
 | `/entries/[id]` | 取引の詳細（状態の帯・行・訂正・取消・履歴）。`?list=` に一覧の条件を持ち、戻るで絞り込みを保つ |
 | `/entries/[id]/correct` | 訂正（伝票のフォームを元の仕訳で埋める）。取消済み・反対仕訳・決算済みの期は詳細へ戻す |
-| `/more` | スマホの「その他」（取引・設定） |
+| `/documents` | 証憑（受信箱 / すべて / 無効）。保存（PC はドロップゾーン、スマホは撮影と選ぶ）・検索は URL の `tab` `from` `to` `amountMin` `amountMax` `partner` `kind` `q` `page`・索引簿の書き出し |
+| `/documents/[id]` | 証憑の詳細（プレビュー・項目の直接編集・紐づけ・候補・無効化・差し替え・履歴・この証憑から取引を登録） |
+| `/more` | スマホの「その他」（証憑・取引・設定） |
 | `/settings` | 設定の索引 |
 | `/settings/company` | 事業所 |
 | `/settings/fiscal-years` | 会計期間（次の期を作る・締め） |
 | `/settings/audit-log` | 監査ログ（対象・期間で絞り込み、読むだけ） |
+| `/settings/documents-policy` | 証憑の規程（施行日・責任者の保存、全文の表示と印刷） |
 | `/settings/accounts` | 勘定科目（一覧の中で直接編集・補助科目はシート） |
 | `/settings/tax-categories` | 税区分と税率規則（追加と有効 / 無効だけ） |
 | `/settings/wallets` | 口座（追加・編集はシート） |
 | `/settings/partners` | 取引先（検索・直接編集） |
 | `/settings/segments` | セグメント |
 | `/settings/memo-tags` | タグ |
+| `/api/documents/*` | 証憑の API（`prepare` / `complete` / `upload`〔ローカル保存の受け口〕/ `[id]/file` / `index.csv`。13 §7） |
 | `/api/health` | 死活と DB の疎通 |
 
-会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/entries`・`/settings` 配下は `/setup` へ redirect します。
+会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/entries`・`/documents`・`/settings` 配下は `/setup` へ redirect します。
 
 取引の画面（S3）は `app/(app)/entries/` にまとめています。フォーム（収入・支出 `simple-entry-form.tsx`、振替 `transfer-form.tsx`、伝票と訂正 `voucher-form.tsx`）は値を client で持ち、Server Action（`entries/actions.ts`）が `@niho-finance/db` の `postSimpleEntry` / `postVoucherEntry` / `correctJournalEntry` / `voidJournalEntryWithOpenDate` を呼びます。台帳のエラーは repository が項目名（`field`）を付けて返し、項目の下に出ます（項目に結べないものはフォームの上）。登録は Enter で送れ、「続けて登録」は種類と日付を残して金額・摘要・取引先を空にします。締めは会計期間の行の Sheet（`fiscal-years-table.tsx`）で、影響する件数を `previewFiscalYearCloseAction` で数えてから ConfirmDialog で確かめます。
+
+証憑の画面（S6）は `app/(app)/documents/` にまとめています。保存は `lib/documents/upload-client.ts` が client で SHA-256 を計算し、`/api/documents/prepare`（同じファイルなら送らず既存を返す）→ 送信先へ `PUT` → `/api/documents/complete`（サーバーが大きさ・SHA-256・先頭バイトを確かめて登録）の順に 1 ファイルずつ進めます。`_components/uploader.tsx` は PC のドロップゾーンとスマホの「撮影」（`capture`）「選ぶ」を持ち、`link` を渡すと同じトランザクションで紐づけます（取引の詳細の「証憑を追加」が使う）。詳細の項目は設定の一覧と同じ直接編集（`useRowSave`）で、無効化・紐づけ・外すは Server Action（`documents/actions.ts`）が `@niho-finance/db` の `updateDocument` / `voidDocument` / `linkDocument` / `unlinkDocument` を呼びます。「この証憑から取引を登録」は `/entries/new?type=expense&date&amount&partner&document` を開き、支出 / 収入のフォームが初期値にして、登録後に証憑を紐づけます。設定 › 証憑の規程の文面の正は `lib/documents/policy.ts` です。
 
 ## 部品
 

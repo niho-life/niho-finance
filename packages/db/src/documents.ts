@@ -211,6 +211,8 @@ export interface WalletTransactionCandidate {
   status: WalletTransactionStatus;
   /** Days between the line and the document's date (or upload day). */
   daysApart: number;
+  /** Other documents (not voided) already linked to the line: listed after the lines without. */
+  documentCount: number;
 }
 
 export interface JournalEntryCandidate {
@@ -222,6 +224,8 @@ export interface JournalEntryCandidate {
   /** Debit total; equals the document's amount. */
   amount: Money;
   daysApart: number;
+  /** Other documents (not voided) already linked to the entry: listed after the entries without. */
+  documentCount: number;
 }
 
 export interface DocumentLinkCandidates {
@@ -1126,10 +1130,24 @@ function candidateOrder<T extends { daysApart: number; date: CalendarDate; id: s
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
+/** Links from documents that are not voided: a target that has one already has its evidence. */
+const activeDocumentLinks = { where: { document: { status: { not: "voided" as const } } } };
+
 const candidateLineSelect = {
   ...walletTransactionSummarySelect,
   counterpartyRaw: true,
+  _count: { select: { documentLinks: activeDocumentLinks } },
 } satisfies Prisma.WalletTransactionSelect;
+
+const candidateEntrySelect = {
+  ...journalEntrySummarySelect,
+  _count: { select: { documentLinks: activeDocumentLinks } },
+} satisfies Prisma.JournalEntrySelect;
+
+/** Targets without evidence first: a line or an entry that already has a document comes later. */
+function withoutDocumentsFirst(a: { documentCount: number }, b: { documentCount: number }): number {
+  return Number(a.documentCount > 0) - Number(b.documentCount > 0);
+}
 
 type CandidateLineRow = Prisma.WalletTransactionGetPayload<{ select: typeof candidateLineSelect }>;
 
@@ -1138,14 +1156,26 @@ interface RankedLine {
   date: CalendarDate;
   id: string;
   daysApart: number;
+  documentCount: number;
 }
 
 function rankLine(line: CandidateLineRow, center: CalendarDate): RankedLine {
   const date = fromDbDate(line.txnDate);
-  return { line, date, id: line.id, daysApart: Math.abs(daysBetween(center, date)) };
+  return {
+    line,
+    date,
+    id: line.id,
+    daysApart: Math.abs(daysBetween(center, date)),
+    documentCount: line._count.documentLinks,
+  };
 }
 
-function toLineCandidate({ line, date, daysApart }: RankedLine): WalletTransactionCandidate {
+function toLineCandidate({
+  line,
+  date,
+  daysApart,
+  documentCount,
+}: RankedLine): WalletTransactionCandidate {
   return {
     id: line.id,
     walletId: line.wallet.id,
@@ -1156,12 +1186,14 @@ function toLineCandidate({ line, date, daysApart }: RankedLine): WalletTransacti
     counterparty: line.counterpartyRaw,
     status: line.status,
     daysApart,
+    documentCount,
   };
 }
 
 /**
  * Link candidates of 13 §4, nearest first (the same distance: the newer first), up to 10 each.
- * Targets already linked are left out; a voided document has none.
+ * Targets already linked are left out; targets that another document (not voided) already evidences
+ * come after those without (`documentCount`). A voided document has none.
  * - With an amount (`basis: "amount"`): statement lines (pending first, registered too) and posted
  *   entries (not reversals, not voided; debit total) of the same amount, dated within ±7 days of the
  *   document's date (without a date: the 30 days up to its upload day).
@@ -1204,7 +1236,7 @@ export async function findLinkCandidates(
       basis: "date",
       walletTransactions: lines
         .map((line) => rankLine(line, center))
-        .sort(candidateOrder)
+        .sort((a, b) => withoutDocumentsFirst(a, b) || candidateOrder(a, b))
         .slice(0, DOCUMENT_CANDIDATE_LIMIT)
         .map(toLineCandidate),
       journalEntries: [],
@@ -1233,7 +1265,7 @@ export async function findLinkCandidates(
     .sort((a, b) => {
       const pendingFirst =
         Number(b.line.status === "pending") - Number(a.line.status === "pending");
-      return pendingFirst !== 0 ? pendingFirst : candidateOrder(a, b);
+      return pendingFirst || withoutDocumentsFirst(a, b) || candidateOrder(a, b);
     })
     .slice(0, DOCUMENT_CANDIDATE_LIMIT)
     .map(toLineCandidate);
@@ -1254,16 +1286,22 @@ export async function findLinkCandidates(
       ? []
       : await db.journalEntry.findMany({
           where: { id: { in: entryIds } },
-          select: journalEntrySummarySelect,
+          select: candidateEntrySelect,
         });
   const journalEntries = entries
     .map((entry) => {
       const date = fromDbDate(entry.entryDate);
-      return { entry, date, id: entry.id, daysApart: Math.abs(daysBetween(center, date)) };
+      return {
+        entry,
+        date,
+        id: entry.id,
+        daysApart: Math.abs(daysBetween(center, date)),
+        documentCount: entry._count.documentLinks,
+      };
     })
-    .sort(candidateOrder)
+    .sort((a, b) => withoutDocumentsFirst(a, b) || candidateOrder(a, b))
     .slice(0, DOCUMENT_CANDIDATE_LIMIT)
-    .map(({ entry, date, daysApart }): JournalEntryCandidate => ({
+    .map(({ entry, date, daysApart, documentCount }): JournalEntryCandidate => ({
       id: entry.id,
       fiscalYearNo: entry.fiscalYear.no,
       no: entry.no,
@@ -1271,6 +1309,7 @@ export async function findLinkCandidates(
       description: entry.description,
       amount: debitTotal(entry.lines),
       daysApart,
+      documentCount,
     }));
   return { basis: "amount", walletTransactions, journalEntries };
 }

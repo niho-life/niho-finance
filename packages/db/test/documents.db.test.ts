@@ -959,6 +959,51 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
       expect(candidates.journalEntries).toEqual([]);
     });
 
+    it("puts lines and entries another document already evidences last, marked", async () => {
+      const amount = 6_543n;
+      const document = await register({ txnDate: "2040-08-10", amount });
+      const evidenced = await statementLine(card, "2040-08-10", -amount);
+      const plain = await statementLine(card, "2040-08-13", -amount);
+      const voidedOnly = await statementLine(card, "2040-08-14", -amount);
+      const evidencedEntry = await postExpense("2040-08-10", amount);
+      const plainEntry = await postExpense("2040-08-12", amount);
+      const other = await register({ txnDate: "2040-08-10", amount });
+      for (const [kind, id] of [
+        ["wallet_transaction", evidenced.id],
+        ["journal_entry", evidencedEntry.id],
+      ] as const) {
+        await linkDocument(prisma, { kind, id, documentId: other.id }, { actor });
+      }
+      // A voided document does not count as evidence.
+      const gone = await register({ txnDate: "2040-08-14", amount });
+      await linkDocument(
+        prisma,
+        { kind: "wallet_transaction", id: voidedOnly.id, documentId: gone.id },
+        { actor },
+      );
+      await voidDocument(prisma, { id: gone.id, reason: "誤り" }, { actor });
+
+      const candidates = await findLinkCandidates(prisma, { documentId: document.id });
+      expect(candidates.walletTransactions.map((line) => [line.id, line.documentCount])).toEqual([
+        [plain.id, 0],
+        [voidedOnly.id, 0],
+        [evidenced.id, 1],
+      ]);
+      expect(candidates.journalEntries.map((entry) => [entry.id, entry.documentCount])).toEqual([
+        [plainEntry.id, 0],
+        [evidencedEntry.id, 1],
+      ]);
+
+      // Without an amount the same order holds among the pending lines.
+      await updateDocument(prisma, { id: document.id, amount: "" }, { actor });
+      const byDate = await findLinkCandidates(prisma, { documentId: document.id });
+      expect(byDate.basis).toBe("date");
+      expect(byDate.walletTransactions.at(-1)).toMatchObject({
+        id: evidenced.id,
+        documentCount: 1,
+      });
+    });
+
     it("shows at most 10 lines", async () => {
       const document = await register({ txnDate: "2041-01-15" });
       const byOffset = new Map<number, string>();

@@ -184,6 +184,13 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "fiscal_year.reopen": "締めを戻す",
   "setup.skip": "初期設定を後回し",
   "standard_data.bootstrap": "標準データの投入",
+  "document.create": "証憑の保存",
+  "document.update": "証憑の変更",
+  "document.link": "証憑の紐づけ",
+  "document.unlink": "証憑の紐づけを外す",
+  "document.void": "証憑の無効化",
+  "document.export": "索引簿の書き出し",
+  "records_policy.save": "証憑の規程の保存",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
@@ -217,6 +224,7 @@ export const AUDIT_ENTITIES = [
   "tax_rate_rule",
   "wallet",
   "partner",
+  "document",
   "segment",
   "memo_tag",
   "standard_data",
@@ -233,6 +241,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   tax_rate_rule: "税率規則",
   wallet: "口座",
   partner: "取引先",
+  document: "証憑",
   segment: "セグメント",
   memo_tag: "タグ",
   standard_data: "標準データ",

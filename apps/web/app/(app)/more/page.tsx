@@ -6,6 +6,7 @@ export const metadata: Metadata = { title: "その他" };
 
 /** The sections the phone's bottom tabs leave out (11 §2). More rows join as they are built. */
 const SECTIONS = [
+  { label: "証憑", href: "/documents", summary: "受信箱・検索・索引簿" },
   { label: "取引", href: "/entries", summary: "仕訳の一覧・登録・訂正" },
   { label: "設定", href: "/settings", summary: "事業所・会計期間・勘定科目・口座 …" },
 ] as const;
