@@ -69,7 +69,7 @@ interface Options {
 
 const COLUMNS = {
   columns:
-    "minmax(140px,1.2fr) 200px 220px minmax(120px,0.9fr) minmax(140px,1fr) 270px 150px 64px minmax(64px,110px)",
+    "minmax(190px,1.4fr) 184px 228px minmax(100px,0.8fr) minmax(120px,1fr) 136px 112px minmax(56px,96px)",
   mobileColumns: "minmax(0,1fr) minmax(0,1fr)",
 };
 
@@ -298,15 +298,6 @@ function cells(item: RecurringRow, options: Options, row: Save) {
     ),
     startDate,
     endDate,
-    periodCell: (
-      <span className="flex min-w-0 items-center gap-1">
-        {startDate}
-        <span aria-hidden="true" className="text-muted">
-          –
-        </span>
-        {endDate}
-      </span>
-    ),
     partner: (
       <SelectCell
         label={`${name} の取引先`}
@@ -378,16 +369,15 @@ function RecurringItemRow({
       <Td>
         <span className="flex min-w-0 items-center gap-1">
           <span className="min-w-0 flex-1">{cell.name}</span>
-          <span className="shrink-0 md:hidden">{open}</span>
+          <span className="shrink-0">{open}</span>
         </span>
       </Td>
       <Td>{cell.amountCell}</Td>
       <Td>{cell.cadenceCell}</Td>
       <Td>{cell.wallet}</Td>
       <Td sm="hide">{cell.account}</Td>
-      <Td sm="hide">{cell.periodCell}</Td>
+      <Td sm="hide">{cell.endDate}</Td>
       <Td sm="hide">{cell.active}</Td>
-      <Td sm="hide">{open}</Td>
       <SaveStatus status={row.status} />
     </TableRow>
   );
@@ -434,7 +424,7 @@ function RecurringSheet({
 }
 
 const ADD_COLUMNS = {
-  columns: "minmax(0,1.2fr) 200px 220px minmax(120px,0.9fr) minmax(140px,1fr) auto",
+  columns: "minmax(0,1.2fr) 184px 228px minmax(110px,0.9fr) minmax(130px,1fr) auto",
   mobileColumns: "minmax(0,1fr) minmax(0,1fr)",
 };
 
@@ -573,16 +563,15 @@ export function RecurringTable({
 
   return (
     <>
-      <Table label="定期取引" minWidth={1320}>
+      <Table label="定期取引" minWidth={1240}>
         <TableHead {...COLUMNS}>
           <Th>名前</Th>
           <Th>入出金と金額（円）</Th>
           <Th>周期と日</Th>
           <Th>口座</Th>
           <Th sm="hide">科目</Th>
-          <Th sm="hide">期間</Th>
+          <Th sm="hide">終了日</Th>
           <Th sm="hide">状態</Th>
-          <Th />
           <Th />
         </TableHead>
         {shown.length === 0 ? (
