@@ -7,13 +7,14 @@ export interface NavItem {
   href: string | null;
 }
 
-/** The left navigation (10 §1). 明細 S5 / 証憑 S6 / 報告 S7 are not built yet. */
+/** The left navigation (10 §1, 16 §2: 決算 between 報告 and 設定). 明細 S5 / 証憑 S6 are not built yet. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "home", label: "ホーム", href: "/" },
   { key: "statements", label: "明細", href: null },
   { key: "entries", label: "取引", href: "/entries" },
   { key: "documents", label: "証憑", href: null },
   { key: "reports", label: "報告", href: "/reports" },
+  { key: "closing", label: "決算", href: "/closing" },
   { key: "settings", label: "設定", href: "/settings" },
 ];
 

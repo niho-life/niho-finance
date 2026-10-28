@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-export type NavIconName = "home" | "statements" | "entries" | "documents" | "reports" | "settings";
+export type NavIconName =
+  "home" | "statements" | "entries" | "documents" | "reports" | "closing" | "settings";
 
 /** Line icons of the mock (docs/design/mock/v1.html), 24px grid. */
 const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
@@ -19,6 +20,12 @@ const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
     </>
   ),
   reports: <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />,
+  closing: (
+    <>
+      <path d="M12 3a9 9 0 1 0 9 9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />

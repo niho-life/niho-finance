@@ -8,6 +8,7 @@ export const metadata: Metadata = { title: "その他" };
 const SECTIONS = [
   { label: "取引", href: "/entries", summary: "仕訳の一覧・登録・訂正" },
   { label: "明細の取込", href: "/imports", summary: "銀行・カードの CSV と Stripe の同期" },
+  { label: "決算", href: "/closing", summary: "決算整理・固定資産・締め" },
   { label: "設定", href: "/settings", summary: "事業所・会計期間・勘定科目・口座 …" },
 ] as const;
 
