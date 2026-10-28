@@ -40,7 +40,7 @@ function Tab({
 }
 
 /** The sections reached through その他 on phones (11 §2). */
-const MORE_PATHS = ["/more", "/entries", "/settings"];
+const MORE_PATHS = ["/more", "/entries", "/imports", "/settings"];
 
 /** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・設定). */
 export function BottomTabs() {
@@ -66,7 +66,7 @@ export function BottomTabs() {
         </span>
         <span className="sr-only">証憑（準備中）</span>
       </span>
-      <Tab href={null} label="報告">
+      <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>
       <Tab href="/more" active={inMore} label="その他">

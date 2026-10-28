@@ -42,7 +42,7 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ["packages/ledger/src/**/*.ts"],
+    files: ["packages/ledger/src/**/*.ts", "packages/payroll/src/**/*.ts"],
     rules: {
       "no-restricted-globals": ["error", { name: "parseFloat", message: integerMoney }],
       "no-restricted-properties": [
