@@ -65,7 +65,7 @@
 - 候補「同じ金額・近い日付」: 金額があるとき、|金額| が同じで日付が取引年月日 ±7 日（取引年月日が空なら保存日の 30 日前〜保存日）の 明細（未処理を先に、登録済みも）と 仕訳（登録済み。反対仕訳と取消済みを除く。金額は借方合計）を各 10 件まで、日付の近い順。すでに紐づく相手は除き、ほかの証憑（無効を除く）がすでに紐づく相手は「証憑あり」と示して後ろに並べる。行に「紐づける」（primary・sm）。
 - 金額が空のとき（撮ったばかりの領収書）: 候補「近い日付の未処理の明細」として、取引年月日 ±7 日（空なら保存日の 7 日前〜翌日）の未処理の明細を金額を問わず日付の近い順に 10 件出す（仕訳は出さない）。見出しの下に「金額を入れると、同じ金額の明細と取引に絞り込めます」。紐づけると日付・金額が明細から埋まる。これで「カメラのタブ → 撮影 → 紐づける」の 3 操作で明細に結べる（受け入れ条件）。
 - 紐づけると、証憑の取引年月日・金額・取引先が空なら相手から埋める（明細: 日付と |金額|、振込人名があれば取引先名。仕訳: 日付と借方合計、行の取引先が 1 つならその取引先）。埋めた項目は `document.update` として別に監査ログに残る。
-- 「この証憑から取引を登録」（secondary）: `/entries/new?type=expense&date=<取引年月日>&amount=<金額>&partner=<取引先 ID>&document=<証憑 ID>`。S3 の merge 後に足す。S3 のフォームはこれらを初期値にし（#4 にコメントして頼む）、`document` は登録後の自動紐づけ用で未対応なら無視してよい。
+- 「この証憑から取引を登録」（secondary。無効の証憑には出さない）: `/entries/new?type=expense&date=<取引年月日>&amount=<金額>&partner=<取引先 ID>&document=<証憑 ID>`（空の項目は入れない）。収入・支出のフォームがこれらを初期値にし、登録に最初に成功したときに `document` の証憑を仕訳へ紐づける（S3 の `simple-entry-form.tsx` への追記）。
 - 「無効にする」（ghost・文字色 danger）→ ConfirmDialog（`variant: "danger"`）: 理由（必須・200 字）。「紐づけは残り、検索にも理由つきで出ます。ファイルは消えません」。ボタンは「無効にする」。終わったら同じページに留まり帯が出る。
 - 「差し替える」→ ダイアログ: 理由（必須）とファイル（1 つ）。送信の流れは §3.1 と同じで、`complete` に `supersedesId` と `reason` を渡す。新しい証憑は元の項目（種別・取引年月日・金額・取引先・登録番号・メモ）と紐づけを引き継ぎ、元は「差し替え: 理由」で無効になる。終わったら新しい証憑へ移動。
 - 履歴: この証憑の監査ログ（保存 / 変更 / 紐づけ / 紐づけを外す / 無効）を日時順に。列: 日時 ・ 操作 ・ 実行者 ・ 理由。行を開くと before / after（整形した JSON、`<details>`）。
@@ -139,7 +139,7 @@
 
 ### 8.4 `apps/web`
 
-- `app/(app)/documents/{page.tsx, [id]/page.tsx, actions.ts, _components/*}`、`app/api/documents/{prepare,complete,upload,index.csv}/route.ts` と `app/api/documents/[id]/file/route.ts`、`lib/storage/{types,index,keys,local,gcs,mime,save}.ts`、`lib/documents/{upload-client.ts, api.ts, api-types.ts, policy.ts}`（`api-types.ts` は client と共有する要求・応答の型だけ）、`app/(app)/settings/documents-policy/{page.tsx, actions.ts, policy-form.tsx}`。
+- `app/(app)/documents/{page.tsx, [id]/page.tsx, actions.ts, _components/*}`、`app/api/documents/{prepare,complete,upload,index.csv}/route.ts` と `app/api/documents/[id]/file/route.ts`、`lib/storage/{types,config,index,keys,local,gcs,mime,save}.ts`、`lib/documents/{upload-client.ts, api.ts, api-types.ts, policy.ts, import-evidence.ts}`（`api-types.ts` は client と共有する要求・応答の型だけ）、`app/(app)/settings/documents-policy/{page.tsx, actions.ts, policy-form.tsx}`。
 - 書き込みは Server Actions（項目の変更・無効化・紐づけ・外す・規程の保存）と `complete`（登録・差し替え）。どちらも `@niho-finance/db` を通し、actor は `NIHO_FINANCE_ACTOR`。書いたら `revalidatePath("/", "layout")`。
 - 単体テスト（`apps/web/test/`。vitest を足す）: ローカル保存（書き込み・stat・read・トークンの検証と期限・既存キーの拒否）、先頭バイトの判定、規程の文面と md の一致、キーの形。
 
