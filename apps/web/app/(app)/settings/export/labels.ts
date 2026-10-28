@@ -22,6 +22,8 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   "account-details": "勘定科目内訳の元データ",
   "consumption-tax": "消費税の集計",
   announcement: "決算公告",
+  // 償却資産申告 (16-year-end §14.4)
+  "depreciable-assets-return": "償却資産申告の元データ",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {

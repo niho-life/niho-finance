@@ -179,6 +179,10 @@ export {
   type FixedAssetStatus,
   type RegisteredFixedAsset,
   type ScheduleRowState,
+  loadDepreciableAssetsReturn,
+  setPropertyTaxMunicipality,
+  type DepreciableAssetsReturnData,
+  type DepreciableAssetsReturnDeadline,
 } from "./fixed-assets";
 export { newId } from "./ids";
 export {
