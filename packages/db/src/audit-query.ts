@@ -15,6 +15,7 @@ import {
 import type { Prisma } from "@prisma/client";
 import type { Db } from "./audit";
 import { fromDbDate } from "./dates";
+import { invoiceAuditName } from "./invoices";
 import type { AuditLogFilter } from "./schemas";
 
 export const AUDIT_PAGE_SIZE = 50;
@@ -68,7 +69,8 @@ const key = (entity: string, id: string) => `${entity}:${id}`;
 
 /**
  * Names the targets of audit rows, one query per kind of target: journal entries by their number,
- * fiscal years as 第 n 期, the other rows by their name. Keys are `<entity>:<id>`.
+ * fiscal years as 第 n 期, documents by their number (「見積書（下書き）」 before the issue), the other
+ * rows by their name. Keys are `<entity>:<id>`.
  */
 export async function describeAuditTargets(
   db: Db,
@@ -161,6 +163,13 @@ export async function describeAuditTargets(
   if (ids.has("memo_tag")) {
     for (const row of await db.memoTag.findMany({ where: { id: of("memo_tag") }, select }))
       label("memo_tag", row.id, row.name);
+  }
+  if (ids.has("invoice")) {
+    const invoices = await db.invoice.findMany({
+      where: { id: of("invoice") },
+      select: { id: true, docType: true, number: true },
+    });
+    for (const invoice of invoices) label("invoice", invoice.id, invoiceAuditName(invoice));
   }
   return names;
 }

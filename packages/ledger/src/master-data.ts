@@ -191,6 +191,15 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "document.void": "証憑の無効化",
   "document.export": "索引簿の書き出し",
   "records_policy.save": "証憑の規程の保存",
+  // 請求 (18-invoicing §1)
+  "invoice.create": "書類の作成",
+  "invoice.update": "書類の変更",
+  "invoice.discard": "下書きの破棄",
+  "invoice.issue": "書類の発行",
+  "invoice.send": "書類の送付",
+  "invoice.pay": "入金の登録",
+  "invoice.cancel_payment": "入金の取消",
+  "invoice.void": "書類の無効",
   "import_batch.import": "明細の取込",
   "import_batch.sync": "Stripe の同期",
   "wallet.update_importer": "取込形式の変更",
@@ -235,6 +244,7 @@ export const AUDIT_ENTITIES = [
   "memo_tag",
   "standard_data",
   "setup",
+  "invoice",
   "import_batch",
   "stripe_account_link",
 ] as const;
@@ -254,6 +264,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   memo_tag: "タグ",
   standard_data: "標準データ",
   setup: "初期設定",
+  invoice: "請求",
   import_batch: "取込",
   stripe_account_link: "Stripe の接続",
 };
