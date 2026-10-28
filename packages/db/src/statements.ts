@@ -94,7 +94,9 @@ export type StatementErrorCode =
   | "STATEMENT_NOT_SETTLED"
   | "WALLET_INACTIVE"
   | "ZERO_AMOUNT"
-  | "CANDIDATE_MISMATCH";
+  | "CANDIDATE_MISMATCH"
+  /** The line paid an invoice (請求, #16): it is reopened by cancelling that payment there. */
+  | "INVOICE_PAYMENT";
 
 /**
  * A statement line that cannot be settled or reopened as asked. A `SettingsError`, so that the web's
@@ -877,6 +879,17 @@ export async function reopenWalletTransaction(
       where: { id: entryId },
       select: { status: true, sourceKind: true, sourceId: true },
     });
+    // A payment of an invoice (請求, decision 2026-10-29): the document holds the payment, so the
+    // line goes back only by cancelling that payment on the invoice (入金の取消).
+    if (entry.sourceKind === "invoice") {
+      const invoice = entry.sourceId
+        ? await tx.invoice.findUnique({ where: { id: entry.sourceId }, select: { number: true } })
+        : null;
+      throw new StatementError(
+        "INVOICE_PAYMENT",
+        `この明細は${invoice ? `請求書 ${invoice.number} の` : "請求書の"}入金に充てています。未処理に戻すには、請求の画面で入金を取り消してください`,
+      );
+    }
     // 照合 (the line was matched to an entry posted otherwise: by hand, or for the other line of a
     // transfer): only this line is unlinked; the entry stays as it is.
     if (!ownsEntry(entry, row.id)) {
@@ -1258,6 +1271,8 @@ export interface StatementEntrySummary {
    * voids it. Otherwise the line was only matched to it (照合) and 未処理に戻す unlinks the line.
    */
   ownsEntry: boolean;
+  /** The invoice whose payment the entry is (請求, #16): reopened there, not on this screen. */
+  invoiceId: string | null;
 }
 
 export interface StatementRow {
@@ -1376,6 +1391,7 @@ function entrySummary(row: ListRow, wallets: readonly WalletRef[]): StatementEnt
     replacedByNo: entry.replacedBy?.no ?? null,
     summary,
     ownsEntry: ownsEntry(entry, row.id),
+    invoiceId: entry.sourceKind === "invoice" ? entry.sourceId : null,
   };
 }
 
