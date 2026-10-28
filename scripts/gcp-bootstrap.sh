@@ -187,6 +187,17 @@ access() {
     log "IAP: $member"
   done
 
+  # The screens upload evidence files straight to the bucket with signed PUT URLs (13-documents §6).
+  log "documents bucket: CORS for uploads from the screens"
+  local origins cors
+  origins="\"$(service_url "$WEB_SERVICE")\""
+  if [[ -n "${APP_URL:-}" ]]; then origins+=", \"$APP_URL\""; fi
+  cors="$(mktemp)"
+  printf '[{"origin": [%s], "method": ["PUT"], "responseHeader": ["Content-Type"], "maxAgeSeconds": 3600}]\n' \
+    "$origins" > "$cors"
+  gcp storage buckets update "gs://$DOCUMENTS_BUCKET" --cors-file "$cors" > /dev/null
+  rm -f "$cors"
+
   log "Scheduler → $JOBS_SERVICE"
   gcp run services add-iam-policy-binding "$JOBS_SERVICE" --region "$GCP_REGION" \
     --member "serviceAccount:$SCHEDULER_SA_EMAIL" --role roles/run.invoker > /dev/null

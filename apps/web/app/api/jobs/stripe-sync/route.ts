@@ -1,4 +1,4 @@
-import { getPrismaClient, syncAllStripeWallets } from "@niho-finance/db";
+import { getPrismaClient, settleAfterImport, syncAllStripeWallets } from "@niho-finance/db";
 import { verifyJobRequest } from "@/lib/jobs/auth";
 import { isJobsService, logJobFinished, notOnThisService } from "@/lib/jobs/run";
 import {
@@ -19,7 +19,9 @@ export async function POST(request: Request): Promise<Response> {
   const startedAt = new Date();
   const response = await handleStripeSyncJob(request, {
     verify: (incoming) => verifyJobRequest(incoming),
-    sync: (actor) => syncAllStripeWallets(getPrismaClient(), { actor }),
+    // 取込時の自動登録 (15 §11) runs in each wallet's import.
+    sync: (actor) =>
+      syncAllStripeWallets(getPrismaClient(), { actor, afterImport: settleAfterImport }),
   });
   const body = (await response.clone().json()) as StripeSyncJobBody;
   const finished = stripeSyncFinished(response.status, body);

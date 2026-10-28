@@ -27,6 +27,7 @@ import {
 import { redirect } from "next/navigation";
 import { actor } from "@/lib/actor";
 import { csvResponse, textResponse, zipResponse } from "@/lib/pdf/download";
+import { getDocumentStorage, StoredFileNotFoundError } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,8 +151,19 @@ export async function GET(request: Request): Promise<Response> {
     }
     case "documents": {
       const documents = await loadDocumentsForArchive(prisma, { from: range.from, to: range.to });
-      // S6 stores the files; until then the archive holds the index only (no fetchFile).
-      const archive = await buildDocumentsArchive(documents);
+      // The files come from the evidence storage (S6, lib/storage); one that is missing there
+      // stays in the index and is left out of the zip.
+      const storage = getDocumentStorage();
+      const archive = await buildDocumentsArchive(documents, {
+        fetchFile: async (document) => {
+          try {
+            return await storage.read(document.storageKey);
+          } catch (error) {
+            if (error instanceof StoredFileNotFoundError) return null;
+            throw error;
+          }
+        },
+      });
       await recordExport(prisma, { kind, format: "zip", ...logged }, audit);
       return zipResponse(archive.zip, `documents_${name}.zip`);
     }

@@ -184,12 +184,34 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "fiscal_year.reopen": "締めを戻す",
   "setup.skip": "初期設定を後回し",
   "standard_data.bootstrap": "標準データの投入",
+  "document.create": "証憑の保存",
+  "document.update": "証憑の変更",
+  "document.link": "証憑の紐づけ",
+  "document.unlink": "証憑の紐づけを外す",
+  "document.void": "証憑の無効化",
+  "document.export": "索引簿の書き出し",
+  "records_policy.save": "証憑の規程の保存",
+  // 請求 (18-invoicing §1)
+  "invoice.create": "書類の作成",
+  "invoice.update": "書類の変更",
+  "invoice.discard": "下書きの破棄",
+  "invoice.issue": "書類の発行",
+  "invoice.send": "書類の送付",
+  "invoice.pay": "入金の登録",
+  "invoice.cancel_payment": "入金の取消",
+  "invoice.void": "書類の無効",
   "import_batch.import": "明細の取込",
   "import_batch.sync": "Stripe の同期",
   "wallet.update_importer": "取込形式の変更",
   "stripe_account_link.create": "Stripe の接続",
   "stripe_account_link.update": "Stripe の接続の変更",
   "stripe_account_link.delete": "Stripe の接続を外す",
+  "wallet_transaction.register": "明細の登録",
+  "wallet_transaction.transfer": "明細の振替",
+  "wallet_transaction.ignore": "明細の無視",
+  "wallet_transaction.reopen": "明細を未処理に戻す",
+  "wallet_transaction.update": "明細のメモ",
+  "rule.apply": "ルールの適用",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
@@ -223,12 +245,16 @@ export const AUDIT_ENTITIES = [
   "tax_rate_rule",
   "wallet",
   "partner",
+  "document",
   "segment",
   "memo_tag",
   "standard_data",
   "setup",
+  "invoice",
   "import_batch",
   "stripe_account_link",
+  "wallet_transaction",
+  "rule",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -241,12 +267,16 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   tax_rate_rule: "税率規則",
   wallet: "口座",
   partner: "取引先",
+  document: "証憑",
   segment: "セグメント",
   memo_tag: "タグ",
   standard_data: "標準データ",
   setup: "初期設定",
+  invoice: "請求",
   import_batch: "取込",
   stripe_account_link: "Stripe の接続",
+  wallet_transaction: "明細",
+  rule: "ルール",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

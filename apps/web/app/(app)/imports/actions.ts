@@ -3,6 +3,7 @@
 import {
   getPrismaClient,
   importCsv,
+  settleAfterImport,
   MAX_CSV_FILE_BYTES,
   previewCsvImport,
   removeStripeAccountLink,
@@ -20,6 +21,7 @@ import { z, ZodError } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { keepImportFileAsDocument } from "@/lib/documents/import-evidence";
 import type { CsvImported, CsvPreviewView, StripeSyncView } from "./_lib/types";
 
 /*
@@ -145,10 +147,21 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
       const outcome = await importCsv(
         prisma(),
         { ...input, rememberFormat: remember === "true" || remember === "on" },
-        await by(),
+        // 取込時の自動登録 (15 §11): the new lines an `autoPost` rule wins are settled in the import.
+        { ...(await by()), afterImport: settleAfterImport },
       );
       // A CSV import always records its batch; without one there is nothing to open.
       if (outcome.batchId === null) throw new Error("importCsv returned no batch");
+      // The file is electronic transaction data: kept as a 明細書 document (S6, 13 §9).
+      await keepImportFileAsDocument(
+        prisma(),
+        {
+          batchId: outcome.batchId,
+          bytes: input.bytes,
+          fileName: typeof input.fileName === "string" ? input.fileName : null,
+        },
+        await by(),
+      );
       return outcome.batchId;
     },
     (batchId) => ({ batchId }),
@@ -193,7 +206,12 @@ export async function removeStripeAccountLinkAction(walletId: string): Promise<A
  */
 export async function syncStripeAction(walletId: string): Promise<ActionResult<StripeSyncView>> {
   return write(
-    async () => syncStripeWallet(prisma(), { walletId: parseId(walletId) }, await by()),
+    async () =>
+      syncStripeWallet(
+        prisma(),
+        { walletId: parseId(walletId) },
+        { ...(await by()), afterImport: settleAfterImport },
+      ),
     ({ batchId, importedCount, duplicateCount, failedCount, error }) => ({
       batchId,
       importedCount,

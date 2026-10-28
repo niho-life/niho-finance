@@ -40,9 +40,9 @@ function Tab({
 }
 
 /** The sections reached through その他 on phones (11 §2). */
-const MORE_PATHS = ["/more", "/entries", "/imports", "/settings"];
+const MORE_PATHS = ["/more", "/entries", "/imports", "/invoices", "/settings"];
 
-/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・設定). */
+/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・請求・設定). */
 export function BottomTabs() {
   const pathname = usePathname();
   const inMore = MORE_PATHS.some((path) => isActivePath(pathname, path));
@@ -54,18 +54,19 @@ export function BottomTabs() {
       <Tab href="/" active={isActivePath(pathname, "/")} label="ホーム">
         <NavIcon name="home" className="size-[22px]" />
       </Tab>
-      <Tab href={null} label="明細">
+      <Tab href="/statements" active={isActivePath(pathname, "/statements")} label="明細">
         <NavIcon name="statements" className="size-[22px]" />
       </Tab>
-      <span
-        aria-disabled="true"
-        className="flex min-h-12 flex-col items-center justify-center opacity-50"
+      <Link
+        href="/documents"
+        aria-label="証憑"
+        aria-current={isActivePath(pathname, "/documents") ? "page" : undefined}
+        className="flex min-h-12 flex-col items-center justify-center"
       >
-        <span className="-mt-4 flex size-11 items-center justify-center rounded-full bg-track text-muted shadow-float">
+        <span className="-mt-4 flex size-11 items-center justify-center rounded-full bg-primary text-white shadow-float">
           <NavIcon name="camera" className="size-[22px]" />
         </span>
-        <span className="sr-only">証憑（準備中）</span>
-      </span>
+      </Link>
       <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>

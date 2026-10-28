@@ -20,6 +20,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
 import { entryNo, walletLabel } from "@/lib/format";
+import { linkDocumentAction } from "../../documents/actions";
 import { postSimpleEntryAction } from "../actions";
 import {
   accountLabel,
@@ -145,10 +146,16 @@ export function SimpleEntryForm({
   type,
   options,
   today,
+  initial,
+  linkDocument,
 }: {
   type: FlowType;
   options: EntryFormOptions;
   today: string;
+  /** First values from 「この証憑から取引を登録」 (the amount with 3-digit grouping). */
+  initial?: { entryDate?: string; amount?: string; partnerId?: string };
+  /** The document to link to the entry once it is registered (13 §4). */
+  linkDocument?: { id: string; name: string };
 }) {
   const id = useId();
   const router = useRouter();
@@ -210,7 +217,7 @@ export function SimpleEntryForm({
   const [draft, setDraft] = useState<Draft>(() =>
     withDefaults(
       {
-        entryDate: today,
+        entryDate: initial?.entryDate ?? today,
         description: "",
         counterpart: firstWallet
           ? `wallet:${firstWallet.id}`
@@ -218,10 +225,10 @@ export function SimpleEntryForm({
             ? `account:${lookups.counterAccounts[0].id}`
             : "",
         accountId: "",
-        amount: "",
+        amount: initial?.amount ?? "",
         taxCategoryCode: text.defaultTax,
         segmentId: "",
-        partnerId: "",
+        partnerId: initial?.partnerId ?? "",
         memoTagIds: [],
       },
       { accountId: false, taxCategoryCode: false, segmentId: false },
@@ -229,6 +236,8 @@ export function SimpleEntryForm({
   );
   const [error, setError] = useState<ActionError | null>(null);
   const [pending, startTransition] = useTransition();
+  /** Linked to the first entry registered here only (続けて登録 does not link it again). */
+  const [pendingLink, setPendingLink] = useState(linkDocument ?? null);
 
   function change(patch: Partial<Draft>, by?: keyof Edited) {
     const nextEdited = by ? { ...edited, [by]: true } : edited;
@@ -274,7 +283,24 @@ export function SimpleEntryForm({
         return;
       }
       setError(null);
-      toast(`${entryNo(result.data.no)} を登録しました`);
+      if (pendingLink) {
+        setPendingLink(null);
+        const linked = await linkDocumentAction({
+          kind: "journal_entry",
+          id: result.data.id,
+          documentId: pendingLink.id,
+        });
+        // A failed link is told, and the entry still opens: it is registered.
+        if (linked.ok) toast(`${entryNo(result.data.no)} を登録し、証憑を紐づけました`);
+        else {
+          toast(
+            `${entryNo(result.data.no)} を登録しました。証憑は紐づけられませんでした（${linked.error}）`,
+            { tone: "error" },
+          );
+        }
+      } else {
+        toast(`${entryNo(result.data.no)} を登録しました`);
+      }
       if (keepGoing) {
         // Same type and date; the amount, the description and the partner start over (11 §4).
         setDraft(withDefaults({ ...draft, amount: "", description: "", partnerId: "" }, edited));
@@ -299,6 +325,11 @@ export function SimpleEntryForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex max-w-3xl flex-col gap-4">
+      {pendingLink ? (
+        <p className="rounded-lg bg-surface-2 px-3.5 py-2.5 text-[14px] break-words">
+          証憑「{pendingLink.name}」を紐づけて登録します
+        </p>
+      ) : null}
       <FormAlerts messages={alerts} />
       <div className="grid gap-4 md:grid-cols-2">
         <DateField

@@ -12,7 +12,7 @@ NIHO finance を GCP に配備し、毎月使える状態に保つ手順です�
 | Cloud Run サービス | `niho-finance-jobs` | ジョブ（`/api/jobs/<name>`）。同じイメージ。IAP なし・未認証の呼び出し不可。`roles/run.invoker` は Scheduler 用のサービスアカウントだけ。`NIHO_FINANCE_SERVICE=jobs` |
 | Cloud Run ジョブ | `niho-finance-migrate` | `prisma migrate deploy` と権限の付与（`scripts/db/grants.sql`）。配備のたびに新しいイメージで 1 回実行する |
 | Cloud SQL | 既存インスタンス（PostgreSQL 15）に データベース `niho_finance` | 専用ロール 2 つ: `niho_finance_migrate`（テーブルの所有者。migration だけが使う）と `niho_finance_app`（アプリ。`audit_log` と `journal_line` の UPDATE / DELETE / TRUNCATE を持たない） |
-| GCS | 証憑バケット | オブジェクトのバージョニング ON、保持ポリシー 7 年（ロックしない）、公開アクセス禁止、均一なバケットレベルのアクセス。アプリのサービスアカウントは作成と閲覧だけ（削除・上書き不可） |
+| GCS | 証憑バケット | オブジェクトのバージョニング ON、保持ポリシー 7 年（ロックしない）、公開アクセス禁止、均一なバケットレベルのアクセス。アプリのサービスアカウントは作成と閲覧だけ（削除・上書き不可）。CORS は画面の origin（`run.app` と `APP_URL`）からの `PUT`（ブラウザが署名付き URL へ直接送る。13 §6） |
 | GCS | バックアップバケット | 日次エクスポート。保持ポリシー 10 年（ロックしない）、公開アクセス禁止 |
 | Secret Manager | `niho-finance-database-url`、`niho-finance-migrate-database-url`、`niho-finance-mail-password` | 鍵の発行と更新は [secrets.md](secrets.md) |
 | Cloud Scheduler | `niho-finance-stripe-sync`（毎日 06:00 JST）、`niho-finance-backup-export`（毎日 03:00 JST）、`niho-finance-calendar-notify`（毎日 09:00 JST） | `niho-finance-jobs` の `/api/jobs/<name>` へ POST。OIDC（audience はジョブ用サービスの URL）。再試行なし |
@@ -142,6 +142,6 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 1. ドメインの所有確認（Search Console）が gcloud のアカウントで済んでいること: `gcloud domains list-user-verified`
 2. `gcloud beta run domain-mappings create --service niho-finance --domain <host> --region <リージョン>`
 3. `gcloud beta run domain-mappings describe --domain <host> --region <リージョン>` の `resourceRecords` を DNS に登録する（CNAME。Cloudflare なら「DNS のみ」で、プロキシを通さない）
-4. 証明書が出るまで待つ（数分〜1 時間）。`scripts/deploy.env` の `APP_URL` にその URL を書き、`scripts/deploy.sh --no-build` でメールに載る URL を更新する
+4. 証明書が出るまで待つ（数分〜1 時間）。`scripts/deploy.env` の `APP_URL` にその URL を書き、`scripts/deploy.sh --no-build` でメールに載る URL を、`scripts/gcp-bootstrap.sh access` で証憑バケットの CORS を更新する
 
 IAP はサービスに掛かっているので、独自ドメイン経由でも `run.app` 経由でも同じ許可リストで通る。

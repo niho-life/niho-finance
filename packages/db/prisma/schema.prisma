@@ -284,6 +284,14 @@ model Company {
   setupWalletsSkippedAt     DateTime? @map("setup_wallets_skipped_at") @db.Timestamptz(6)
   /// Setup wizard: the 開始仕訳 step was postponed (「あとで」).
   setupOpeningSkippedAt     DateTime? @map("setup_opening_skipped_at") @db.Timestamptz(6)
+  /// 証憑の規程 (電子取引データの事務処理規程): 施行日. Set = the policy is in force.
+  recordsPolicyEffectiveOn  DateTime? @map("records_policy_effective_on") @db.Date
+  /// 証憑の規程: 管理責任者
+  recordsPolicyManager      String?   @map("records_policy_manager")
+  /// 証憑の規程: 処理責任者
+  recordsPolicyOperator     String?   @map("records_policy_operator")
+  /// 証憑の規程: version of the text that was put in force (POLICY_VERSION of the app)
+  recordsPolicyVersion      String?   @map("records_policy_version")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -348,6 +356,7 @@ model Account {
   partnerDefaults    Partner[]
   fixedAssets        FixedAsset[]
   recurringItems     RecurringItem[]
+  invoices           Invoice[]
 
   @@map("account")
 }
@@ -428,6 +437,7 @@ model Segment {
   partnerDefaults Partner[]
   fixedAssets     FixedAsset[]
   recurringItems  RecurringItem[]
+  invoices        Invoice[]
 
   @@map("segment")
 }
@@ -552,14 +562,23 @@ model WalletTransaction {
   ignoredReason   String?                 @map("ignored_reason")
   createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// When it was settled (registered / transfer / ignored); null while pending
+  settledAt       DateTime?               @map("settled_at") @db.Timestamptz(6)
+  /// The rule whose suggestion settled it (or was applied)
+  ruleId          String?                 @map("rule_id")
+  /// Settled by a rule without the owner (on import, or 「ルールを適用」)
+  autoPosted      Boolean                 @default(false) @map("auto_posted")
+  note            String?
 
   wallet        Wallet         @relation(fields: [walletId], references: [id])
   importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
   journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
   documentLinks DocumentLink[]
+  rule          Rule?          @relation(fields: [ruleId], references: [id])
 
   @@unique([walletId, externalId])
   @@index([walletId, status, txnDate])
+  @@index([status, txnDate])
   @@map("wallet_transaction")
 }
 
@@ -617,7 +636,8 @@ model Rule {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  wallet Wallet? @relation(fields: [walletId], references: [id])
+  wallet       Wallet?             @relation(fields: [walletId], references: [id])
+  transactions WalletTransaction[]
 
   @@map("rule")
 }
@@ -737,6 +757,10 @@ model Document {
   status                    DocumentStatus @default(inbox)
   /// A replacement points to the document it supersedes (the old one becomes `voided`)
   supersedesId              String?        @map("supersedes_id")
+  /// Set when voided (with the reason); never cleared (DB guard)
+  voidedAt                  DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason                String?        @map("void_reason")
+  note                      String?
   createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -780,6 +804,8 @@ model DocumentLink {
 // Invoices and fixed assets (v2: main columns only)
 // ---------------------------------------------------------------------------
 
+/// 見積書・納品書・請求書 (docs/design/18-invoicing.md). Only drafts change their body (DB trigger);
+/// deletion is logical (`void`).
 model Invoice {
   id                   String         @id
   docType              InvoiceDocType @map("doc_type")
@@ -794,7 +820,17 @@ model Invoice {
   subtotalByRate       Json           @map("subtotal_by_rate")
   taxByRate            Json           @map("tax_by_rate")
   total                BigInt
+  /// Unit prices include the tax (税込) instead of excluding it (税抜)
+  pricesIncludeTax     Boolean        @default(false) @map("prices_include_tax")
+  /// Revenue account of an invoice (default 4040 売上高 受託開発); null for quotes and delivery notes
+  revenueAccountId     String?        @map("revenue_account_id")
+  /// Segment of the revenue lines (default 受託); null for quotes and delivery notes
+  segmentId            String?        @map("segment_id")
+  /// 備考 printed on the document
+  note                 String?
   issuerSnapshot       Json?          @map("issuer_snapshot")
+  /// Recipient (name, address) copied on issue
+  recipientSnapshot    Json?          @map("recipient_snapshot")
   status               InvoiceStatus  @default(draft)
   /// Converted from (quote → delivery → invoice)
   sourceInvoiceId      String?        @map("source_invoice_id")
@@ -802,18 +838,30 @@ model Invoice {
   journalEntryId       String?        @map("journal_entry_id")
   payments             Json?
   stripePaymentLinkUrl String?        @map("stripe_payment_link_url")
+  /// When the number was given (発行)
+  issuedAt             DateTime?      @map("issued_at") @db.Timestamptz(6)
+  /// Last time it was marked sent (送付済み)
+  sentAt               DateTime?      @map("sent_at") @db.Timestamptz(6)
+  /// Where it was last sent (an email address or a note)
+  sentTo               String?        @map("sent_to")
+  /// When it was voided or its draft discarded
+  voidedAt             DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason           String?        @map("void_reason")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  partner       Partner        @relation(fields: [partnerId], references: [id])
-  sourceInvoice Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
-  convertedTo   Invoice[]      @relation("InvoiceConversion")
-  pdfDocument   Document?      @relation(fields: [pdfDocumentId], references: [id])
-  journalEntry  JournalEntry?  @relation(fields: [journalEntryId], references: [id])
-  documentLinks DocumentLink[]
+  partner        Partner        @relation(fields: [partnerId], references: [id])
+  revenueAccount Account?       @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
+  segment        Segment?       @relation(fields: [segmentId], references: [id])
+  sourceInvoice  Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
+  convertedTo    Invoice[]      @relation("InvoiceConversion")
+  pdfDocument    Document?      @relation(fields: [pdfDocumentId], references: [id])
+  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  documentLinks  DocumentLink[]
 
   @@unique([docType, number])
   @@index([partnerId])
+  @@index([status, dueDate])
   @@map("invoice")
 }
 
