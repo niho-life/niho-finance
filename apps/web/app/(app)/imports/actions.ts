@@ -20,8 +20,8 @@ import { revalidatePath } from "next/cache";
 import { z, ZodError } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
+import { actor } from "@/lib/actor";
 import { keepImportFileAsDocument } from "@/lib/documents/import-evidence";
-import { actor } from "@/lib/env";
 import type { CsvImported, CsvPreviewView, StripeSyncView } from "./_lib/types";
 
 /*
@@ -32,7 +32,7 @@ import type { CsvImported, CsvPreviewView, StripeSyncView } from "./_lib/types";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -148,7 +148,7 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
         prisma(),
         { ...input, rememberFormat: remember === "true" || remember === "on" },
         // 取込時の自動登録 (15 §11): the new lines an `autoPost` rule wins are settled in the import.
-        { ...by(), afterImport: settleAfterImport },
+        { ...(await by()), afterImport: settleAfterImport },
       );
       // A CSV import always records its batch; without one there is nothing to open.
       if (outcome.batchId === null) throw new Error("importCsv returned no batch");
@@ -160,7 +160,7 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
           bytes: input.bytes,
           fileName: typeof input.fileName === "string" ? input.fileName : null,
         },
-        by(),
+        await by(),
       );
       return outcome.batchId;
     },
@@ -173,7 +173,8 @@ export async function importCsvAction(formData: FormData): Promise<ActionResult<
 /** 取込形式 of a bank / card / other wallet: `{ walletId, importer, importerConfig }`. */
 export async function updateWalletImporterAction(values: unknown): Promise<ActionResult> {
   return write(
-    () => updateWalletImporter(prisma(), valuesSchema.parse(values) as WalletImporterInput, by()),
+    async () =>
+      updateWalletImporter(prisma(), valuesSchema.parse(values) as WalletImporterInput, await by()),
     () => null,
   );
 }
@@ -181,8 +182,12 @@ export async function updateWalletImporterAction(values: unknown): Promise<Actio
 /** Stripe の接続: `{ walletId, stripeAccountId, secretName }` (the key's variable name, never the key). */
 export async function saveStripeAccountLinkAction(values: unknown): Promise<ActionResult> {
   return write(
-    () =>
-      saveStripeAccountLink(prisma(), valuesSchema.parse(values) as StripeAccountLinkInput, by()),
+    async () =>
+      saveStripeAccountLink(
+        prisma(),
+        valuesSchema.parse(values) as StripeAccountLinkInput,
+        await by(),
+      ),
     () => null,
   );
 }
@@ -190,7 +195,7 @@ export async function saveStripeAccountLinkAction(values: unknown): Promise<Acti
 /** 接続を外す: the lines and the history stay; the cursor goes with the connection. */
 export async function removeStripeAccountLinkAction(walletId: string): Promise<ActionResult> {
   return write(
-    () => removeStripeAccountLink(prisma(), { walletId: parseId(walletId) }, by()),
+    async () => removeStripeAccountLink(prisma(), { walletId: parseId(walletId) }, await by()),
     () => null,
   );
 }
@@ -201,11 +206,11 @@ export async function removeStripeAccountLinkAction(walletId: string): Promise<A
  */
 export async function syncStripeAction(walletId: string): Promise<ActionResult<StripeSyncView>> {
   return write(
-    () =>
+    async () =>
       syncStripeWallet(
         prisma(),
         { walletId: parseId(walletId) },
-        { ...by(), afterImport: settleAfterImport },
+        { ...(await by()), afterImport: settleAfterImport },
       ),
     ({ batchId, importedCount, duplicateCount, failedCount, error }) => ({
       batchId,

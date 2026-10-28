@@ -20,7 +20,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { attempt, formInput } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { toOpeningPreviewView, type OpeningPreviewView } from "@/lib/opening-view";
 import { stepHref, type WizardStep } from "./steps";
 
@@ -30,7 +30,7 @@ import { stepHref, type WizardStep } from "./steps";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 function goTo(step: WizardStep): never {
   revalidatePath("/", "layout");
@@ -45,7 +45,9 @@ export async function saveCompanyStepAction(
   const result = await attempt(async () => {
     const values = formInput<CompanyInput>(formData);
     const existing = await getCompany(prisma());
-    return existing ? updateCompany(prisma(), values, by()) : createCompany(prisma(), values, by());
+    return existing
+      ? updateCompany(prisma(), values, await by())
+      : createCompany(prisma(), values, await by());
   });
   if (!result.ok) return result;
   goTo("fiscal_year");
@@ -57,7 +59,7 @@ export async function createFirstFiscalYearAction(values: {
   consumptionTax: string;
   accountingMethod: string;
 }): Promise<ActionResult> {
-  const result = await attempt(() =>
+  const result = await attempt(async () =>
     createFirstFiscalYear(
       prisma(),
       {
@@ -65,7 +67,7 @@ export async function createFirstFiscalYearAction(values: {
         consumptionTax: values.consumptionTax,
         accountingMethod: values.accountingMethod,
       },
-      by(),
+      await by(),
     ),
   );
   if (!result.ok) return result;
@@ -74,7 +76,7 @@ export async function createFirstFiscalYearAction(values: {
 
 /** Step 3: the chart template with the tax categories, rate rules and segments. */
 export async function bootstrapStandardDataAction(): Promise<ActionResult> {
-  const result = await attempt(() => bootstrapStandardData(prisma(), by()));
+  const result = await attempt(async () => bootstrapStandardData(prisma(), await by()));
   if (!result.ok) return result;
   goTo("wallets");
 }
@@ -84,7 +86,7 @@ const walletRowsSchema = z.array(z.record(z.string(), z.string())).max(20);
 /** Step 4: the wallets checked in the list, in one transaction. */
 export async function createWalletsAction(rows: unknown): Promise<ActionResult> {
   const result = await attempt(async () =>
-    createWallets(prisma(), walletRowsSchema.parse(rows) as WalletCreateInput[], by()),
+    createWallets(prisma(), walletRowsSchema.parse(rows) as WalletCreateInput[], await by()),
   );
   if (!result.ok) return result;
   goTo("opening");
@@ -92,13 +94,13 @@ export async function createWalletsAction(rows: unknown): Promise<ActionResult> 
 
 /** 「あとで」 on Step 4 or 5 (done later from the settings or the home). */
 export async function skipWalletsAction(): Promise<ActionResult> {
-  const result = await attempt(() => skipSetupStep(prisma(), "wallets", by()));
+  const result = await attempt(async () => skipSetupStep(prisma(), "wallets", await by()));
   if (!result.ok) return result;
   goTo("opening");
 }
 
 export async function skipOpeningAction(): Promise<ActionResult> {
-  const result = await attempt(() => skipSetupStep(prisma(), "opening", by()));
+  const result = await attempt(async () => skipSetupStep(prisma(), "opening", await by()));
   if (!result.ok) return result;
   goTo("complete");
 }
@@ -113,7 +115,7 @@ export async function previewOpeningAction(
 
 /** Step 5: posts the opening entries once (kind 開始, segment 共通). */
 export async function postOpeningAction(input: OpeningInput): Promise<ActionResult> {
-  const result = await attempt(() => postOpeningEntries(prisma(), input, by()));
+  const result = await attempt(async () => postOpeningEntries(prisma(), input, await by()));
   if (!result.ok) return result;
   goTo("complete");
 }

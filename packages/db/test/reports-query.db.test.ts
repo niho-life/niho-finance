@@ -7,6 +7,7 @@ import {
 import type { PrismaClient } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  CALENDAR_RULES,
   countInboxDocuments,
   listRecentExports,
   loadBackupSource,
@@ -95,16 +96,18 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
     expect(far.find((row) => row.key === "inbox-documents")?.badge).toBe(
       inbox > 0 ? String(inbox) : undefined,
     );
+    // The seed holds 第 1 期's tax return as the calendar rule gives it (S8, calendar.ts).
+    const taxReturn = CALENDAR_RULES.find((rule) => rule.key === "annual.tax-return")?.title;
     const near = (await loadHomeTodos(prisma, "2027-05-28")).filter((row) => row.tone === "date");
     expect(near.find((row) => row.dueDate === "2027-05-31")).toMatchObject({
       badge: "5/31",
-      label: "法人税等の確定申告・納付",
+      label: taxReturn,
     });
     const overdue = (await loadHomeTodos(prisma, "2027-06-02")).filter(
       (row) => row.tone === "date",
     );
     expect(overdue.find((row) => row.dueDate === "2027-05-31")?.label).toBe(
-      "法人税等の確定申告・納付（期限切れ）",
+      `${taxReturn}（期限切れ）`,
     );
     const custom = await loadHomeTodos(prisma, "2026-12-15", [
       () => Promise.resolve([{ key: "x", badge: "3", tone: "count", label: "テスト", href: "/x" }]),

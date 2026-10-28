@@ -11,6 +11,8 @@ export interface TestDatabase {
   testUrl: string;
   /** Migrated but not seeded (the setup wizard starts from nothing): the test database + `_empty`. */
   emptyUrl: string;
+  /** Migrated but not seeded, for the backup restore: the test database + `_restore`. */
+  restoreUrl: string;
 }
 
 function withDatabaseName(url: string, name: string): string {
@@ -27,16 +29,22 @@ export function deriveEmptyDatabaseUrl(testUrl: string): string {
   return withDatabaseName(testUrl, `${describeDatabaseUrl(testUrl).database}_empty`);
 }
 
+export function deriveRestoreDatabaseUrl(testUrl: string): string {
+  return withDatabaseName(testUrl, `${describeDatabaseUrl(testUrl).database}_restore`);
+}
+
 /** `null` when `DATABASE_URL` is not set (database tests are then skipped). */
 export function resolveTestDatabase(): TestDatabase | null {
   const mainUrl = optionalDatabaseUrl();
   if (!mainUrl) return null;
   const testUrl = process.env.TEST_DATABASE_URL ?? deriveTestDatabaseUrl(mainUrl);
   const emptyUrl = deriveEmptyDatabaseUrl(testUrl);
+  const restoreUrl = deriveRestoreDatabaseUrl(testUrl);
   assertNihoFinanceDatabase(testUrl);
   assertNihoFinanceDatabase(emptyUrl);
+  assertNihoFinanceDatabase(restoreUrl);
   const main = describeDatabaseUrl(mainUrl);
-  for (const url of [testUrl, emptyUrl]) {
+  for (const url of [testUrl, emptyUrl, restoreUrl]) {
     const test = describeDatabaseUrl(url);
     if (main.host === test.host && main.port === test.port && main.database === test.database) {
       throw new Error(
@@ -44,7 +52,7 @@ export function resolveTestDatabase(): TestDatabase | null {
       );
     }
   }
-  return { mainUrl, testUrl, emptyUrl };
+  return { mainUrl, testUrl, emptyUrl, restoreUrl };
 }
 
 /** True inside database test workers (set by vitest.db.config.ts). */

@@ -28,8 +28,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
+import { actor } from "@/lib/actor";
 import { formatDate } from "@/lib/format";
-import { actor } from "@/lib/env";
 
 /*
  * Server Actions of /statements (15 §5, §7). The repository validates every input with its Zod
@@ -39,7 +39,7 @@ import { actor } from "@/lib/env";
  */
 
 const prisma = () => getPrismaClient();
-const by = () => ({ actor: actor() });
+const by = async () => ({ actor: await actor() });
 
 /** Form values from the client: a plain object (the repository checks every field). */
 const valuesSchema = z.record(z.string(), z.unknown());
@@ -73,12 +73,12 @@ export async function registerStatementAction(
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
   return write(
-    () =>
+    async () =>
       registerWalletTransaction(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as RegisterStatementInput,
-        by(),
+        await by(),
       ),
     settled,
   );
@@ -90,12 +90,12 @@ export async function transferStatementAction(
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
   return write(
-    () =>
+    async () =>
       transferWalletTransaction(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as TransferStatementInput,
-        by(),
+        await by(),
       ),
     settled,
   );
@@ -107,12 +107,12 @@ export async function ignoreStatementAction(
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
   return write(
-    () =>
+    async () =>
       ignoreWalletTransaction(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as IgnoreStatementInput,
-        by(),
+        await by(),
       ),
     (result) => ({ entry: null, transactionIds: result.transactionIds }),
   );
@@ -130,12 +130,12 @@ export async function reopenStatementAction(
   values: unknown,
 ): Promise<ActionResult<ReopenedStatement>> {
   return write(
-    () =>
+    async () =>
       reopenWalletTransaction(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as ReopenStatementInput,
-        by(),
+        await by(),
       ),
     (result) => ({
       reopenedIds: result.reopenedIds,
@@ -152,12 +152,12 @@ export async function noteStatementAction(
   values: unknown,
 ): Promise<ActionResult<{ note: string | null }>> {
   return write(
-    () =>
+    async () =>
       updateWalletTransactionNote(
         prisma(),
         parseId(id),
         valuesSchema.parse(values) as StatementNoteInput,
-        by(),
+        await by(),
       ),
     (result) => ({ note: result.note }),
   );
