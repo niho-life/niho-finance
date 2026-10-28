@@ -24,6 +24,10 @@ const LOCK_KEYS = {
   standardData: 7_301_003,
   /** Payroll: confirming a pay run, posting or completing its payments (22-payroll §5.1). */
   payroll: 7_301_004,
+  /** Users: who can sign in and their roles; keeps one active 管理者 at least (23 §4). */
+  users: 7_301_005,
+  /** 立替精算: making (or turning back on) 未払金〔立替精算〕 on the first submission (23 §5.1). */
+  expenses: 7_301_006,
 } as const;
 
 export type SettingsLock = keyof typeof LOCK_KEYS;

@@ -92,7 +92,8 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 - ジョブ: Cloud Run の IAM が Scheduler のサービスアカウント以外を弾き、アプリでも `runJob`（`apps/web/lib/jobs/run.ts`）が S4 の `verifyJobRequest`（`apps/web/lib/jobs/auth.ts`。Google の署名・`aud`・サービスアカウント）で確かめる。`NIHO_FINANCE_SERVICE=jobs` 以外では 404。ジョブの書き込みの actor は `system`（stripe-sync はサービスアカウントのメール）。
 - 手元でジョブを動かす: `.env` に `NIHO_FINANCE_SERVICE=jobs` と `NIHO_FINANCE_JOB_TOKEN=<任意の文字列>` を置いて dev を起動し、`curl -X POST -H "Authorization: Bearer <その文字列>" localhost:3000/api/jobs/backup`。
 - 許可するアカウントを足す・外す（将来の 2 人目など）: `scripts/deploy.env` の `IAP_MEMBERS` に `user:<email>` をカンマ区切りで足して `scripts/gcp-bootstrap.sh access` を流す（既存の許可はそのまま、足した人だけ増える）。外すときは `gcloud beta iap web remove-iam-policy-binding --resource-type=cloud-run --service=niho-finance --region=<リージョン> --member=user:<email> --role=roles/iap.httpsResourceAccessor`。いまの許可一覧は `gcloud beta iap web get-iam-policy --resource-type=cloud-run --service=niho-finance --region=<リージョン>`。
-- v1 は 1 ユーザーなので、許可された人は誰でも owner として書ける（役割の区別は v3）。監査ログには IAP のメールが actor として残る。
+- 役割（v3、[23](../design/23-users-and-expenses.md)）: IAP は「誰が画面に届くか」、アプリの 設定 › 利用者 は「何ができるか」（管理者 / 経理 / 閲覧）を決める。2 人目を足す順番は、(1) 管理者が 設定 › 利用者 でメールと役割を追加 → (2) 上の手順で `IAP_MEMBERS` に足して `scripts/gcp-bootstrap.sh access`。外すときは (1) 設定 › 利用者 で無効にする（次の要求から使えない）→ (2) IAP の許可を外す。IAP だけ足して利用者に足さないと「このアカウントは利用者に登録されていません」の画面になる。
+- 最初の管理者: v3 を配備した直後は `app_user` が空で、最初に書き込んだ人（いまの許可リストは代表 1 人）が管理者として登録される（監査ログ `user.create`）。配備したら代表が先に 設定 › 利用者 を開き「管理者として登録」を押す（ほかの保存でも同じく登録される）。監査ログには従来どおり IAP のメールが actor として残る。
 
 ## 6. ジョブ
 

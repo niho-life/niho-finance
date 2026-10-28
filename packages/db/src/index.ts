@@ -156,6 +156,34 @@ export {
 } from "./env";
 export { isUniqueViolation, SettingsError } from "./errors";
 export {
+  cancelExpensePayment,
+  EXPENSE_CLAIM_STATUS_LABELS,
+  EXPENSE_PAYABLE_ACCOUNT_CODE,
+  EXPENSE_PAYMENTS_LIMIT,
+  EXPENSE_SUB_ACCOUNT_NAME,
+  loadExpenseFormOptions,
+  loadExpenseOverview,
+  loadExpensePaymentCandidates,
+  payExpenseClaims,
+  submitExpenseClaim,
+  voidExpenseClaim,
+  type CancelExpensePaymentResult,
+  type ExpenseClaimant,
+  type ExpenseClaimantGroup,
+  type ExpenseClaimRecord,
+  type ExpenseClaimRow,
+  type ExpenseClaimStatus,
+  type ExpenseEntryRef,
+  type ExpenseFormOptions,
+  type ExpenseOverview,
+  type ExpensePaymentCandidate,
+  type ExpensePaymentRecord,
+  type ExpensePaymentRow,
+  type PayExpenseClaimsResult,
+  type SubmitExpenseClaimResult,
+  type VoidExpenseClaimResult,
+} from "./expenses";
+export {
   ACQUISITION_CANDIDATE_LIMIT,
   disposeFixedAsset,
   FIXED_ASSET_STATUS_LABELS,
@@ -357,6 +385,28 @@ export {
   type YearEndYearRef,
 } from "./year-end";
 export { runInTransaction, TRANSACTION_OPTIONS, type Tx } from "./transaction";
+export {
+  countUsers,
+  createUser,
+  isUserRole,
+  listUsers,
+  OWNER_ONLY_MESSAGE,
+  registerFirstOwner,
+  resolveUserAccess,
+  roleAtLeast,
+  setUserActive,
+  UNREGISTERED_USER_MESSAGE,
+  updateUser,
+  USER_ROLE_LABELS,
+  USER_ROLE_RANK,
+  userDisplayName,
+  VIEWER_CANNOT_WRITE_MESSAGE,
+  type RegisterFirstOwnerResult,
+  type UserAccess,
+  type UserCounts,
+  type UserRecord,
+  type UserRole,
+} from "./users";
 export type { PrismaClient } from "@prisma/client";
 export {
   DEADLINE_WINDOW_DAYS,
