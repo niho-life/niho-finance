@@ -262,7 +262,11 @@ Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上�
 
 ### Actor / User
 
-v1 は 1 ユーザー（IAP で認証した Google アカウントのメール）。v3 で役割（`owner` / `accountant` / `viewer`）を足す。
+v1 は 1 ユーザー（IAP で認証した Google アカウントのメール）。v3 で役割（`owner` / `accountant` / `viewer`）を足す。役割ごとに許す操作、利用者の追加と最初の管理者、認可の入口は [23](23-users-and-expenses.md)。
+
+### ExpenseClaim / ExpensePayment（立替精算、v3）
+
+社員・業務委託の立替（1 件 = 1 枚の領収書）と、その支払（1 人分を 1 つの仕訳で）。提出で 費用 / 未払金〔立替精算〕、支払で 未払金〔立替精算〕 / 口座 を登録する（`sourceKind = expense`）。状態は 未払 → 支払済み、未払は取消できる。[23 §5](23-users-and-expenses.md)。
 
 ## 9. ID と日付
 

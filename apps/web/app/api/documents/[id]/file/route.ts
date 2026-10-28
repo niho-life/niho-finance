@@ -2,6 +2,7 @@ import { getDocumentFile, getPrismaClient } from "@niho-finance/db";
 import { extensionForMime } from "@niho-finance/ledger";
 import { handleApi, jsonError } from "@/lib/documents/api";
 import { getDocumentStorage, StoredFileNotFoundError } from "@/lib/storage";
+import { authorizeRoute } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const denied = await authorizeRoute("accountant");
+  if (denied) return denied;
   return handleApi(async () => {
     const { id } = await context.params;
     const file = await getDocumentFile(getPrismaClient(), id);

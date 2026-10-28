@@ -21,6 +21,7 @@ import {
   DOCUMENT_MAX_BYTES,
   DOCUMENT_SOURCES,
   DOCUMENT_TABS,
+  getTaxCategory,
   INVOICE_DOC_TYPES,
   invoiceRegistrationNumberProblem,
   isAcceptedDocumentMime,
@@ -2104,6 +2105,132 @@ export const statementSettingsSchema = z.object({
 });
 export type StatementSettingsInput = z.input<typeof statementSettingsSchema>;
 export type StatementSettingsPatch = z.output<typeof statementSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// 利用者 (23-users-and-expenses §1, §4)
+// ---------------------------------------------------------------------------
+
+/** The roles of 23 §1, strongest first (the order of the list and of the select). */
+export const USER_ROLES = ["owner", "accountant", "viewer"] as const;
+
+const EMAIL_MAX_LENGTH = 254;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** How an email is compared and stored: without the surrounding spaces, in lower case. */
+export function normalizeUserEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/** メール: trimmed and lower-cased, then checked for the `name@example.com` shape. */
+const userEmailField = fromText("メール", (text): Conversion<string> => {
+  const email = normalizeUserEmail(text);
+  if (email === "") return problem("メールを入力してください");
+  if (email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+    return problem("メールの形式が正しくありません（例: name@example.com）");
+  }
+  return ok(email);
+});
+
+const userNameField = optionalText("名前", 40);
+
+/** 追加 (23 §4): the role defaults to 閲覧. */
+export const userCreateSchema = z.object({
+  email: userEmailField,
+  name: userNameField,
+  role: enumWithDefault("役割", USER_ROLES, "viewer"),
+});
+export type UserCreateInput = z.input<typeof userCreateSchema>;
+
+/** 名前 / 役割 of a row (saved on blur or on change). Omitted keys are left as they are. */
+export const userUpdateSchema = z.object({
+  id: idField("利用者"),
+  name: userNameField.optional(),
+  role: enumField("役割", USER_ROLES).optional(),
+});
+export type UserUpdateInput = z.input<typeof userUpdateSchema>;
+
+/** 無効にする / 有効にする. */
+export const userActiveSchema = z.object({
+  id: idField("利用者"),
+  isActive: booleanField("状態"),
+});
+export type UserActiveInput = z.input<typeof userActiveSchema>;
+
+// ---------------------------------------------------------------------------
+// 立替精算 (23-users-and-expenses §5.2)
+// ---------------------------------------------------------------------------
+
+/** The largest amount of one claim (one receipt). */
+export const EXPENSE_AMOUNT_MAX: Money = 999_999_999n;
+
+/** Whole yen, 1 to 999,999,999. */
+const expenseAmountField = fromText("金額", (text): Conversion<Money> => {
+  if (text === "") return problem("金額を入力してください");
+  const amount = parseYenInput(text);
+  if (amount === null) return problem("金額は円の整数で入力してください");
+  if (amount <= 0n) return problem("金額は 1 円以上にしてください");
+  if (amount > EXPENSE_AMOUNT_MAX) return problem("金額は 999,999,999 円以下にしてください");
+  return ok(amount);
+});
+
+/** 税区分: a purchase category or 対象外 (the sales side is never a claim's). */
+const expenseTaxCategoryField = taxCategoryCodeField().superRefine((code, ctx) => {
+  const direction = getTaxCategory(code)?.direction;
+  if (direction !== "purchase" && direction !== "none") {
+    ctx.addIssue({ code: "custom", message: "税区分は仕入の区分か対象外を選んでください" });
+  }
+});
+
+/** 立替を出す (23 §5.2, §6). The amount is tax-inclusive; the account is checked by the ledger. */
+export const expenseClaimSubmitSchema = z.object({
+  claimantId: idField("立替えた人"),
+  spentOn: requiredDate("利用日"),
+  amount: expenseAmountField,
+  accountId: idField("科目"),
+  taxCategoryCode: expenseTaxCategoryField,
+  segmentId: optionalIdField("セグメント"),
+  partnerId: optionalIdField("取引先"),
+  description: requiredText("内容", 60),
+  documentId: optionalIdField("証憑"),
+});
+export type ExpenseClaimSubmitInput = z.input<typeof expenseClaimSubmitSchema>;
+export type ParsedExpenseClaimSubmit = z.output<typeof expenseClaimSubmitSchema>;
+
+/** Claim ids (a row of checkboxes): an array, one id or nothing. Duplicates are dropped. */
+const expenseClaimIdsField = z
+  .preprocess(
+    (value): unknown[] => {
+      if (value === undefined || value === null || value === "") return [];
+      if (!Array.isArray(value)) return [value];
+      const list: unknown[] = value;
+      return list;
+    },
+    z
+      .array(z.string({ error: "立替精算が正しくありません" }).trim().min(1).max(64), {
+        error: "立替精算が正しくありません",
+      })
+      .max(200, { error: "一度に支払えるのは 200 件までです" }),
+  )
+  .transform((ids) => [...new Set(ids)])
+  .refine((ids) => ids.length > 0, { error: "支払う立替精算を選んでください" });
+
+/**
+ * 支払う (23 §5.2, §6): one claimant's claims in one entry. With a statement line
+ * (`walletTransactionId`) the date is the line's.
+ */
+export const expensePaymentSchema = z.object({
+  claimantId: idField("立替えた人"),
+  claimIds: expenseClaimIdsField,
+  paidOn: requiredDate("支払日"),
+  walletId: idField("支払元の口座"),
+  walletTransactionId: optionalIdField("明細"),
+});
+export type ExpensePaymentInput = z.input<typeof expensePaymentSchema>;
+export type ParsedExpensePayment = z.output<typeof expensePaymentSchema>;
+
+/** 支払の取消 / 取消 (23 §6): the reason is required. */
+export const expenseReasonSchema = z.object({ reason: requiredText("理由", 500) });
+export type ExpenseReasonInput = z.input<typeof expenseReasonSchema>;
 
 /** A bank wallet whose bank API connection is read or changed (19-bank-api §6.3). */
 export const bankWalletInputSchema = z.object({

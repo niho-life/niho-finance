@@ -29,6 +29,7 @@ import { z } from "zod";
 import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
+import { authorizeAction } from "@/lib/authz";
 import { formatDate } from "@/lib/format";
 
 /*
@@ -72,6 +73,8 @@ export async function registerStatementAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       registerWalletTransaction(
@@ -89,6 +92,8 @@ export async function transferStatementAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       transferWalletTransaction(
@@ -106,6 +111,8 @@ export async function ignoreStatementAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<SettledStatement>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       ignoreWalletTransaction(
@@ -129,6 +136,8 @@ export async function reopenStatementAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<ReopenedStatement>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       reopenWalletTransaction(
@@ -151,6 +160,8 @@ export async function noteStatementAction(
   id: string,
   values: unknown,
 ): Promise<ActionResult<{ note: string | null }>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   return write(
     async () =>
       updateWalletTransactionNote(
@@ -219,6 +230,8 @@ function documentItem(document: {
 export async function loadStatementDocumentsAction(
   id: string,
 ): Promise<ActionResult<StatementDocumentsView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
   const result = await attempt(() => loadStatementDocuments(prisma(), parseId(id)));
   if (!result.ok) return result;
   return {

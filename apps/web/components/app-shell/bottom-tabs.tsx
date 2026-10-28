@@ -46,13 +46,36 @@ const MORE_PATHS = [
   "/imports",
   "/calendar",
   "/invoices",
+  "/expenses",
   "/closing",
   "/settings",
 ];
 
+/** 閲覧 on phones: 報告 / 書き出し only (23 §3.4). */
+function ViewerTabs({ pathname }: { pathname: string }) {
+  return (
+    <nav
+      aria-label="メイン"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-2 border-t border-border bg-surface px-1.5 pt-1.5 pb-[calc(8px+env(safe-area-inset-bottom))] md:hidden"
+    >
+      <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
+        <NavIcon name="reports" className="size-[22px]" />
+      </Tab>
+      <Tab
+        href="/settings/export"
+        active={isActivePath(pathname, "/settings/export")}
+        label="書き出し"
+      >
+        <NavIcon name="export" className="size-[22px]" />
+      </Tab>
+    </nav>
+  );
+}
+
 /** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・期限・請求・決算・設定). */
-export function BottomTabs() {
+export function BottomTabs({ viewer = false }: { viewer?: boolean }) {
   const pathname = usePathname();
+  if (viewer) return <ViewerTabs pathname={pathname} />;
   const inMore = MORE_PATHS.some((path) => isActivePath(pathname, path));
   return (
     <nav

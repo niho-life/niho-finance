@@ -442,9 +442,10 @@ interface ReversalTarget {
 /**
  * The modules that own the entries they post (`sourceKind`): only they void them, so that the
  * document and the ledger move together (docs/decisions/2026-10-29-invoice-entries-locked.md).
- * Today: 請求 (`invoice`: the 売掛金 of an issued document and its payments).
+ * Today: 請求 (`invoice`: the 売掛金 of an issued document and its payments) and 立替精算
+ * (`expense`: the accrual of a claim and its payment, 23-users-and-expenses §5.2).
  */
-const OWNED_SOURCE_KINDS: ReadonlySet<SourceKind> = new Set(["invoice"]);
+const OWNED_SOURCE_KINDS: ReadonlySet<SourceKind> = new Set(["invoice", "expense"]);
 
 export interface VoidOwnerOptions {
   /** The module voiding its own entry (e.g. `invoice` from `invoices.ts`); screens leave it out. */
@@ -463,6 +464,9 @@ async function ownedEntryProblem(
   owner: SourceKind | undefined,
 ): Promise<string | null> {
   if (!OWNED_SOURCE_KINDS.has(entry.sourceKind) || entry.sourceKind === owner) return null;
+  if (entry.sourceKind === "expense") {
+    return "立替精算 から作った仕訳です。取消は 立替精算 の画面で、立替精算を取り消すか支払を取り消して行います";
+  }
   const invoice = entry.sourceId
     ? await db.invoice.findUnique({ where: { id: entry.sourceId }, select: { number: true } })
     : null;
