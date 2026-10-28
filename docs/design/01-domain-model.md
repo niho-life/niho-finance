@@ -72,7 +72,7 @@ erDiagram
 
 ### TaxCategory（税区分）
 
-コードで固定し、期日で有効範囲を持つ（インボイスの経過措置が年で変わるため）。
+税区分は「申告書の集計区分」としてコードで固定し、税率・控除割合・適用期間は `TaxRateRule`（税区分コード・effectiveFrom / effectiveTo・rate・deductibleRatio）で別に持つ。経過措置や税率の改定はデータの追加だけで済む。
 
 | 項目 | 型 | 備考 |
 | --- | --- | --- |
@@ -172,7 +172,7 @@ Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上�
 不変条件:
 
 - 行の借方合計 = 貸方合計。行は 2 本以上。各行の金額は正。
-- `posted` になった仕訳は行を書き換えない。訂正は `voidEntry(reason)` が反対仕訳（`kind=reversal`）を同日付で作り、必要なら新しい仕訳を作って `replacedById` で結ぶ。締めた期間の仕訳を訂正するときは反対仕訳と新仕訳を開いている最初の日付で作る。
+- `posted` になった仕訳は行を書き換えない。DB のトリガーでも `posted` 行の UPDATE / DELETE を禁止し、貸借一致は deferred constraint で commit 時に検証する。訂正は `voidEntry(reason)` が反対仕訳（`kind=reversal`）を同日付で作り、必要なら新しい仕訳を作って `replacedById` で結ぶ。締めた期間の仕訳を訂正するときは反対仕訳と新仕訳を開いている最初の日付で作る。
 - `entryDate` が `FiscalYear.lockedThrough` 以前なら登録・取消とも拒否。`status=closed` の期は決算整理も不可。
 - 連番 `no` は登録時に採番し、取消しても欠番にしない（取消は別の仕訳として連番を消費する）。
 
