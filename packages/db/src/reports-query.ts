@@ -203,8 +203,10 @@ export async function loadWalletStatus(
       orderBy: [{ txnDate: "desc" }, { createdAt: "desc" }],
       select: { txnDate: true, balanceAfter: true },
     });
+    // A batch with an error is a sync that failed (429, a network error, …): it imported nothing,
+    // so it is not the last import (the card would show the failure as the last sync).
     const lastImport = await db.importBatch.findFirst({
-      where: { walletId: wallet.id },
+      where: { walletId: wallet.id, error: null },
       orderBy: { executedAt: "desc" },
       select: { executedAt: true },
     });

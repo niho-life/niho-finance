@@ -921,6 +921,10 @@ async function recordFailedSync(
   });
 }
 
+/** The link changed during a sync (connect / disconnect meanwhile): nothing fetched is stored. */
+const LINK_CHANGED =
+  "同期の間に口座の接続が変わったため、取得した明細は保存しませんでした。接続を確かめて、もう一度同期してください";
+
 /**
  * Syncs a connected bank wallet (19-bank-api §3): fetches the period's lines page by page,
  * converts them, skips those stored before (by `itemKey`) and those that are lines from a CSV of
@@ -1042,6 +1046,33 @@ export async function syncBankWallet(
   const baseDate = isCalendarDate(fetched.baseDate) ? fetched.baseDate : period.to;
   const nextThrough = syncedThrough !== null && syncedThrough > baseDate ? syncedThrough : baseDate;
   return runInTransaction(db, async (tx) => {
+    // The lines were fetched for `accountId`. A connect or a disconnect (another tab, the job) may
+    // have changed the wallet's link while the bank answered: under the same lock as those, store
+    // nothing unless the wallet is still connected to that account, so another account's lines
+    // never land on it.
+    await lockSettings(tx, "bankLinks");
+    const current = await tx.wallet.findUnique({
+      where: { id: wallet.id },
+      select: { bankApiAccountId: true, bankApiStatus: true },
+    });
+    if (
+      current === null ||
+      current.bankApiAccountId !== accountId ||
+      bankApiStatusOf(current.bankApiStatus) === null ||
+      bankApiStatusOf(current.bankApiStatus) === "authorized"
+    ) {
+      return {
+        batchId: null,
+        walletId: wallet.id,
+        source: "api",
+        rowCount,
+        importedCount: 0,
+        duplicateCount: 0,
+        failedCount: 0,
+        warnings,
+        error: LINK_CHANGED,
+      } satisfies ImportOutcome;
+    }
     let batchId: string | null = null;
     let created: string[] = [];
     let duplicateCount = knownDuplicates;

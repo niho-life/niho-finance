@@ -638,11 +638,45 @@ describe.skipIf(!hasTestDatabase)("bank API connections and sync", () => {
       bankApiSyncedThrough: before.bankApiSyncedThrough,
       bankApiLastSyncedAt: before.bankApiLastSyncedAt,
     });
+    // The failed attempt is not the last import of the wallet card (14-reports §6).
+    const failed = await prisma.importBatch.findFirstOrThrow({
+      where: { walletId: mainId, error: { not: null } },
+      orderBy: { executedAt: "desc" },
+    });
+    const status = (await loadWalletStatus(prisma, { through: "2026-11-30" })).find(
+      (row) => row.walletId === mainId,
+    );
+    expect(status?.lastImportedAt?.getTime() ?? 0).toBeLessThan(failed.executedAt.getTime());
     api.failWith = null;
     await syncBankWallet(prisma, { walletId: mainId, now: LATER }, { actor, api });
     expect(await walletRow(mainId)).toMatchObject({
       bankApiStatus: "connected",
       bankApiError: null,
+    });
+  });
+
+  it("stores nothing when the wallet's link changes while the bank answers", async () => {
+    const walletId = await connectedWallet("架空銀行 API 切替");
+    const api = new FakeBankApi({ transactions: thirtyDays(), balance: 1_217_500n });
+    // Another tab disconnects the wallet after the lines are fetched, before they are stored.
+    api.getBalance = async () => {
+      await disconnectBankLink(prisma, { walletId }, { actor });
+      return null;
+    };
+    const outcome = await syncBankWallet(prisma, { walletId, now: NOW }, { actor, api });
+    expect(outcome).toMatchObject({
+      batchId: null,
+      walletId,
+      importedCount: 0,
+      error:
+        "同期の間に口座の接続が変わったため、取得した明細は保存しませんでした。接続を確かめて、もう一度同期してください",
+    });
+    expect(await prisma.walletTransaction.count({ where: { walletId } })).toBe(0);
+    expect(await batchCount(walletId)).toBe(0);
+    expect(await walletRow(walletId)).toMatchObject({
+      bankApiStatus: null,
+      bankApiAccountId: null,
+      bankApiLastSyncedAt: null,
     });
   });
 
