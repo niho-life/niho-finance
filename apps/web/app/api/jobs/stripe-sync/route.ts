@@ -1,4 +1,4 @@
-import { getPrismaClient, syncAllStripeWallets } from "@niho-finance/db";
+import { getPrismaClient, settleAfterImport, syncAllStripeWallets } from "@niho-finance/db";
 import { verifyJobRequest } from "@/lib/jobs/auth";
 import { handleStripeSyncJob, methodNotAllowed } from "@/lib/jobs/stripe-sync";
 
@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   return handleStripeSyncJob(request, {
     verify: (incoming) => verifyJobRequest(incoming),
-    sync: (actor) => syncAllStripeWallets(getPrismaClient(), { actor }),
+    // 取込時の自動登録 (15 §11) runs in each wallet's import.
+    sync: (actor) =>
+      syncAllStripeWallets(getPrismaClient(), { actor, afterImport: settleAfterImport }),
   });
 }
 

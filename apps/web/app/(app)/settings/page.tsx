@@ -1,4 +1,5 @@
 import {
+  countActiveRules,
   countAuditLog,
   getRecordsPolicy,
   getSettingsSummary,
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
   const prisma = await db();
   const summary = await getSettingsSummary(prisma, { today: todayInJapan() });
   const auditRows = await countAuditLog(prisma);
+  const activeRules = await countActiveRules(prisma);
   const policy = await getRecordsPolicy(prisma);
   const { counts, fiscalYear } = summary;
   const sections: Section[] = [
@@ -42,7 +44,7 @@ export default async function SettingsPage() {
     { label: "取引先", href: "/settings/partners", summary: String(counts.partners) },
     { label: "セグメント", href: "/settings/segments", summary: String(counts.segments) },
     { label: "タグ", href: "/settings/memo-tags", summary: String(counts.memoTags) },
-    { label: "ルール", href: null, summary: "準備中" },
+    { label: "ルール", href: "/settings/rules", summary: `有効 ${activeRules} 件` },
     { label: "定期取引", href: null, summary: "準備中" },
     {
       label: "証憑の規程",

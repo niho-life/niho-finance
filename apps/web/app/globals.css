@@ -236,6 +236,104 @@
   }
 }
 
+@layer components {
+  /*
+   * A row of 明細 (15 §3): 2 lines under 1024px (選択・日付と摘要（口座）・金額 / チップと操作, the
+   * chips scrolling sideways inside their own line), one line of columns on PC. `.statement-foot`
+   * holds the chips and the buttons together on the narrow layout and dissolves on PC. Rows of the
+   * settled tabs (`is-settled`) have no selection column.
+   */
+  .statement-row {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "sel desc amount"
+      "foot foot foot";
+    column-gap: 10px;
+    row-gap: 8px;
+    align-items: start;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .statement-row.is-settled {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "desc amount"
+      "foot foot";
+  }
+  .statement-row:last-child {
+    border-bottom: 0;
+  }
+  .statement-row:focus-visible {
+    outline-offset: -2px;
+  }
+  :is(.statement-row, .statement-head) > [data-area="sel"] {
+    grid-area: sel;
+  }
+  :is(.statement-row, .statement-head) > [data-area="date"] {
+    grid-area: date;
+  }
+  :is(.statement-row, .statement-head) > [data-area="desc"] {
+    grid-area: desc;
+  }
+  :is(.statement-row, .statement-head) > [data-area="amount"] {
+    grid-area: amount;
+  }
+  :is(.statement-head, .statement-foot) > [data-area="chips"] {
+    grid-area: chips;
+  }
+  :is(.statement-head, .statement-foot) > [data-area="actions"] {
+    grid-area: actions;
+  }
+  .statement-row > [data-area="date"] {
+    display: none;
+  }
+  .statement-foot {
+    grid-area: foot;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+  .statement-head {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .statement-row,
+    .statement-head {
+      grid-template-columns: 24px 56px minmax(0, 1.1fr) 100px minmax(0, 1.5fr) 168px;
+      grid-template-areas: "sel date desc amount chips actions";
+      column-gap: 12px;
+      align-items: center;
+      min-height: 40px;
+      padding: 6px 14px;
+    }
+    .statement-row.is-settled,
+    .statement-head.is-settled {
+      grid-template-columns: 56px minmax(0, 1.2fr) 100px minmax(0, 1.4fr) 40px;
+      grid-template-areas: "date desc amount chips actions";
+    }
+    .statement-head {
+      display: grid;
+      min-height: 36px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: var(--muted-2);
+    }
+    .statement-row > [data-area="date"] {
+      display: block;
+    }
+    .statement-foot {
+      display: contents;
+    }
+  }
+}
+
 /* Printing 証憑の規程 (13 §5): only the policy text (`[data-print-root]`) is printed. */
 @media print {
   body * {

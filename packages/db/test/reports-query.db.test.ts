@@ -17,6 +17,7 @@ import {
   loadTrialBalance,
   loadWalletStatus,
   recordExport,
+  toDbDate,
 } from "../src";
 import { SEED_FISCAL_YEAR } from "../src/seed";
 import { hasTestDatabase } from "./support/database";
@@ -70,9 +71,14 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
         where: { walletId: row.walletId, status: "pending" },
       });
       expect(row.pendingCount).toBe(pending);
+      // Through the same date as the status (other test files add lines in later years).
       const last = await prisma.walletTransaction.findFirst({
-        where: { walletId: row.walletId, balanceAfter: { not: null } },
-        orderBy: { txnDate: "desc" },
+        where: {
+          walletId: row.walletId,
+          balanceAfter: { not: null },
+          txnDate: { lte: toDbDate("2027-03-31") },
+        },
+        orderBy: [{ txnDate: "desc" }, { createdAt: "desc" }],
       });
       expect(row.lastStatement?.balanceAfter ?? null).toBe(last?.balanceAfter ?? null);
     }
