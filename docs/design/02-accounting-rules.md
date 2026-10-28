@@ -87,14 +87,14 @@
 | 5300 | 地代家賃 | purchase_10 | 居住用は非課税（purchase_exempt） |
 | 5310 | 水道光熱費 | purchase_10 | |
 | 5320 | 通信費 | purchase_10 | 回線・クラウド・SaaS |
-| 5325 | ソフトウェア利用料 | purchase_10 | 海外 SaaS はリバースチャージ対象外の消費者向け取引が多い。インボイスなしの可能性（purchase_10_ni50） |
+| 5325 | ソフトウェア利用料 | purchase_10 | 海外 SaaS は登録国外事業者かどうかで税区分が変わる。インボイスなしなら purchase_10_ni |
 | 5330 | 消耗品費 | purchase_10 | 10 万円未満の備品 |
 | 5340 | 修繕費 | purchase_10 | |
 | 5350 | 広告宣伝費 | purchase_10 | |
 | 5360 | 旅費交通費 | purchase_10 | 公共交通はインボイス不要の特例あり |
 | 5370 | 会議費 | purchase_10 | 飲食は軽減税率の可能性（purchase_8r） |
 | 5380 | 交際費 | purchase_10 | |
-| 5400 | 支払手数料 | purchase_10 | 振込手数料。Stripe の決済手数料は非課税（purchase_exempt）か要確認 |
+| 5400 | 支払手数料 | purchase_10 | 振込手数料。Stripe の決済手数料も課税（Visa / Mastercard は 2026-04-01 以降）。Stripe の月次の適格請求書を証憑にする |
 | 5410 | 支払報酬料 | purchase_10 | 税理士・司法書士（源泉徴収あり） |
 | 5420 | 新聞図書費 | purchase_10 | 書籍は 10%（軽減の対象外） |
 | 5430 | 諸会費 | purchase_out | 内容で変わる |
@@ -139,17 +139,17 @@
 
 ### 4.2 Stripe
 
-Stripe の口座は「Stripe 残高」（資産）。balance transaction の種類ごとに明細を作り、ルールで仕訳にする。
+Stripe の口座は「Stripe 残高」（資産）。balance transaction の `reporting_category` ごとに明細を作り（総額と手数料は別行）、ルールで仕訳にする。詳細は [04 §1](04-integrations.md)。
 
 | balance transaction | 借方 | 貸方 | 税区分 | 備考 |
 | --- | --- | --- | --- | --- |
-| `charge` / `payment`（総額） | Stripe 残高 | 売上高（会費など） | sales_10 | 決済日で売上 |
-| `stripe_fee`（手数料） | 支払手数料 | Stripe 残高 | 要確認（非課税の見込み） | |
+| `charge`（総額） | Stripe 残高 | 売上高（会費など） | sales_10 | 決済日（JST）で売上 |
+| `fee`（手数料。charge の手数料と月次の調整） | 支払手数料（税抜）＋消費税額 | Stripe 残高 | purchase_10 | 税抜と税額を分けて保持。根拠は Stripe の月次の適格請求書 |
 | `refund` | 売上高 | Stripe 残高 | sales_10 | 返金 |
 | `payout` | 普通預金 | Stripe 残高 | - | 口座間振替。銀行の入金明細と照合 |
-| `application_fee`（platform 側） | Stripe 残高（platform） | 内部取引 | - | 自社拠点からの手数料は内部取引（[09 D5](09-decisions.md)） |
-| `application_fee`（拠点側） | 内部取引 | Stripe 残高（拠点） | - | 同上 |
-| `adjustment` / `dispute` | 雑損失 または 売上高 | Stripe 残高 | | 内容で分ける |
+| `platform_earning`（platform 側の application fee） | Stripe 残高（platform） | 内部取引 | - | 自社拠点からの手数料は内部取引（[09 D5](09-decisions.md)）。他社拠点からは売上高 プラットフォーム |
+| 拠点側の application fee | 内部取引 | Stripe 残高（拠点） | - | 同上 |
+| `dispute` / `dispute_reversal` | 雑損失 または 売上高 | Stripe 残高 | | 紛争手数料は支払手数料 |
 
 自社名義でない拠点（他のホスト）の決済は、platform の application fee だけが自社の売上になる。拠点アカウントそのものは取り込まない。
 

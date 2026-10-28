@@ -63,6 +63,7 @@ erDiagram
 | group | enum | 決算書の表示区分（流動資産 / 固定資産 / 繰延資産 / 流動負債 / 固定負債 / 株主資本 / 売上高 / 売上原価 / 販管費 / 営業外収益 / 営業外費用 / 特別利益 / 特別損失 / 法人税等） |
 | defaultTaxCategoryCode | string? | この科目を使ったときの既定の税区分 |
 | isCashLike | bool | 現預金レポートの対象（現金・預金・Stripe 残高） |
+| eTaxCode / eTaxHierarchy / eTaxRowKind | string? / int? / string? | e-Tax 財務諸表 CSV（HOT010）の勘定科目コード・階層番号・行区分。公式のコード表から版管理つきで取り込む（v2） |
 | isActive, sortOrder, note | | |
 
 ### SubAccount（補助科目）
@@ -75,11 +76,11 @@ erDiagram
 
 | 項目 | 型 | 備考 |
 | --- | --- | --- |
-| code | string | 例: `sales_10`, `sales_8r`, `sales_exempt`, `sales_out`, `purchase_10`, `purchase_8r`, `purchase_10_ni50`（インボイスなし・50% 控除）, `purchase_exempt`, `purchase_out`, `na`（対象外） |
+| code | string | 例: `sales_10`, `sales_8r`, `sales_exempt`, `sales_out`, `purchase_10`, `purchase_8r`, `purchase_10_ni`（インボイスなし。控除割合は日付で決まる）, `purchase_exempt`, `purchase_out`, `na`（対象外） |
 | direction | `sales` / `purchase` / `none` | |
 | rate | 0 / 8 / 10 | 軽減税率は 8 |
 | kind | `taxable` / `exempt` / `out_of_scope` / `export` / `na` | 課税 / 非課税 / 不課税 / 輸出免税 / 対象外 |
-| deductibleRatio | 100 / 80 / 50 / 0 | 仕入税額控除の割合（経過措置） |
+| deductibleRatio | 100 / 80 / 70 / 50 / 30 / 0 | 仕入税額控除の割合。インボイスなしの仕入は経過措置で 80%（〜2026-09）→ 70%（2026-10〜2028-09）→ 50%（2028-10〜2030-09）→ 30%（2030-10〜2031-09）→ 0%（2031-10〜）。日付で引く |
 | effectiveFrom / effectiveTo | date | 経過措置の期間 |
 
 ### Segment（セグメント）
