@@ -102,6 +102,7 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
     expect(near.find((row) => row.dueDate === "2027-05-31")).toMatchObject({
       badge: "5/31",
       label: taxReturn,
+      href: "/calendar",
     });
     const overdue = (await loadHomeTodos(prisma, "2027-06-02")).filter(
       (row) => row.tone === "date",

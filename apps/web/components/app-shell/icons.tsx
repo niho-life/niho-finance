@@ -6,6 +6,7 @@ export type NavIconName =
   | "entries"
   | "documents"
   | "reports"
+  | "calendar"
   | "invoices"
   | "payroll"
   | "closing"
@@ -28,6 +29,12 @@ const PATHS: Record<NavIconName | "camera" | "more", ReactNode> = {
     </>
   ),
   reports: <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />,
+  calendar: (
+    <>
+      <path d="M4 6h16v14H4z" />
+      <path d="M4 10h16M8 3v5M16 3v5" />
+    </>
+  ),
   invoices: (
     <>
       <path d="M4 4h16v16H4z" />
