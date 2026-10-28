@@ -203,7 +203,12 @@ describe.skipIf(!hasTestDatabase)("ledger guards (DB triggers)", () => {
       });
       await prisma.document.update({
         where: { id: document.id },
-        data: { status: "voided", partnerName: "架空商店" },
+        data: {
+          status: "voided",
+          voidedAt: new Date(),
+          voidReason: "重複",
+          partnerName: "架空商店",
+        },
       });
       for (const data of [
         { sha256: "1".repeat(64) },

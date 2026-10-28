@@ -284,6 +284,14 @@ model Company {
   setupWalletsSkippedAt     DateTime? @map("setup_wallets_skipped_at") @db.Timestamptz(6)
   /// Setup wizard: the 開始仕訳 step was postponed (「あとで」).
   setupOpeningSkippedAt     DateTime? @map("setup_opening_skipped_at") @db.Timestamptz(6)
+  /// 証憑の規程 (電子取引データの事務処理規程): 施行日. Set = the policy is in force.
+  recordsPolicyEffectiveOn  DateTime? @map("records_policy_effective_on") @db.Date
+  /// 証憑の規程: 管理責任者
+  recordsPolicyManager      String?   @map("records_policy_manager")
+  /// 証憑の規程: 処理責任者
+  recordsPolicyOperator     String?   @map("records_policy_operator")
+  /// 証憑の規程: version of the text that was put in force (POLICY_VERSION of the app)
+  recordsPolicyVersion      String?   @map("records_policy_version")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -713,6 +721,10 @@ model Document {
   status                    DocumentStatus @default(inbox)
   /// A replacement points to the document it supersedes (the old one becomes `voided`)
   supersedesId              String?        @map("supersedes_id")
+  /// Set when voided (with the reason); never cleared (DB guard)
+  voidedAt                  DateTime?      @map("voided_at") @db.Timestamptz(6)
+  voidReason                String?        @map("void_reason")
+  note                      String?
   createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 

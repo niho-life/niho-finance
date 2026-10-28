@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
+    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.4.0",
     "@niho-finance/db": "*",
     "next": "16.4.3",
     "react": "19.3.1",

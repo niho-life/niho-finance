@@ -11,6 +11,7 @@ Prisma schema、migration、仕訳の登録・取消（`postJournalEntry` / `voi
 | `src/settings.ts` | 事業所・会計期間・勘定科目・補助科目・税区分・口座・取引先・セグメント・タグの読み書き。書き込みは 1 トランザクションで監査ログつき。削除はなく無効化 |
 | `src/opening.ts` | 開始仕訳の組み立て（純粋関数 `buildOpeningEntries`）・プレビュー・登録（`postOpeningEntries`。1 回だけ） |
 | `src/setup.ts` | ウィザードの進捗を DB から導出（`getSetupProgress`）。保存する状態は「あとで」の 2 列だけ |
+| `src/documents.ts` | 証憑（S6）の登録・項目の変更・無効化・差し替え・紐づけ・検索・紐づけの候補・索引簿・証憑の規程。同じ SHA-256 の再登録は既存を返す。削除はなく無効化（理由つき）と差し替え |
 
 書き込みの関数は `(db, input, { actor })` の形で、入力を Zod で検証し、規則に反すると `SettingsError`（`message` と `field`）を投げます。
 
@@ -35,7 +36,7 @@ migration は 2 種類を併用します。
 | `journal_line` | UPDATE / DELETE / TRUNCATE を拒否。行は同じトランザクションで仕訳を INSERT した直後にだけ足せる（登録済みの仕訳に行を足せない） |
 | `journal_entry` | DELETE / TRUNCATE を拒否。UPDATE は取消（`status` posted → voided と `voided_at`・`void_reason`）と `replaced_by_id` の 1 回だけの設定に限る。ほかの列は既定で拒否（列を足したら、変えてよい列かをここで決める） |
 | `audit_log` | UPDATE / DELETE / TRUNCATE を拒否（追記のみ） |
-| `document` | DELETE / TRUNCATE を拒否。`storage_key`・`sha256`・`byte_size`・`mime` は変えられない |
+| `document` | DELETE / TRUNCATE を拒否。`storage_key`・`sha256`・`byte_size`・`mime` は変えられない。`voided` から他の状態へは戻せず、いったん入った `voided_at`・`void_reason`・`supersedes_id` は書き換えられない（`*_documents` で拡張）。CHECK `document_void_fields`: 無効なら `voided_at` と `void_reason` が必須、無効でなければ `voided_at` は空 |
 | 貸借一致 | 仕訳ごとに行が 2 本以上で借方合計 = 貸方合計であることを COMMIT 時に検証（`DEFERRABLE INITIALLY DEFERRED` の constraint trigger） |
 | CHECK | 金額 > 0、0 ≤ 税額 ≤ 金額、反対仕訳と取消元の対応、取消の列の整合、免税の期は税込経理、など |
 
