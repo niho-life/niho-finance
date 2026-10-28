@@ -33,6 +33,11 @@ export function parseCalendarDate(value: string): CalendarDate {
   return value;
 }
 
+/** `2026-11-02` → `2026/11/02`, the date style of the screens and of owner-facing messages. */
+export function displayDate(date: CalendarDate): string {
+  return date.replaceAll("-", "/");
+}
+
 export function compareDates(a: CalendarDate, b: CalendarDate): number {
   if (a < b) return -1;
   if (a > b) return 1;

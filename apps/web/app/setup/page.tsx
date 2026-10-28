@@ -24,6 +24,7 @@ import {
   WALLET_DEFAULT_ACCOUNT_CODES,
   WALLET_KIND_LABELS,
 } from "@niho-finance/ledger";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { ActionButton } from "@/components/settings/action-button";
@@ -276,7 +277,11 @@ async function OpeningStepContent({ prisma }: { prisma: PrismaClient }) {
       <>
         <OpeningEntriesTable preview={toOpeningPreviewView(registered)} />
         <p className="mt-4 text-[13px] text-muted">
-          登録済みです。登録した仕訳は書き換えられません。直しは取引の訂正（反対仕訳）で行います（取引の画面は準備中）。
+          登録済みです。登録した仕訳は書き換えられません。直すときは{" "}
+          <Link href="/entries" className="font-bold text-text underline underline-offset-4">
+            取引
+          </Link>{" "}
+          で仕訳を開き、訂正（反対仕訳と新しい仕訳）で行います。
         </p>
         <NextLink step="complete" />
       </>

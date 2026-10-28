@@ -86,13 +86,10 @@ function AccountPicker({
 }
 
 function EntryNo({ row }: { row: LedgerRow }) {
-  const href = entryHref(row.entryId);
-  return href ? (
-    <Link href={href} className="underline-offset-4 hover:underline">
+  return (
+    <Link href={entryHref(row.entryId)} className="underline-offset-4 hover:underline">
       {row.no}
     </Link>
-  ) : (
-    <>{row.no}</>
   );
 }
 

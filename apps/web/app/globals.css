@@ -208,4 +208,30 @@
       grid-column: 1 / -1;
     }
   }
+
+  /*
+   * A row of the 伝票 form (11 §4.4): two lines on PC (貸借・科目・補助科目・金額・税区分・税額 /
+   * セグメント・取引先・摘要), stacked in two columns on phones.
+   */
+  .voucher-line {
+    display: grid;
+    gap: 8px 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "side amount"
+      "account account"
+      "sub sub"
+      "tax taxamt"
+      "segment partner"
+      "desc desc"
+      "remove remove";
+  }
+  @media (min-width: 1024px) {
+    .voucher-line {
+      grid-template-columns: 84px minmax(0, 1.6fr) minmax(0, 1fr) 120px minmax(0, 1.3fr) 64px 40px;
+      grid-template-areas:
+        "side account sub amount tax taxamt remove"
+        ". segment partner desc desc desc .";
+    }
+  }
 }

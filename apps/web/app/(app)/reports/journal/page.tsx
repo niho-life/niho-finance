@@ -19,14 +19,10 @@ const COLUMNS =
 const MIN_WIDTH = 980;
 
 function EntryNo({ entry }: { entry: JournalEntryRow }) {
-  const href = entryHref(entry.id);
-  const text = `No. ${entry.no}`;
-  return href ? (
-    <Link href={href} className="underline-offset-4 hover:underline">
-      {text}
+  return (
+    <Link href={entryHref(entry.id)} className="underline-offset-4 hover:underline">
+      No. {entry.no}
     </Link>
-  ) : (
-    <span>{text}</span>
   );
 }
 
