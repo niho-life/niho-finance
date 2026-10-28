@@ -233,7 +233,7 @@ Stripe の口座は `StripeAccountLink`（stripeAccountId、Secret Manager 上�
 | --- | --- | --- |
 | name, accountId（建物附属設備 / 工具器具備品 / ソフトウェア など） | | |
 | acquisitionDate, cost | | 取得日・取得価額 |
-| method | `straight_line` / `declining_balance` / `immediate` / `lump_sum_3y` | 定額 / 定率 / 即時償却（少額・30 万円未満特例） / 一括償却（3 年） |
+| method | `straight_line` / `declining_balance` / `immediate` / `lump_sum_3y` | 定額 / 定率 / 即時償却（10 万円未満、または中小企業者の特例: 2026-04-01 以後は 40 万円未満） / 一括償却（3 年）。特例は年 300 万円（月割）の累計と青色申告の有無を検査し、償却資産税の対象フラグを持つ |
 | usefulLifeYears, residualRule | | 耐用年数、備忘価額 1 円 |
 | schedule | json | 期ごとの償却額。決算整理仕訳の生成元 |
 | disposedAt, disposalEntryId | | 除却・売却 |
