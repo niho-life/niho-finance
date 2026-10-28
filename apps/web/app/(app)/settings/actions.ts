@@ -165,7 +165,14 @@ export async function closeFiscalYearAction(
 
 // 勘定科目・補助科目 ------------------------------------------------------------
 
-const ACCOUNT_FIELDS = ["name", "group", "defaultTaxCategoryCode", "isCashLike"] as const;
+const ACCOUNT_FIELDS = [
+  "name",
+  "group",
+  "defaultTaxCategoryCode",
+  "isCashLike",
+  // 勘定科目コードの上書き (17-financial-statements §6.4)
+  "eTaxCode",
+] as const;
 
 function accountValues(account: AccountSettings): RowValues {
   return {
@@ -173,6 +180,7 @@ function accountValues(account: AccountSettings): RowValues {
     group: account.group,
     defaultTaxCategoryCode: account.defaultTaxCategoryCode ?? "",
     isCashLike: account.isCashLike,
+    eTaxCode: account.eTaxCode ?? "",
   };
 }
 

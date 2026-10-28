@@ -132,6 +132,40 @@ export interface ReportSource {
   entries: readonly ReportEntry[];
 }
 
+/**
+ * The 決算振替 of one fiscal year (`kind = closing`, made by the year-end close, #14) and their
+ * reversals (a close taken back): the pair nets to 0, but keeping only the reversal would move the
+ * year's P&L twice.
+ */
+export function closingEntryIdsOf(
+  entries: readonly ReportEntry[],
+  fiscalYearId: string,
+): Set<string> {
+  const closing = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind === "closing" && entry.fiscalYearId === fiscalYearId) closing.add(entry.id);
+  }
+  const ids = new Set(closing);
+  for (const entry of entries) {
+    if (entry.kind === "reversal" && entry.reversalOfId && closing.has(entry.reversalOfId)) {
+      ids.add(entry.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The source without the 決算振替 of `fiscalYearId` (14-reports §1): the P&L of the year is shown as
+ * earned, not moved to 繰越利益剰余金 by the close. Earlier years' closing entries stay (they open
+ * the year's 繰越利益剰余金).
+ */
+export function withoutClosingOf<S extends ReportSource>(source: S, fiscalYearId: string): S {
+  const ids = closingEntryIdsOf(source.entries, fiscalYearId);
+  return ids.size === 0
+    ? source
+    : { ...source, entries: source.entries.filter((entry) => !ids.has(entry.id)) };
+}
+
 /** Lookups over a source. Built once per request with `indexSource`. */
 export interface SourceIndex {
   accountsById: ReadonlyMap<string, ReportAccount>;

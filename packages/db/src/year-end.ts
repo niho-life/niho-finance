@@ -75,6 +75,7 @@ import {
   loadScheduleYears,
   type FixedAssetScheduleRow,
 } from "./fixed-assets";
+import { loadStatementsChecklistSteps } from "./financial-statements-query";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
 import { toFiscalYearContext } from "./queries";
 import {
@@ -840,6 +841,8 @@ export async function loadYearEndChecklist(
     select: refSelect,
   });
   const adjustingEntries = await loadAdjustingEntries(db, year);
+  // 決算書・書き出し (#15, 17-financial-statements §10).
+  const statementsSteps = await loadStatementsChecklistSteps(db, year.id);
   const inboxDocuments = await countInboxDocuments(db);
   const pendingStatements = await db.walletTransaction.count({
     where: { status: "pending", txnDate: { lte: year.endDate } },
@@ -938,8 +941,20 @@ export async function loadYearEndChecklist(
             : "締め済み"
           : "決算振替を登録して締めます",
     },
-    { key: "statements_report", no: 9, label: "決算書", state: "pending", summary: "準備中" },
-    { key: "export", no: 10, label: "書き出し", state: "pending", summary: "準備中" },
+    {
+      key: "statements_report",
+      no: 9,
+      label: "決算書",
+      state: statementsSteps.statements.done ? "done" : "todo",
+      summary: statementsSteps.statements.summary,
+    },
+    {
+      key: "export",
+      no: 10,
+      label: "書き出し",
+      state: statementsSteps.export.done ? "done" : "todo",
+      summary: statementsSteps.export.summary,
+    },
   ];
   const warnings = steps
     .filter((step) => step.no >= 4 && step.no <= 7 && step.state === "todo")
