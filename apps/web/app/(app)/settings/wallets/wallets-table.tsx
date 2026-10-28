@@ -1,6 +1,6 @@
 "use client";
 
-import type { SelectOption, WalletSettings } from "@niho-finance/db";
+import type { BankApiStatus, SelectOption, WalletSettings } from "@niho-finance/db";
 import {
   formatYenInput,
   WALLET_DEFAULT_ACCOUNT_CODES,
@@ -23,11 +23,20 @@ import { createWalletAction, setWalletActiveAction, updateWalletAction } from ".
 
 /**
  * A wallet as the page passes it (the opening balance as text: bigint stays on the server), with
- * its 取込形式 (`null` for wallets that do not import: cash and 役員立替).
+ * its 取込形式 (`null` for wallets that do not import: cash and 役員立替) and, for a bank wallet,
+ * its bank API connection (`null` when it has none).
  */
 export type WalletRow = Omit<WalletSettings, "openingBalance"> & {
   openingBalance: string | null;
   importerLabel: string | null;
+  bankApiStatus: BankApiStatus | null;
+};
+
+/** 取込形式 of a bank wallet connected to the bank API (19-bank-api §1.2). */
+const BANK_API_LABELS: Readonly<Record<BankApiStatus, string>> = {
+  connected: "銀行 API 接続済み",
+  reauth_required: "再接続が必要",
+  authorized: "口座の選択待ち",
 };
 
 type AccountOption = SelectOption & { code: string };
@@ -229,6 +238,18 @@ function WalletSheet({
           </Link>{" "}
           で設定します。
         </p>
+        {wallet?.kind === "bank" ? (
+          <p className="text-[12px] text-muted">
+            銀行 API の接続（GMO あおぞらネット銀行）は{" "}
+            <Link
+              href={`/settings/wallets/${wallet.id}/bank`}
+              className="font-bold text-text underline underline-offset-4"
+            >
+              銀行 API の接続
+            </Link>{" "}
+            で行います。
+          </p>
+        ) : null}
         {error && Object.keys(error.fieldErrors).length === 0 ? <FormError error={error} /> : null}
         {toggleError ? (
           <p role="alert" className="text-[12px] font-bold text-danger">
@@ -306,7 +327,19 @@ export function WalletsTable({
                 {wallet.defaultSegmentName ?? "—"}
               </Td>
               <Td sm="hide" className="truncate text-[13px]">
-                {wallet.importerLabel ? (
+                {wallet.bankApiStatus ? (
+                  <Link
+                    href={`/settings/wallets/${wallet.id}/bank`}
+                    title={BANK_API_LABELS[wallet.bankApiStatus]}
+                    className={
+                      wallet.bankApiStatus === "reauth_required"
+                        ? "font-bold text-warn underline-offset-4 hover:underline"
+                        : "text-muted underline-offset-4 hover:text-text hover:underline"
+                    }
+                  >
+                    {BANK_API_LABELS[wallet.bankApiStatus]}
+                  </Link>
+                ) : wallet.importerLabel ? (
                   <Link
                     href={`/imports/wallets/${wallet.id}`}
                     title={wallet.importerLabel}

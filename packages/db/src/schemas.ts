@@ -2188,3 +2188,102 @@ export type ParsedExpensePayment = z.output<typeof expensePaymentSchema>;
 /** 支払の取消 / 取消 (23 §6): the reason is required. */
 export const expenseReasonSchema = z.object({ reason: requiredText("理由", 500) });
 export type ExpenseReasonInput = z.input<typeof expenseReasonSchema>;
+
+/** A bank wallet whose bank API connection is read or changed (19-bank-api §6.3). */
+export const bankWalletInputSchema = z.object({
+  walletId: idField("口座"),
+});
+export type BankWalletInput = z.input<typeof bankWalletInputSchema>;
+
+/** The bank's account ID: 12–29 letters and digits (GMO の `accountId`). */
+const BANK_ACCOUNT_ID_PATTERN = /^[A-Za-z0-9]{12,29}$/;
+
+/**
+ * 口座の選択 (19-bank-api §1.1): the account ID is the radio's value. Whether the bank lists it for
+ * the wallet's tokens is checked by `connectBankAccount`, not here.
+ */
+export const bankAccountChoiceSchema = z.object({
+  walletId: idField("口座"),
+  accountId: fromText("銀行の口座", (text) => {
+    if (text === "") return problem("接続する口座を選んでください");
+    if (!BANK_ACCOUNT_ID_PATTERN.test(text)) {
+      return problem(
+        "選んだ口座が正しくありません。画面を読み込み直して、口座を選び直してください",
+      );
+    }
+    return ok(text);
+  }),
+});
+export type BankAccountChoiceInput = z.input<typeof bankAccountChoiceSchema>;
+
+// ---------------------------------------------------------------------------
+// Recurring items (定期取引, 21-cashflow §2)
+// ---------------------------------------------------------------------------
+
+/** 入金 / 出金: the screens take a positive amount; the row stores it signed (deposits positive). */
+export const RECURRING_DIRECTIONS = ["deposit", "withdrawal"] as const;
+export type RecurringDirection = (typeof RECURRING_DIRECTIONS)[number];
+
+/** 毎月 / 毎年 */
+export const RECURRING_FREQUENCIES = ["monthly", "yearly"] as const;
+export type RecurringFrequencyValue = (typeof RECURRING_FREQUENCIES)[number];
+
+/** 1〜999,999,999,999 円 (21 §2). */
+export const RECURRING_AMOUNT_MAX: Money = 999_999_999_999n;
+
+function recurringAmountField(label: string) {
+  return fromText(label, (text): Conversion<Money> => {
+    if (text === "") return problem(`${label}を入力してください`);
+    const amount = parseYenInput(text);
+    if (amount === null) return problem(`${label}は円の整数で入力してください`);
+    if (amount <= 0n) return problem(`${label}は 1 円以上にしてください`);
+    if (amount > RECURRING_AMOUNT_MAX) {
+      return problem(`${label}は 999,999,999,999 円以下にしてください`);
+    }
+    return ok(amount);
+  });
+}
+
+const recurringFields = {
+  name: requiredText("名前", 60),
+  direction: enumField("入出金", RECURRING_DIRECTIONS),
+  /** Positive; the direction gives the sign. */
+  amount: recurringAmountField("金額"),
+  frequency: enumField("周期", RECURRING_FREQUENCIES),
+  /** Required for yearly items (the repository checks the pair); dropped for monthly ones. */
+  monthOfYear: optionalIntegerInRange("月", 1, 12),
+  /** 31 = 末日. */
+  dayOfMonth: integerInRange("日", 1, 31),
+  startDate: requiredDate("開始日"),
+  endDate: optionalDate("終了日"),
+  walletId: idField("口座"),
+  accountId: idField("科目"),
+  partnerId: optionalIdField("取引先"),
+  /** Defaults to the wallet's default segment when left out on create. */
+  segmentId: optionalIdField("セグメント"),
+  taxCategoryCode: optionalTaxCategoryCodeField("税区分"),
+  note: optionalText("メモ", 500),
+};
+
+export const recurringItemCreateSchema = z.object(recurringFields);
+export type RecurringItemCreateInput = z.input<typeof recurringItemCreateSchema>;
+
+/** A partial update: a missing key leaves the column as is (無効にする / 有効にする included). */
+export const recurringItemUpdateSchema = z.object({
+  name: recurringFields.name.optional(),
+  direction: recurringFields.direction.optional(),
+  amount: recurringFields.amount.optional(),
+  frequency: recurringFields.frequency.optional(),
+  monthOfYear: recurringFields.monthOfYear.optional(),
+  dayOfMonth: recurringFields.dayOfMonth.optional(),
+  startDate: recurringFields.startDate.optional(),
+  endDate: recurringFields.endDate.optional(),
+  walletId: recurringFields.walletId.optional(),
+  accountId: recurringFields.accountId.optional(),
+  partnerId: recurringFields.partnerId.optional(),
+  segmentId: recurringFields.segmentId.optional(),
+  taxCategoryCode: recurringFields.taxCategoryCode.optional(),
+  note: recurringFields.note.optional(),
+  isActive: booleanField("状態").optional(),
+});
+export type RecurringItemUpdateInput = z.input<typeof recurringItemUpdateSchema>;

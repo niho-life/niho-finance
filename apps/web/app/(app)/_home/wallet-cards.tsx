@@ -1,5 +1,6 @@
 import { WALLET_KIND_LABELS, type Money } from "@niho-finance/ledger";
 import type { CashWalletRow } from "@niho-finance/reports";
+import Link from "next/link";
 import { formatAmount, formatDate } from "@/lib/format";
 import { formatShortDateTime } from "../reports/_lib/format";
 
@@ -11,7 +12,12 @@ function activityLine(wallet: CashWalletRow): string[] {
   const parts: string[] = [];
   if (wallet.kind === "stripe") parts.push("入金待ち");
   if (wallet.lastActivityAt) {
-    const label = wallet.kind === "stripe" ? "最終同期" : "最終取込";
+    // A bank wallet on the bank API syncs like Stripe (19-bank-api §1.2).
+    const syncs =
+      wallet.kind === "stripe" ||
+      wallet.bankApiStatus === "connected" ||
+      wallet.bankApiStatus === "reauth_required";
+    const label = syncs ? "最終同期" : "最終取込";
     parts.push(`${label} ${formatShortDateTime(wallet.lastActivityAt)}`);
   }
   if (wallet.pendingCount > 0) parts.push(`未処理 ${wallet.pendingCount} 件`);
@@ -39,8 +45,9 @@ function StatementLine({ wallet }: { wallet: CashWalletRow }) {
 
 /**
  * The wallets on cash accounts (14-reports §6, §9): name, kind, balance, 入金待ち for Stripe, the
- * last sync or import, 未処理 n 件, and on the 現預金 tab the difference to the statement balance.
- * Items are divided by thin lines, not boxes (no cards inside cards, D14).
+ * last sync or import, 未処理 n 件, 再接続が必要 for a lapsed bank API connection (19-bank-api
+ * §1.2), and on the 現預金 tab the difference to the statement balance. Items are divided by thin
+ * lines, not boxes (no cards inside cards, D14).
  */
 export function WalletCards({
   wallets,
@@ -69,6 +76,14 @@ export function WalletCards({
             </p>
             {activity.length > 0 ? (
               <p className="text-[11px] text-muted-2">{activity.join(" · ")}</p>
+            ) : null}
+            {wallet.bankApiStatus === "reauth_required" ? (
+              <Link
+                href={`/settings/wallets/${wallet.walletId}/bank`}
+                className="inline-flex min-h-6 w-fit items-center text-[11px] font-bold text-warn underline-offset-4 hover:underline"
+              >
+                再接続が必要
+              </Link>
             ) : null}
             {showStatement ? <StatementLine wallet={wallet} /> : null}
           </li>

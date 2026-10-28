@@ -298,6 +298,15 @@ export {
   type WalletBalance,
 } from "./queries";
 export {
+  CASHFLOW_PAYMENT_RULE_KEYS,
+  countActiveRecurringItems,
+  createRecurringItem,
+  listRecurringItems,
+  loadCashflowInputs,
+  updateRecurringItem,
+  type RecurringItemSettings,
+} from "./recurring";
+export {
   confirmPayrollRun,
   createEmployee,
   EMPLOYEE_WARNING_CODES,
@@ -409,6 +418,7 @@ export {
 } from "./users";
 export type { PrismaClient } from "@prisma/client";
 export {
+  bankReconnectTodo,
   DEADLINE_WINDOW_DAYS,
   EXPORT_AUDIT_ACTION,
   HOME_TODO_SOURCES,
@@ -513,3 +523,24 @@ export {
   type StatementSettleResult,
   type StatementWalletChip,
 } from "./statements";
+export {
+  authorizeBankToken,
+  BANK_API_STATUSES,
+  BANK_TOKEN_KEY_VARIABLE,
+  connectBankAccount,
+  disconnectBankLink,
+  getBankLink,
+  listBankLinkStatuses,
+  listLinkableBankAccounts,
+  resolveBankApiConfig,
+  resolveBankTokenKey,
+  saveBankAuthorization,
+  syncAllBankWallets,
+  syncBankWallet,
+  type BankApiOptions,
+  type BankApiStatus,
+  type BankLinkSettings,
+  type BankSyncAllOptions,
+  type BankSyncOptions,
+  type LinkableBankAccount,
+} from "./bank-links";

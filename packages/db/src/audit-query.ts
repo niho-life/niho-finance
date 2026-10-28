@@ -224,6 +224,11 @@ export async function describeAuditTargets(
       label("expense_claim", claim.id, `${date} ${claim.description}`);
     }
   }
+  if (ids.has("recurring_item")) {
+    const where = { id: of("recurring_item") };
+    for (const row of await db.recurringItem.findMany({ where, select }))
+      label("recurring_item", row.id, row.name);
+  }
   return names;
 }
 

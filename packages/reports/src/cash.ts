@@ -23,12 +23,17 @@ export interface WalletStatus {
   walletId: string;
   /** Statement lines still to handle (S4 / S5). */
   pendingCount: number;
-  /** Last Stripe sync. */
+  /** Last Stripe or bank API sync (the later of the two). */
   lastSyncedAt: Date | null;
   /** Last CSV / API import. */
   lastImportedAt: Date | null;
-  /** The last statement line on or before `through` that carries a balance. */
+  /**
+   * The last statement line on or before `through` that carries a balance, or the bank's own
+   * balance (bank API) when it is dated on or before `through` and not before that line.
+   */
   lastStatement: { date: CalendarDate; balanceAfter: Money } | null;
+  /** The bank API connection (19-bank-api §4); `null` when the wallet has none. */
+  bankApiStatus: "authorized" | "connected" | "reauth_required" | null;
 }
 
 export interface StatementDifference {
@@ -55,6 +60,8 @@ export interface CashWalletRow {
   lastActivityAt: Date | null;
   /** Only for cash-like wallets with a statement balance. */
   statement: StatementDifference | null;
+  /** The bank API connection: 「再接続が必要」 on the wallet's card. */
+  bankApiStatus: WalletStatus["bankApiStatus"];
 }
 
 export interface CashSeriesLine {
@@ -233,6 +240,7 @@ export function buildCashReport(
       lastActivityAt:
         times.length > 0 ? new Date(Math.max(...times.map((time) => time.getTime()))) : null,
       statement,
+      bankApiStatus: walletStatus?.bankApiStatus ?? null,
     };
   };
 

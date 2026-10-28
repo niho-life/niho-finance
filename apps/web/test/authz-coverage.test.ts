@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../app");
 
-/** The 管理者-only operations of 23 §1 (締め・事業所・会計期間・証憑の規程・利用者・初期設定). */
+/** The 管理者-only operations of 23 §1 (締め・事業所・会計期間・証憑の規程・銀行 API の接続・利用者・初期設定). */
 const OWNER_ACTIONS: Readonly<Record<string, readonly string[] | "all">> = {
   "(app)/settings/actions.ts": [
     "saveCompanyAction",
@@ -29,6 +29,12 @@ const OWNER_ACTIONS: Readonly<Record<string, readonly string[] | "all">> = {
     "reopenYearAction",
   ],
   "(app)/settings/documents-policy/actions.ts": ["saveRecordsPolicyAction"],
+  // 銀行 API の接続・口座の選択・切断: the bank's authorization of the company's account.
+  "(app)/settings/wallets/[walletId]/bank/actions.ts": [
+    "connectBankAction",
+    "chooseBankAccountAction",
+    "disconnectBankAction",
+  ],
   "(app)/settings/users/actions.ts": "all",
   "setup/actions.ts": "all",
 };
@@ -40,6 +46,8 @@ const ROUTE_GUARDS: Readonly<Record<string, string>> = {
   "(app)/payroll/runs/[id]/payslips/[employeeId]/pdf/route.ts": '"accountant"',
   "(app)/reports/export/route.ts": '"viewer"',
   "(app)/settings/export/download/route.ts": "downloadMinimum(request)",
+  "api/bank/gmo-aozora/authorize/route.ts": '"owner"',
+  "api/bank/gmo-aozora/callback/route.ts": '"owner"',
   "api/documents/[id]/file/route.ts": '"accountant"',
   "api/documents/complete/route.ts": '"accountant", { json: true }',
   "api/documents/index.csv/route.ts": '"accountant"',
