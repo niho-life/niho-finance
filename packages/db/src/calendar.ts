@@ -1,0 +1,420 @@
+import {
+  addDays,
+  compareDates,
+  dateParts,
+  lastDayOfMonth,
+  parseCalendarDate,
+  type CalendarDate,
+} from "@niho-finance/ledger";
+import type { CalendarItem, CalendarItemKind } from "@prisma/client";
+import { appendAuditLog, type Db } from "./audit";
+import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { newId } from "./ids";
+import { getCompany, listFiscalYears, type WriteOptions } from "./settings";
+import { lockSettings, runInTransaction } from "./transaction";
+
+/*
+ * Tax and legal deadlines generated from the fiscal years (07-operations §4), and the reminder
+ * mail selection (7 days before, on the due date, overdue). Dates are nominal: nothing is moved
+ * for weekends or holidays, so a reminder is early rather than late. Monthly deadlines (withholding
+ * tax without the special rule, resident tax, social insurance) are not generated in v1: whether
+ * they apply depends on choices the books do not record yet.
+ */
+
+export interface CalendarRuleInput {
+  company: { foundedOn: CalendarDate };
+  fiscalYear: { id: string; no: number; startDate: CalendarDate; endDate: CalendarDate };
+}
+
+export interface CalendarRule {
+  /** Stored as `CalendarItem.ruleKey` (unique per fiscal year). */
+  key: string;
+  kind: CalendarItemKind;
+  title: string;
+  note?: string;
+  /** The due date in this fiscal year, or `null` when the rule has no item in it. */
+  due(input: CalendarRuleInput): CalendarDate | null;
+}
+
+export interface BuiltCalendarItem {
+  ruleKey: string;
+  kind: CalendarItemKind;
+  title: string;
+  dueDate: CalendarDate;
+  note: string | null;
+}
+
+function calendarDate(year: number, month: number, day: number): CalendarDate {
+  const yyyy = String(year).padStart(4, "0");
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return parseCalendarDate(`${yyyy}-${mm}-${dd}`);
+}
+
+/** Adds whole months; a day the target month lacks becomes its last day (11-30 + 3 → 02-28). */
+function addMonths(date: CalendarDate, months: number): CalendarDate {
+  const { year, month, day } = dateParts(date);
+  const monthIndex = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(monthIndex / 12);
+  const targetMonth = monthIndex - targetYear * 12 + 1;
+  const monthEnd = lastDayOfMonth(targetYear, targetMonth);
+  return day >= dateParts(monthEnd).day ? monthEnd : calendarDate(targetYear, targetMonth, day);
+}
+
+function earlier(a: CalendarDate, b: CalendarDate): CalendarDate {
+  return a < b ? a : b;
+}
+
+/** The day with this month and day inside the fiscal year (a year has at most one), or `null`. */
+function dayInFiscalYear(
+  fiscalYear: CalendarRuleInput["fiscalYear"],
+  month: number,
+  day: number,
+): CalendarDate | null {
+  const first = dateParts(fiscalYear.startDate).year;
+  const last = dateParts(fiscalYear.endDate).year;
+  for (let year = first; year <= last; year += 1) {
+    const date = calendarDate(year, month, day);
+    if (date >= fiscalYear.startDate && date <= fiscalYear.endDate) return date;
+  }
+  return null;
+}
+
+/** The last day of the n-th month of the fiscal year (the starting month is the first). */
+function endOfFiscalMonth(fiscalYear: CalendarRuleInput["fiscalYear"], n: number): CalendarDate {
+  const { year, month } = dateParts(fiscalYear.startDate);
+  const target = dateParts(addMonths(calendarDate(year, month, 1), n - 1));
+  return lastDayOfMonth(target.year, target.month);
+}
+
+/** Founding filings exist in 第 1 期 only; `due` gets the founding date. */
+function firstYearOnly(
+  due: (foundedOn: CalendarDate, input: CalendarRuleInput) => CalendarDate,
+): CalendarRule["due"] {
+  return (input) => (input.fiscalYear.no === 1 ? due(input.company.foundedOn, input) : null);
+}
+
+/** The rules, in the order of 07-operations §4. Keys never change once released (stored rows). */
+export const CALENDAR_RULES: readonly CalendarRule[] = [
+  // 第 1 期: counted from the founding date.
+  {
+    key: "founding.establishment-notice-tax-office",
+    kind: "filing",
+    title: "法人設立届出書（税務署）",
+    due: firstYearOnly((foundedOn) => addMonths(foundedOn, 2)),
+  },
+  {
+    key: "founding.blue-return-application",
+    kind: "filing",
+    title: "青色申告承認申請書（税務署）",
+    note: "少額減価償却資産の特例の前提。最優先",
+    // The day before the earlier of "3 months after founding" and the end of 第 1 期.
+    due: firstYearOnly((foundedOn, input) =>
+      addDays(earlier(addMonths(foundedOn, 3), input.fiscalYear.endDate), -1),
+    ),
+  },
+  {
+    key: "founding.salary-office-notice",
+    kind: "filing",
+    title: "給与支払事務所等の開設届出書（税務署）",
+    due: firstYearOnly((foundedOn) => addMonths(foundedOn, 1)),
+  },
+  {
+    key: "founding.withholding-special-application",
+    kind: "filing",
+    title: "源泉所得税の納期の特例の承認申請（税務署）",
+    note: "提出翌月から適用",
+    due: firstYearOnly((foundedOn) => addMonths(foundedOn, 1)),
+  },
+  {
+    key: "founding.social-insurance-application",
+    kind: "filing",
+    title: "健康保険・厚生年金 新規適用届（年金事務所）",
+    note: "役員報酬を払う場合",
+    due: firstYearOnly((foundedOn) => addDays(foundedOn, 5)),
+  },
+  {
+    key: "founding.local-notice-city",
+    kind: "filing",
+    title: "法人設立・開設届出書（市役所）",
+    due: firstYearOnly((foundedOn) => addDays(foundedOn, 30)),
+  },
+  {
+    key: "founding.local-notice-prefecture",
+    kind: "filing",
+    title: "法人設立・開設届出書（県税事務所）",
+    due: firstYearOnly((foundedOn) => addMonths(foundedOn, 2)),
+  },
+  {
+    key: "founding.prescheduled-salary-notice",
+    kind: "filing",
+    title: "事前確定届出給与に関する届出書（税務署）",
+    note: "役員に賞与を出す場合",
+    due: firstYearOnly((foundedOn) => addMonths(foundedOn, 2)),
+  },
+  {
+    key: "founding.invoice-registration",
+    kind: "filing",
+    title: "適格請求書発行事業者の登録申請（税務署）",
+    note: "設立日に遡って登録する場合",
+    due: firstYearOnly((_foundedOn, input) => input.fiscalYear.endDate),
+  },
+  {
+    key: "founding.simplified-tax-election",
+    kind: "filing",
+    title: "簡易課税制度選択届出書（税務署）",
+    due: firstYearOnly((_foundedOn, input) => input.fiscalYear.endDate),
+  },
+  {
+    key: "founding.depreciation-method-notice",
+    kind: "filing",
+    title: "減価償却資産の償却方法の届出書（税務署）",
+    note: "定額法にしたい資産がある場合",
+    due: firstYearOnly((_foundedOn, input) => addMonths(input.fiscalYear.endDate, 2)),
+  },
+
+  // Every fiscal year.
+  {
+    key: "annual.tax-return",
+    kind: "filing",
+    title: "法人税・地方法人税・法人住民税・法人事業税の申告と納付（税務署・県税事務所・市役所）",
+    note: "消費税は課税事業者の場合",
+    due: (input) => addMonths(input.fiscalYear.endDate, 2),
+  },
+  {
+    key: "annual.shareholders-meeting",
+    kind: "meeting",
+    title: "定時株主総会・決算公告（自社）",
+    due: (input) => addMonths(input.fiscalYear.endDate, 3),
+  },
+  {
+    key: "annual.withholding-special-jan",
+    kind: "payment",
+    title: "源泉所得税（納期の特例・7〜12 月分）（税務署）",
+    due: (input) => dayInFiscalYear(input.fiscalYear, 1, 20),
+  },
+  {
+    key: "annual.legal-records",
+    kind: "filing",
+    title: "法定調書合計表・給与支払報告書・償却資産申告書（税務署・市区町村）",
+    due: (input) => dayInFiscalYear(input.fiscalYear, 1, 31),
+  },
+  {
+    key: "annual.withholding-special-jul",
+    kind: "payment",
+    title: "源泉所得税（納期の特例・1〜6 月分）・算定基礎届（税務署・年金事務所）",
+    due: (input) => dayInFiscalYear(input.fiscalYear, 7, 10),
+  },
+  {
+    key: "annual.interim-return",
+    kind: "filing",
+    title: "法人税・消費税の中間申告（税務署）",
+    note: "前期の税額が一定額を超えた場合",
+    // From 第 2 期: the end of the 8th month of the year (11-30 for a year starting on 04-01).
+    due: (input) => (input.fiscalYear.no >= 2 ? endOfFiscalMonth(input.fiscalYear, 8) : null),
+  },
+];
+
+/** The items the rules give for one fiscal year (pure). */
+export function buildCalendarItems(input: CalendarRuleInput): BuiltCalendarItem[] {
+  const items: BuiltCalendarItem[] = [];
+  for (const rule of CALENDAR_RULES) {
+    const dueDate = rule.due(input);
+    if (dueDate === null) continue;
+    items.push({
+      ruleKey: rule.key,
+      kind: rule.kind,
+      title: rule.title,
+      dueDate,
+      note: rule.note ?? null,
+    });
+  }
+  return items;
+}
+
+export interface SyncCalendarItemsResult {
+  created: number;
+  updated: number;
+}
+
+function itemKey(fiscalYearId: string | null, ruleKey: string | null): string {
+  return `${fiscalYearId ?? ""}\u0000${ruleKey ?? ""}`;
+}
+
+function differs(row: CalendarItem, item: BuiltCalendarItem): boolean {
+  return (
+    row.kind !== item.kind ||
+    row.title !== item.title ||
+    row.note !== item.note ||
+    fromDbDate(row.dueDate) !== item.dueDate
+  );
+}
+
+/**
+ * Brings the calendar in line with the rules for every fiscal year (idempotent, one transaction):
+ * missing items are created; open items follow the rule's date, title, note and kind. Completed
+ * items, and items whose rule no longer gives one, are left as they are.
+ */
+export async function syncCalendarItems(
+  db: Db,
+  options: WriteOptions,
+): Promise<SyncCalendarItemsResult> {
+  return runInTransaction(db, async (tx) => {
+    // The same lock as fiscal year creation: the years read here stay put, and two runs queue.
+    await lockSettings(tx, "fiscalYears");
+    const company = await getCompany(tx);
+    if (!company) return { created: 0, updated: 0 };
+    const fiscalYears = await listFiscalYears(tx);
+    const existing = new Map(
+      (
+        await tx.calendarItem.findMany({
+          where: {
+            fiscalYearId: { in: fiscalYears.map((year) => year.id) },
+            ruleKey: { not: null },
+          },
+        })
+      ).map((row) => [itemKey(row.fiscalYearId, row.ruleKey), row]),
+    );
+
+    let created = 0;
+    let updated = 0;
+    for (const fiscalYear of fiscalYears) {
+      const items = buildCalendarItems({ company: { foundedOn: company.foundedOn }, fiscalYear });
+      for (const item of items) {
+        const row = existing.get(itemKey(fiscalYear.id, item.ruleKey));
+        if (!row) {
+          const inserted = await tx.calendarItem.create({
+            data: {
+              id: newId(),
+              fiscalYearId: fiscalYear.id,
+              ruleKey: item.ruleKey,
+              kind: item.kind,
+              title: item.title,
+              dueDate: toDbDate(item.dueDate),
+              note: item.note,
+            },
+          });
+          await appendAuditLog(tx, {
+            actor: options.actor,
+            action: "calendar_item.create",
+            entity: "calendar_item",
+            entityId: inserted.id,
+            after: inserted,
+          });
+          created += 1;
+          continue;
+        }
+        if (row.completedAt !== null || !differs(row, item)) continue;
+        const after = await tx.calendarItem.update({
+          where: { id: row.id },
+          data: {
+            kind: item.kind,
+            title: item.title,
+            dueDate: toDbDate(item.dueDate),
+            note: item.note,
+          },
+        });
+        await appendAuditLog(tx, {
+          actor: options.actor,
+          action: "calendar_item.update",
+          entity: "calendar_item",
+          entityId: row.id,
+          before: row,
+          after,
+        });
+        updated += 1;
+      }
+    }
+    return { created, updated };
+  });
+}
+
+/** A calendar item as the reminder selection sees it. */
+export interface CalendarNoticeItem {
+  id: string;
+  dueDate: CalendarDate;
+  completedAt: Date | null;
+  lastNotifiedOn: CalendarDate | null;
+  title: string;
+  note: string | null;
+  kind: CalendarItemKind;
+}
+
+export type CalendarNoticeStage = "week" | "today" | "overdue";
+
+export interface CalendarNotice {
+  stage: CalendarNoticeStage;
+  item: CalendarNoticeItem;
+}
+
+function noticeStage(item: CalendarNoticeItem, today: CalendarDate): CalendarNoticeStage | null {
+  const weekBefore = addDays(item.dueDate, -7);
+  const notifiedSince = (day: CalendarDate) =>
+    item.lastNotifiedOn !== null && item.lastNotifiedOn >= day;
+  if (today < weekBefore) return null;
+  if (today < item.dueDate) return notifiedSince(weekBefore) ? null : "week";
+  if (notifiedSince(item.dueDate)) return null;
+  return today === item.dueDate ? "today" : "overdue";
+}
+
+/**
+ * The reminders due on `today` (pure): an open item is mailed once when it comes within 7 days,
+ * and once more on its due date, or as overdue when the due-date mail never went out.
+ * Sorted by due date (items with the same date keep their order).
+ */
+export function selectCalendarNotices(
+  items: readonly CalendarNoticeItem[],
+  today: CalendarDate,
+): CalendarNotice[] {
+  const notices: CalendarNotice[] = [];
+  for (const item of items) {
+    if (item.completedAt !== null) continue;
+    const stage = noticeStage(item, today);
+    if (stage) notices.push({ stage, item });
+  }
+  return notices.sort((a, b) => compareDates(a.item.dueDate, b.item.dueDate));
+}
+
+function toNoticeItem(row: CalendarItem): CalendarNoticeItem {
+  return {
+    id: row.id,
+    dueDate: fromDbDate(row.dueDate),
+    completedAt: row.completedAt,
+    lastNotifiedOn: fromDbDateOrNull(row.lastNotifiedOn),
+    title: row.title,
+    note: row.note,
+    kind: row.kind,
+  };
+}
+
+/** Open (not completed) items, by due date. */
+export async function loadOpenCalendarItems(db: Db): Promise<CalendarNoticeItem[]> {
+  const rows = await db.calendarItem.findMany({
+    where: { completedAt: null },
+    orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+  });
+  return rows.map(toNoticeItem);
+}
+
+/** Records that the reminder mail for these items went out `today` (one audit entry). */
+export async function markCalendarItemsNotified(
+  db: Db,
+  ids: readonly string[],
+  today: CalendarDate,
+  options: WriteOptions,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await runInTransaction(db, async (tx) => {
+    await tx.calendarItem.updateMany({
+      where: { id: { in: [...ids] } },
+      data: { lastNotifiedOn: toDbDate(today) },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "calendar_item.notify",
+      entity: "calendar_item",
+      entityId: null,
+      after: { ids, today },
+    });
+  });
+}

@@ -8,7 +8,38 @@ export {
   type AuditLogPage,
   type AuditLogRow,
 } from "./audit-query";
+export {
+  BACKUP_SNAPSHOT_FORMAT,
+  BACKUP_SNAPSHOT_VERSION,
+  BACKUP_TABLES,
+  exportBackup,
+  exportBackupSnapshot,
+  latestAppliedMigration,
+  restoreBackupSnapshot,
+  trialBalancesForBackup,
+  type BackupExport,
+  type BackupJson,
+  type BackupRow,
+  type BackupSnapshot,
+  type BackupTrialBalance,
+  type RestoreBackupResult,
+} from "./backup";
 export { bootstrapStandardData, hasStandardData, type BootstrapResult } from "./bootstrap";
+export {
+  buildCalendarItems,
+  CALENDAR_RULES,
+  loadOpenCalendarItems,
+  markCalendarItemsNotified,
+  selectCalendarNotices,
+  syncCalendarItems,
+  type BuiltCalendarItem,
+  type CalendarNotice,
+  type CalendarNoticeItem,
+  type CalendarNoticeStage,
+  type CalendarRule,
+  type CalendarRuleInput,
+  type SyncCalendarItemsResult,
+} from "./calendar";
 export { createPrismaClient, getPrismaClient, type CreatePrismaClientOptions } from "./client";
 export {
   cancelYearEnd,
@@ -144,6 +175,7 @@ export {
 } from "./fixed-assets";
 export { newId } from "./ids";
 export {
+  attachInvoicePdf,
   cancelInvoicePayment,
   createInvoiceDraft,
   discardInvoiceDraft,

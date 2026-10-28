@@ -10,3 +10,6 @@ tmp/
 coverage/
 *.tsbuildinfo
 next-env.d.ts
+
+# Deployment configuration with real project values (scripts/deploy.env.example is the template)
+scripts/deploy.env

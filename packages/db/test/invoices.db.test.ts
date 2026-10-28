@@ -2,12 +2,15 @@ import { LedgerValidationError, type CalendarDate } from "@niho-finance/ledger";
 import type { Company, FiscalYear, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
+import { randomBytes } from "node:crypto";
 import {
+  attachInvoicePdf,
   cancelInvoicePayment,
   createInvoiceDraft,
   describeAuditTargets,
   discardInvoiceDraft,
   fromDbDate,
+  getDocumentDetail,
   getInvoiceDetail,
   getInvoiceSettings,
   issueInvoice,
@@ -19,6 +22,7 @@ import {
   markInvoiceSent,
   newId,
   recordInvoicePayment,
+  registerDocument,
   SettingsError,
   toDbDate,
   updateInvoiceDraft,
@@ -1221,5 +1225,74 @@ describe.skipIf(!hasTestDatabase)("invoicing (請求)", () => {
     ]);
     expect(names.get(`invoice:${draft.id}`)).toBe(`請求 ${result.number}`);
     expect(names.get(`invoice:${quote.id}`)).toBe("請求 見積書（下書き）");
+  });
+
+  it("ties the stored copy of an issued PDF to the document once (18 §11)", async () => {
+    const pdfDocument = async () =>
+      (
+        await registerDocument(
+          prisma,
+          {
+            storageKey: `documents/2051/11/${newId()}.pdf`,
+            sha256: randomBytes(32).toString("hex"),
+            mime: "application/pdf",
+            byteSize: 2_048,
+            originalName: "20511101-架空デザイン合同会社御中_請求書.pdf",
+            source: "generated",
+            kind: "invoice_out",
+          },
+          options,
+        )
+      ).document;
+
+    const draft = await createInvoiceDraft(
+      prisma,
+      draftInput({ issueDate: "2051-11-01" }),
+      options,
+    );
+    const copy = await pdfDocument();
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, draft.id, { documentId: copy.id }, options)),
+      ).message,
+    ).toContain("下書き");
+
+    const invoice = await issueInvoice(prisma, draft.id, options);
+    await attachInvoicePdf(prisma, invoice.id, { documentId: copy.id }, options);
+    const detail = await getInvoiceDetail(prisma, invoice.id, { today: "2051-11-02" });
+    expect(detail?.pdfDocumentId).toBe(copy.id);
+    const linked = await getDocumentDetail(prisma, copy.id);
+    expect(linked?.status).toBe("linked");
+    expect(linked?.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "invoice", id: invoice.id, number: invoice.number }),
+        expect.objectContaining({ kind: "journal_entry", id: invoice.journalEntryId }),
+      ]),
+    );
+    expect(linked?.links).toHaveLength(2);
+
+    // The same copy again changes nothing; another one is refused, and so is the DB.
+    await attachInvoicePdf(prisma, invoice.id, { documentId: copy.id }, options);
+    const other = await pdfDocument();
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, invoice.id, { documentId: other.id }, options)),
+      ).message,
+    ).toContain("すでに");
+    await expect(
+      prisma.invoice.update({ where: { id: invoice.id }, data: { pdfDocumentId: other.id } }),
+    ).rejects.toThrow(/already set/);
+
+    const history = await loadInvoiceHistory(prisma, invoice.id);
+    expect(history.filter((row) => row.action === "invoice.attach_pdf")).toHaveLength(1);
+
+    // A void document never changes: its copy stays, and none can be attached any more.
+    const voided = await issued({ issueDate: "2051-11-03" });
+    await voidInvoice(prisma, voided.id, { reason: "宛名の誤り" }, options);
+    expect(
+      settingsError(
+        await rejectionOf(attachInvoicePdf(prisma, voided.id, { documentId: other.id }, options)),
+      ).message,
+    ).toContain("無効");
   });
 });

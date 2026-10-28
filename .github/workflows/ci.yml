@@ -70,3 +70,18 @@ jobs:
       - run: npm run db:seed
       - name: test:db against the seeded database
         run: npm run test:db
+
+  image:
+    name: image (docker build, shellcheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # The deploy scripts run on the owner's Mac (no GCP credentials here): lint them only.
+      - name: shellcheck (scripts)
+        run: shellcheck -x scripts/*.sh scripts/db/*.sh
+      # The images Cloud Build makes on deploy (Dockerfile targets); nothing is pushed.
+      - name: docker build (runtime)
+        run: docker build --target runtime --tag niho-finance:ci .
+      - name: docker build (migrate)
+        run: docker build --target migrate --tag niho-finance-migrate:ci .

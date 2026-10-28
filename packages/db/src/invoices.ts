@@ -61,6 +61,7 @@ import {
 import { Prisma, type Account, type FiscalYear, type Invoice } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
+import { linkDocument } from "./documents";
 import {
   loadSimpleEntryContext,
   loadTaxRules,
@@ -822,6 +823,8 @@ export interface InvoiceDetail {
   sentTo: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
+  /** The stored copy of the issued PDF (証憑 `invoice_out`, 18 §11); `null` until it is saved. */
+  pdfDocumentId: string | null;
   createdAt: Date;
   updatedAt: Date;
   actions: InvoiceActions;
@@ -1098,6 +1101,7 @@ export async function getInvoiceDetail(
     sentTo: row.sentTo,
     voidedAt: row.voidedAt,
     voidReason: row.voidReason,
+    pdfDocumentId: row.pdfDocumentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     actions: invoiceActions({
@@ -2275,6 +2279,63 @@ export async function cancelInvoicePayment(
       before: { status: current.status, payment },
       after: { status: row.status, payment: cancelled },
       reason: data.reason,
+    });
+    return toRecord(row);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Writes: 発行した PDF を証憑に (18 §11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ties the stored copy of an issued document's PDF (a document the app saved with
+ * `source = generated`) to the document: `Invoice.pdfDocumentId` (set once; the DB trigger refuses
+ * a second value) and the 証憑's links to the invoice and to its 売掛金 entry (`linkDocument`). Drafts have
+ * no copy and void documents never change. Attaching the same document again changes nothing.
+ */
+export async function attachInvoicePdf(
+  db: Db,
+  id: string,
+  input: { documentId: string },
+  options: ActorOptions,
+): Promise<InvoiceRecord> {
+  return runInTransaction(db, async (tx) => {
+    const current = await lockInvoice(tx, id);
+    switch (current.status) {
+      case "draft":
+        throw new SettingsError("下書きの PDF は証憑にしません。発行してから保存します");
+      case "void":
+        throw new SettingsError("無効の書類には PDF を保存できません");
+      case "issued":
+      case "sent":
+      case "paid":
+        break;
+    }
+    if (current.pdfDocumentId === input.documentId) return toRecord(current);
+    if (current.pdfDocumentId !== null) {
+      throw new SettingsError("この書類の PDF はすでに証憑に保存しています");
+    }
+    await linkDocument(tx, { kind: "invoice", id, documentId: input.documentId }, options);
+    // The copy is the evidence of the 売掛金 / 売上 entry too (it shows on the entry's detail).
+    if (current.journalEntryId) {
+      await linkDocument(
+        tx,
+        { kind: "journal_entry", id: current.journalEntryId, documentId: input.documentId },
+        options,
+      );
+    }
+    const row = await tx.invoice.update({
+      where: { id },
+      data: { pdfDocumentId: input.documentId },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "invoice.attach_pdf",
+      entity: "invoice",
+      entityId: id,
+      before: { pdfDocumentId: null },
+      after: { pdfDocumentId: input.documentId },
     });
     return toRecord(row);
   });

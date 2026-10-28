@@ -14,7 +14,7 @@ import {
   readJson,
 } from "@/lib/documents/api";
 import type { CompleteResponse } from "@/lib/documents/api-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { getDocumentStorage } from "@/lib/storage";
 import { verifyUploadedFile } from "@/lib/storage/save";
 
@@ -35,7 +35,7 @@ export async function POST(request: Request): Promise<Response> {
       mime: body.mime,
       byteSize: body.byteSize,
     });
-    const by = { actor: actor() };
+    const by = { actor: await actor() };
     const file = {
       storageKey: body.key,
       sha256: body.sha256,

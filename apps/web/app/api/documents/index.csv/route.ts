@@ -6,7 +6,7 @@ import {
 } from "@niho-finance/db";
 import { DOCUMENT_INDEX_COLUMNS, documentIndexCells, toCsv } from "@niho-finance/ledger";
 import { assertSameOrigin, handleApi } from "@/lib/documents/api";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { contentDisposition } from "@/lib/storage/keys";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
     const filters = documentSearchSchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );
-    const rows = await exportDocumentIndex(getPrismaClient(), filters, { actor: actor() });
+    const rows = await exportDocumentIndex(getPrismaClient(), filters, { actor: await actor() });
     const csv = toCsv([DOCUMENT_INDEX_COLUMNS, ...rows.map(documentIndexCells)]);
     const day = todayInJapan().replaceAll("-", "");
     return new Response(csv, {
