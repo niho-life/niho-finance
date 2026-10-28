@@ -184,6 +184,15 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "fiscal_year.reopen": "締めを戻す",
   "setup.skip": "初期設定を後回し",
   "standard_data.bootstrap": "標準データの投入",
+  // 請求 (18-invoicing §1)
+  "invoice.create": "書類の作成",
+  "invoice.update": "書類の変更",
+  "invoice.discard": "下書きの破棄",
+  "invoice.issue": "書類の発行",
+  "invoice.send": "書類の送付",
+  "invoice.pay": "入金の登録",
+  "invoice.cancel_payment": "入金の取消",
+  "invoice.void": "書類の無効",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
@@ -221,6 +230,7 @@ export const AUDIT_ENTITIES = [
   "memo_tag",
   "standard_data",
   "setup",
+  "invoice",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -237,6 +247,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   memo_tag: "タグ",
   standard_data: "標準データ",
   setup: "初期設定",
+  invoice: "請求",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {
