@@ -6,14 +6,15 @@
  * `FinancialStatementsSource` is also a `ReportSource` (the trial balance runs on it unchanged).
  */
 import type { CalendarDate, TaxRateRule } from "@niho-finance/ledger";
-import type {
-  ReportAccount,
-  ReportCompany,
-  ReportEntry,
-  ReportFiscalYear,
-  ReportPartner,
-  ReportSource,
-  ReportSubAccount,
+import {
+  closingEntryIdsOf,
+  type ReportAccount,
+  type ReportCompany,
+  type ReportEntry,
+  type ReportFiscalYear,
+  type ReportPartner,
+  type ReportSource,
+  type ReportSubAccount,
 } from "../source";
 import { normalizeStatementSettings, type StatementSettings } from "./settings";
 
@@ -163,25 +164,12 @@ export function isFirstFiscalYear(
   return source.fiscalYears.every((year) => year.no >= fiscalYear.no);
 }
 
-/**
- * The year's 決算振替 and their reversals (a close taken back, #14). Both are left out: the pair
- * nets to 0, but keeping only the reversal would move the year's P&L twice.
- */
+/** The year's 決算振替 and their reversals (`closingEntryIdsOf`): left out of the statements. */
 export function yearClosingEntryIds(
   source: FinancialStatementsSource,
   fiscalYear: FinancialStatementsFiscalYear,
 ): Set<string> {
-  const closing = new Set<string>();
-  for (const entry of source.entries) {
-    if (entry.kind === "closing" && entry.fiscalYearId === fiscalYear.id) closing.add(entry.id);
-  }
-  const ids = new Set(closing);
-  for (const entry of source.entries) {
-    if (entry.kind === "reversal" && entry.reversalOfId && closing.has(entry.reversalOfId)) {
-      ids.add(entry.id);
-    }
-  }
-  return ids;
+  return closingEntryIdsOf(source.entries, fiscalYear.id);
 }
 
 export function yearEntries(

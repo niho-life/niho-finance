@@ -219,7 +219,7 @@ describe("決算振替 (closing entries)", () => {
     expect(after.equityStatement.carriedForward.opening).toBe(FY1_TOTALS.netIncome);
   });
 
-  it("would zero the year in a plain trial balance (why it is left out)", () => {
+  it("is left out of the trial balance too, so 報告 and 決算書 agree", () => {
     const tb = buildTrialBalance(CLOSED_BOOK, {
       fiscalYear: FY1,
       preset: "year",
@@ -227,7 +227,7 @@ describe("決算振替 (closing entries)", () => {
       to: FY1.endDate,
       segmentId: null,
     });
-    expect(tb.incomeStatement.netIncome).toBe(0n);
+    expect(tb.incomeStatement.netIncome).toBe(FY1_TOTALS.netIncome);
     expect(buildFinancialStatements(CLOSED_BOOK, FY1.id).incomeStatement.netIncome).toBe(
       FY1_TOTALS.netIncome,
     );
