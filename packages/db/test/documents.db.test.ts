@@ -1365,6 +1365,22 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
   });
 
   describe("files of imports (S4)", () => {
+    // A wallet of its own (inactive, so the importable wallets and the other files' import history
+    // on the seeded wallets stay as they are).
+    let statementWallet: Wallet;
+
+    beforeAll(async () => {
+      statementWallet = await prisma.wallet.create({
+        data: {
+          id: newId(),
+          name: "架空信金 証憑テスト",
+          kind: "bank",
+          accountId: refs.account("1100"),
+          isActive: false,
+        },
+      });
+    });
+
     async function importBatch(wallet: Wallet, periodTo: CalendarDate | null) {
       return prisma.importBatch.create({
         data: {
@@ -1390,7 +1406,7 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
     });
 
     it("keeps an import's CSV as a linked document, out of the inbox", async () => {
-      const batch = await importBatch(card, "2040-09-30");
+      const batch = await importBatch(statementWallet, "2040-09-30");
       const document = await register(csvFile());
       const before = await countInboxDocuments(prisma);
 
@@ -1404,13 +1420,13 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
         txnDate: "2040-09-30",
         amount: null,
         partnerId: null,
-        partnerName: "架空カード",
+        partnerName: "架空信金 証憑テスト",
         unsorted: false,
       });
       expect(attached.importBatches).toEqual([
         {
           id: batch.id,
-          walletName: "架空カード",
+          walletName: "架空信金 証憑テスト",
           periodFrom: "2040-09-01",
           periodTo: "2040-09-30",
           importedCount: 0,
@@ -1452,14 +1468,14 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
     });
 
     it("moves an import's file to its replacement", async () => {
-      const batch = await importBatch(bank, null);
+      const batch = await importBatch(statementWallet, null);
       const document = await register(csvFile());
       const attached = await attachImportBatchDocument(
         prisma,
         { batchId: batch.id, documentId: document.id },
         { actor },
       );
-      expect(attached).toMatchObject({ txnDate: null, partnerName: "架空銀行 普通" });
+      expect(attached).toMatchObject({ txnDate: null, partnerName: "架空信金 証憑テスト" });
 
       const { document: replacement } = await replaceDocument(
         prisma,
