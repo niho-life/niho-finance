@@ -16,15 +16,21 @@ import {
   isAccountGroupOf,
   isCalendarDate,
   isTaxCategoryCode,
+  isValidRuleRegex,
   normalizeCorporateNumber,
   normalizeInvoiceRegistrationNumber,
   parseYenInput,
   PARTNER_KINDS,
+  RULE_MODES,
+  RULE_REGEX_MAX_LENGTH,
   SIDES,
   WALLET_KINDS,
   type CalendarDate,
   type EntryCounterpart,
   type Money,
+  type RuleAction,
+  type RuleMatch,
+  type RuleSign,
 } from "@niho-finance/ledger";
 import { z } from "zod";
 
@@ -725,3 +731,249 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 明細 (15-statements)
+// ---------------------------------------------------------------------------
+
+/** 状態 of the statement list (15 §3): 未処理 (default) / 登録済み / 振替 / 無視. */
+export const STATEMENT_STATUS_FILTERS = ["pending", "registered", "transfer", "ignored"] as const;
+export type StatementStatusFilter = (typeof STATEMENT_STATUS_FILTERS)[number];
+
+/** `/statements?wallet&status&q&by&page` (15 §3). */
+export const statementsFilterSchema = z.object({
+  wallet: filterId,
+  status: lenient<StatementStatusFilter>(z.enum(STATEMENT_STATUS_FILTERS), "pending"),
+  /** 摘要・振込人, partial match; digits and separators only → the amount (|金額|). */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  /** `rule`: settled by a rule without the owner (the settled tabs only). */
+  by: lenient<"rule" | null>(z.literal("rule"), null),
+  page: filterPage,
+});
+export type StatementsFilter = z.output<typeof statementsFilterSchema>;
+
+/** A line of 登録 (one, or several for 分割, 15 §9). The amount is tax-inclusive. */
+export const statementLineSchema = z.object({
+  accountId: idField("科目"),
+  /** Empty → the whole amount of the statement line (only with one line). */
+  amount: optionalPositiveYen("金額"),
+  taxCategoryCode: taxCategoryCodeField(),
+  segmentId: optionalIdField("セグメント"),
+  /** Empty → the entry's partner. */
+  partnerId: optionalIdField("取引先"),
+  description: optionalText("摘要", 200),
+});
+export type StatementLineFormInput = z.input<typeof statementLineSchema>;
+
+/** 登録 of a statement line (15 §1, §5, §9). */
+export const registerStatementSchema = z.object({
+  /** Empty → the line's own description (cut to 200 characters). */
+  description: optionalText("摘要", 200),
+  partnerId: optionalIdField("取引先"),
+  /** The rule whose suggestion is being registered (its hit count goes up). */
+  ruleId: optionalIdField("ルール"),
+  lines: z
+    .array(statementLineSchema, { error: "行の形式が正しくありません" })
+    .min(1, { error: "行を 1 行以上入れてください" })
+    .max(30, { error: "行は 30 行までにしてください" }),
+});
+export type RegisterStatementInput = z.input<typeof registerStatementSchema>;
+export type ParsedRegisterStatement = z.output<typeof registerStatementSchema>;
+
+/** The other side of a 振替 (15 §8): a pending line, a posted transfer entry, or just a wallet. */
+export interface StatementCounterpart {
+  kind: "txn" | "entry" | "wallet";
+  id: string;
+}
+
+/** 振替 of a statement line: `txn:<id>` / `entry:<id>` / `wallet:<id>` (15 §1, §8). */
+export const transferStatementSchema = z.object({
+  counterpart: fromText("相手", (text): Conversion<StatementCounterpart> => {
+    if (text === "") return problem("相手を選んでください");
+    const match = /^(txn|entry|wallet):(\S{1,64})$/.exec(text);
+    const kind = match?.[1];
+    const id = match?.[2];
+    if (!id || (kind !== "txn" && kind !== "entry" && kind !== "wallet")) {
+      return problem("相手が正しくありません");
+    }
+    return ok({ kind, id });
+  }),
+  /** Only with `wallet:` (paid by the paying wallet, 11 §4.3). */
+  fee: optionalPositiveYen("手数料"),
+  /** Empty → 「振替 <出金側> → <入金側>」. */
+  description: optionalText("摘要", 200),
+  ruleId: optionalIdField("ルール"),
+});
+export type TransferStatementInput = z.input<typeof transferStatementSchema>;
+export type ParsedTransferStatement = z.output<typeof transferStatementSchema>;
+
+/** 無視 (15 §1): the reason is optional. */
+export const ignoreStatementSchema = z.object({
+  reason: optionalText("理由", 200),
+  ruleId: optionalIdField("ルール"),
+});
+export type IgnoreStatementInput = z.input<typeof ignoreStatementSchema>;
+
+/** 未処理に戻す: the reason is required when an entry is voided (checked by the repository). */
+export const reopenStatementSchema = z.object({ reason: optionalText("理由", 500) });
+export type ReopenStatementInput = z.input<typeof reopenStatementSchema>;
+
+/** メモ of a statement line (any state; never written to the entry). */
+export const statementNoteSchema = z.object({ note: optionalText("メモ", 500) });
+export type StatementNoteInput = z.input<typeof statementNoteSchema>;
+
+// ---------------------------------------------------------------------------
+// ルール (15 §10)
+// ---------------------------------------------------------------------------
+
+const ruleSignField = orNull(
+  fromText("符号", (text): Conversion<RuleSign | null> => {
+    if (text === "" || text === "both") return ok(null);
+    if (text === "in" || text === "out") return ok(text);
+    return problem("符号が正しくありません");
+  }),
+);
+
+const ruleRegexField = orNull(
+  fromText("正規表現", (text): Conversion<string | null> => {
+    if (text === "") return ok(null);
+    if (text.length > RULE_REGEX_MAX_LENGTH) {
+      return problem(`正規表現は ${RULE_REGEX_MAX_LENGTH} 文字以内にしてください`);
+    }
+    if (!isValidRuleRegex(text)) return problem("正規表現が正しくありません");
+    return ok(text);
+  }),
+);
+
+/** 条件 of a rule: at least one, all AND. Amounts are |金額| in whole yen. */
+export const ruleMatchSchema = z
+  .object({
+    descriptionContains: optionalText("摘要に含む", 100),
+    descriptionRegex: ruleRegexField,
+    counterpartyContains: optionalText("振込人に含む", 100),
+    amountMin: optionalPositiveYen("金額の下限"),
+    amountMax: optionalPositiveYen("金額の上限"),
+    sign: ruleSignField,
+  })
+  .superRefine((match, ctx) => {
+    if (match.amountMin !== null && match.amountMax !== null && match.amountMin > match.amountMax) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountMax"],
+        message: "金額の上限は下限以上にしてください",
+      });
+    }
+    const conditions = [
+      match.descriptionContains,
+      match.descriptionRegex,
+      match.counterpartyContains,
+      match.amountMin,
+      match.amountMax,
+      match.sign,
+    ];
+    if (conditions.every((value) => value === null)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["descriptionContains"],
+        message: "条件を 1 つ以上入れてください",
+      });
+    }
+  })
+  .transform((match): RuleMatch => match);
+export type RuleMatchInput = z.input<typeof ruleMatchSchema>;
+
+/** 動作 of a rule; the fields another mode does not use are dropped. */
+export const ruleActionSchema = z
+  .object({
+    mode: enumField("動作", RULE_MODES),
+    accountId: optionalIdField("科目"),
+    taxCategoryCode: optionalTaxCategoryCodeField(),
+    partnerId: optionalIdField("取引先"),
+    segmentId: optionalIdField("セグメント"),
+    descriptionTemplate: optionalText("摘要の雛形", 200),
+    transferToWalletId: optionalIdField("相手口座"),
+    ignoredReason: optionalText("理由", 200),
+  })
+  .superRefine((action, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    switch (action.mode) {
+      case "register":
+        if (!action.accountId) issue("accountId", "科目を選んでください");
+        if (!action.taxCategoryCode) issue("taxCategoryCode", "税区分を選んでください");
+        return;
+      case "suggest":
+        if (
+          !action.accountId &&
+          !action.taxCategoryCode &&
+          !action.partnerId &&
+          !action.segmentId
+        ) {
+          issue("accountId", "科目・税区分・取引先・セグメントのどれかを入れてください");
+        }
+        return;
+      case "transfer":
+        if (!action.transferToWalletId) issue("transferToWalletId", "相手口座を選んでください");
+        return;
+      case "ignore":
+        return;
+    }
+  })
+  .transform((action): RuleAction => {
+    const fields = action.mode === "register" || action.mode === "suggest";
+    return {
+      mode: action.mode,
+      accountId: fields ? action.accountId : null,
+      taxCategoryCode: fields ? action.taxCategoryCode : null,
+      partnerId: fields ? action.partnerId : null,
+      segmentId: fields ? action.segmentId : null,
+      descriptionTemplate: fields ? action.descriptionTemplate : null,
+      transferToWalletId: action.mode === "transfer" ? action.transferToWalletId : null,
+      ignoredReason: action.mode === "ignore" ? action.ignoredReason : null,
+    };
+  });
+export type RuleActionInput = z.input<typeof ruleActionSchema>;
+
+/** 優先度: an integer from −100 to 100; empty → 0. */
+const rulePriorityField = fromText("優先度", (text): Conversion<number> => {
+  if (text === "") return ok(0);
+  const normalized = toHalfWidthDigits(text).replace(/^[−－]/, "-");
+  if (!/^[-+]?\d+$/.test(normalized)) return problem("優先度は整数で入力してください");
+  const value = Number(normalized);
+  if (value < -100 || value > 100) return problem("優先度は -100〜100 にしてください");
+  return ok(value);
+});
+
+const ruleFields = {
+  /** Empty → the match summary is the display name. */
+  name: optionalText("名前", 50),
+  /** Empty → every wallet. */
+  walletId: optionalIdField("口座"),
+  match: ruleMatchSchema,
+  action: ruleActionSchema,
+  /** Left out → off. */
+  autoPost: booleanField("自動登録").optional(),
+  /** Left out → 0. */
+  priority: rulePriorityField.optional(),
+};
+
+/** ルールを追加 (15 §10). A 候補 rule never posts by itself (`autoPost` is forced off). */
+export const ruleCreateSchema = z.object(ruleFields).transform((rule) => ({
+  ...rule,
+  autoPost: rule.action.mode === "suggest" ? false : rule.autoPost === true,
+  priority: rule.priority ?? 0,
+}));
+export type RuleCreateInput = z.input<typeof ruleCreateSchema>;
+export type ParsedRuleCreate = z.output<typeof ruleCreateSchema>;
+
+/** ルールの編集: only the given keys change (`match` / `action` are replaced as a whole). */
+export const ruleUpdateSchema = z.object({
+  name: ruleFields.name.optional(),
+  walletId: ruleFields.walletId.optional(),
+  match: ruleMatchSchema.optional(),
+  action: ruleActionSchema.optional(),
+  autoPost: ruleFields.autoPost,
+  priority: ruleFields.priority,
+});
+export type RuleUpdateInput = z.input<typeof ruleUpdateSchema>;
+export type ParsedRuleUpdate = z.output<typeof ruleUpdateSchema>;

@@ -10,6 +10,8 @@ import {
   type CalendarDate,
   type EntryKind,
   type JournalLineInput,
+  type RuleAction,
+  type RuleMatch,
   type Side,
 } from "@niho-finance/ledger";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -18,6 +20,7 @@ import { bootstrapStandardData } from "./bootstrap";
 import { toDbDate } from "./dates";
 import { newId } from "./ids";
 import { postJournalEntryInTransaction, voidJournalEntryInTransaction } from "./journal";
+import { ruleActionToJson, ruleMatchToJson } from "./rule-json";
 
 export const SEED_ACTOR = "seed";
 
@@ -56,6 +59,8 @@ interface SeedLine {
 }
 
 interface SeedEntry {
+  /** Names the posted entry for the seeded statement lines (`STATEMENT_LINES.entry`). */
+  key?: string;
   date: CalendarDate;
   description: string;
   kind: EntryKind;
@@ -86,14 +91,27 @@ const WALLETS = [
   { name: "役員立替", kind: "owner", sub: "owner", segment: undefined, importer: null },
 ] as const;
 
-const PARTNERS = [
-  { key: "cloud", name: "架空クラウド株式会社", kind: "vendor" },
-  { key: "realty", name: "架空不動産株式会社", kind: "vendor" },
-  { key: "design", name: "架空デザイン合同会社", kind: "customer" },
-] as const;
+const PARTNERS: readonly {
+  key: string;
+  name: string;
+  kind: "vendor" | "customer";
+  nameKana?: string;
+  defaults?: { account: string; segment: string; tax: string };
+}[] = [
+  { key: "cloud", name: "架空クラウド株式会社", kind: "vendor", nameKana: "カクウクラウド" },
+  { key: "realty", name: "架空不動産株式会社", kind: "vendor", nameKana: "カクウフドウサン" },
+  {
+    key: "design",
+    name: "架空デザイン合同会社",
+    kind: "customer",
+    nameKana: "カクウデザイン",
+    defaults: { account: "4040", segment: "contract", tax: "sales_10" },
+  },
+];
 
 const ENTRIES: SeedEntry[] = [
   {
+    key: "capital",
     date: "2026-11-02",
     description: "資本金の払込",
     kind: "opening",
@@ -125,6 +143,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "cloud",
     date: "2026-11-05",
     description: "クラウドサービス利用料",
     kind: "normal",
@@ -150,6 +169,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "membership",
     date: "2026-11-20",
     description: "月会費",
     kind: "normal",
@@ -159,6 +179,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "stripeFee",
     date: "2026-11-20",
     description: "Stripe 決済手数料",
     kind: "normal",
@@ -168,6 +189,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "payout",
     date: "2026-11-30",
     description: "Stripe からの入金",
     kind: "transfer",
@@ -177,6 +199,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "dropIn",
     date: "2026-12-01",
     description: "ドロップイン（現金）",
     kind: "normal",
@@ -186,6 +209,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "bankFee",
     date: "2026-12-10",
     description: "振込手数料",
     kind: "normal",
@@ -205,6 +229,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "books",
     date: "2026-12-15",
     description: "書籍代",
     kind: "normal",
@@ -214,6 +239,7 @@ const ENTRIES: SeedEntry[] = [
     ],
   },
   {
+    key: "cardPayment",
     date: "2026-12-27",
     description: "カード引落",
     kind: "transfer",
@@ -320,6 +346,14 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
       id: lookup(partnerIds, partner.key, "partner"),
       name: partner.name,
       kind: partner.kind,
+      nameKana: partner.nameKana ?? null,
+      defaultAccountId: partner.defaults
+        ? lookup(accountIds, partner.defaults.account, "account")
+        : null,
+      defaultSegmentId: partner.defaults
+        ? lookup(segmentIds, partner.defaults.segment, "segment")
+        : null,
+      defaultTaxCategoryCode: partner.defaults?.tax ?? null,
     })),
   });
 
@@ -339,6 +373,7 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
   });
 
   let entryCount = 0;
+  const entryIds = new Map<string, string>();
   for (const seedEntry of ENTRIES) {
     const lines: JournalLineInput[] = seedEntry.lines.map((line) => {
       const taxCategoryCode = line.tax ?? "na";
@@ -371,6 +406,7 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
       { actor: SEED_ACTOR },
     );
     entryCount += 1;
+    if (seedEntry.key) entryIds.set(seedEntry.key, posted.id);
     if (seedEntry.voidReason) {
       await voidJournalEntryInTransaction(tx, posted.id, {
         reason: seedEntry.voidReason,
@@ -380,12 +416,281 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
     }
   }
 
+  const statements = await seedStatements(tx, {
+    accountIds,
+    segmentIds,
+    partnerIds,
+    entryIds,
+    walletIds: new Map(
+      (await tx.wallet.findMany({ select: { id: true, name: true } })).flatMap((row) => {
+        const wallet = WALLETS.find((item) => item.name === row.name);
+        return wallet ? [[wallet.sub, row.id] as const] : [];
+      }),
+    ),
+  });
+
   await appendAuditLog(tx, {
     actor: SEED_ACTOR,
     action: "seed.apply",
     entity: "company",
     entityId: companyId,
-    after: { fiscalYearId, accounts: CHART_TEMPLATE.length, entries: entryCount },
+    after: {
+      fiscalYearId,
+      accounts: CHART_TEMPLATE.length,
+      entries: entryCount,
+      rules: statements.rules,
+      statementLines: statements.lines,
+      pendingStatementLines: statements.pending,
+    },
   });
   return { seeded: true, companyId, fiscalYearId, entryCount };
+}
+
+// ---------------------------------------------------------------------------
+// 明細とルール (15-statements §12): settled lines linked to the entries above (no new entries, so
+// the numbering and the trial balance stay as they are) and 12 pending lines that the keyboard
+// settles with Enter and I alone (15 §6): rule ×4, partner ×1, history ×2, two transfer pairs, one
+// posted transfer to match, one private purchase to ignore.
+// ---------------------------------------------------------------------------
+
+type SeedWallet = "bank" | "card" | "cash" | "stripe";
+
+interface SeedRule {
+  name: string;
+  wallet: SeedWallet;
+  match: Partial<RuleMatch>;
+  action: {
+    mode: RuleAction["mode"];
+    account?: string;
+    tax?: string;
+    partner?: string;
+    segment?: string;
+    transferTo?: SeedWallet;
+  };
+  autoPost: boolean;
+}
+
+/** Created in this order (same priority: the older rule wins). */
+const SEED_RULES: readonly SeedRule[] = [
+  {
+    name: "家賃",
+    wallet: "bank",
+    match: { descriptionContains: "カクウフドウサン", sign: "out" },
+    action: {
+      mode: "register",
+      account: "5300",
+      tax: "purchase_10",
+      partner: "realty",
+      segment: "kamakura",
+    },
+    autoPost: false,
+  },
+  {
+    name: "Stripe の売上",
+    wallet: "stripe",
+    match: { descriptionContains: "charge", sign: "in" },
+    action: { mode: "register", account: "4010", tax: "sales_10", segment: "kamakura" },
+    autoPost: false,
+  },
+  {
+    name: "振込手数料",
+    wallet: "bank",
+    match: { descriptionContains: "振込手数料", sign: "out" },
+    action: { mode: "register", account: "5400", tax: "purchase_10", segment: "corporate" },
+    autoPost: true,
+  },
+  {
+    name: "Stripe の入金",
+    wallet: "stripe",
+    match: { descriptionContains: "payout", sign: "out" },
+    action: { mode: "transfer", transferTo: "bank" },
+    autoPost: false,
+  },
+  {
+    name: "ATM 引出",
+    wallet: "bank",
+    match: { descriptionContains: "ATM", sign: "out" },
+    action: { mode: "transfer", transferTo: "cash" },
+    autoPost: false,
+  },
+];
+
+interface SeedStatementLine {
+  wallet: SeedWallet;
+  date: CalendarDate;
+  amount: bigint;
+  description: string;
+  counterparty?: string;
+  /** Settled lines: the state and the seeded entry they point at. Left out → pending. */
+  settled?: { status: "registered" | "transfer"; entry: string; rule?: number; auto?: boolean };
+}
+
+/** Banks write half-width kana (「ｶ)ｶｸｳﾌﾄﾞｳｻﾝ」); the suggestions normalize it. */
+const STATEMENT_LINES: readonly SeedStatementLine[] = [
+  // Settled: linked to the sample entries.
+  {
+    wallet: "bank",
+    date: "2026-11-02",
+    amount: 50_000n,
+    description: "振込 シホンキン ハライコミ",
+    settled: { status: "registered", entry: "capital" },
+  },
+  {
+    wallet: "card",
+    date: "2026-11-05",
+    amount: -1_650n,
+    description: "カクウクラウド 利用料",
+    settled: { status: "registered", entry: "cloud" },
+  },
+  {
+    wallet: "stripe",
+    date: "2026-11-20",
+    amount: 11_000n,
+    description: "charge 月会費 11月",
+    settled: { status: "registered", entry: "membership", rule: 2 },
+  },
+  {
+    wallet: "stripe",
+    date: "2026-11-20",
+    amount: -396n,
+    description: "fee 月会費 11月",
+    settled: { status: "registered", entry: "stripeFee" },
+  },
+  {
+    wallet: "stripe",
+    date: "2026-11-30",
+    amount: -10_604n,
+    description: "payout",
+    settled: { status: "transfer", entry: "payout" },
+  },
+  {
+    wallet: "bank",
+    date: "2026-11-30",
+    amount: 10_604n,
+    description: "振込 ｽﾄﾗｲﾌﾟｼﾞﾔﾊﾟﾝ(ｶ",
+    settled: { status: "transfer", entry: "payout" },
+  },
+  {
+    wallet: "cash",
+    date: "2026-12-01",
+    amount: 2_200n,
+    description: "ドロップイン",
+    settled: { status: "registered", entry: "dropIn" },
+  },
+  {
+    wallet: "bank",
+    date: "2026-12-10",
+    amount: -145n,
+    description: "振込手数料",
+    settled: { status: "registered", entry: "bankFee", rule: 3, auto: true },
+  },
+  {
+    wallet: "bank",
+    date: "2026-12-15",
+    amount: -1_980n,
+    description: "Vデビット 架空書店",
+    settled: { status: "registered", entry: "books" },
+  },
+  {
+    wallet: "bank",
+    date: "2026-12-27",
+    amount: -1_650n,
+    description: "カード引落 カクウカード",
+    settled: { status: "transfer", entry: "cardPayment" },
+  },
+  // Pending (12).
+  { wallet: "card", date: "2026-12-27", amount: 1_650n, description: "口座振替 お支払い" },
+  { wallet: "card", date: "2027-01-05", amount: -1_650n, description: "カクウクラウド 利用料" },
+  { wallet: "bank", date: "2027-01-05", amount: -88_000n, description: "振込 ｶ)ｶｸｳﾌﾄﾞｳｻﾝ" },
+  { wallet: "card", date: "2027-01-08", amount: -1_200n, description: "コンビニ 私用" },
+  {
+    wallet: "bank",
+    date: "2027-01-10",
+    amount: 330_000n,
+    description: "振込 ｶｸｳﾃﾞｻﾞｲﾝ(ﾄﾞ",
+    counterparty: "ｶｸｳﾃﾞｻﾞｲﾝ(ﾄﾞ",
+  },
+  { wallet: "stripe", date: "2027-01-12", amount: 15_000n, description: "charge 月会費 1月" },
+  { wallet: "stripe", date: "2027-01-12", amount: -540n, description: "fee 月会費 1月" },
+  { wallet: "stripe", date: "2027-01-15", amount: -14_460n, description: "payout" },
+  { wallet: "bank", date: "2027-01-16", amount: 14_460n, description: "振込 ｽﾄﾗｲﾌﾟｼﾞﾔﾊﾟﾝ(ｶ" },
+  { wallet: "bank", date: "2027-01-20", amount: -30_000n, description: "ATM 引出" },
+  { wallet: "bank", date: "2027-01-27", amount: -9_870n, description: "カード引落 カクウカード" },
+  { wallet: "card", date: "2027-01-27", amount: 9_870n, description: "口座振替 お支払い" },
+];
+
+async function seedStatements(
+  tx: Prisma.TransactionClient,
+  refs: {
+    accountIds: ReadonlyMap<string, string>;
+    segmentIds: ReadonlyMap<string, string>;
+    partnerIds: ReadonlyMap<string, string>;
+    entryIds: ReadonlyMap<string, string>;
+    walletIds: ReadonlyMap<string, string>;
+  },
+): Promise<{ rules: number; lines: number; pending: number }> {
+  const ruleIds: string[] = [];
+  for (const rule of SEED_RULES) {
+    const id = newId();
+    const { action } = rule;
+    const match: RuleMatch = {
+      descriptionContains: null,
+      descriptionRegex: null,
+      counterpartyContains: null,
+      amountMin: null,
+      amountMax: null,
+      sign: null,
+      ...rule.match,
+    };
+    await tx.rule.create({
+      data: {
+        id,
+        name: rule.name,
+        walletId: lookup(refs.walletIds, rule.wallet, "wallet"),
+        match: ruleMatchToJson(match),
+        action: ruleActionToJson({
+          mode: action.mode,
+          accountId: action.account ? lookup(refs.accountIds, action.account, "account") : null,
+          taxCategoryCode: action.tax ?? null,
+          partnerId: action.partner ? lookup(refs.partnerIds, action.partner, "partner") : null,
+          segmentId: action.segment ? lookup(refs.segmentIds, action.segment, "segment") : null,
+          descriptionTemplate: null,
+          transferToWalletId: action.transferTo
+            ? lookup(refs.walletIds, action.transferTo, "wallet")
+            : null,
+          ignoredReason: null,
+        }),
+        autoPost: rule.autoPost,
+      },
+    });
+    ruleIds.push(id);
+  }
+
+  const counters = new Map<SeedWallet, number>();
+  let pending = 0;
+  for (const line of STATEMENT_LINES) {
+    const n = (counters.get(line.wallet) ?? 0) + 1;
+    counters.set(line.wallet, n);
+    const settled = line.settled;
+    const ruleId = settled?.rule ? ruleIds[settled.rule - 1] : undefined;
+    if (settled?.rule && !ruleId) throw new Error(`seed: unknown rule ${settled.rule}`);
+    if (!settled) pending += 1;
+    await tx.walletTransaction.create({
+      data: {
+        id: newId(),
+        walletId: lookup(refs.walletIds, line.wallet, "wallet"),
+        txnDate: toDbDate(line.date),
+        amount: line.amount,
+        descriptionRaw: line.description,
+        counterpartyRaw: line.counterparty ?? null,
+        externalId: `seed-${line.wallet}-${n}`,
+        status: settled?.status ?? "pending",
+        journalEntryId: settled ? lookup(refs.entryIds, settled.entry, "entry") : null,
+        settledAt: settled ? new Date(`${line.date}T12:00:00+09:00`) : null,
+        ruleId: ruleId ?? null,
+        autoPosted: settled?.auto ?? false,
+      },
+    });
+  }
+  return { rules: ruleIds.length, lines: STATEMENT_LINES.length, pending };
 }
