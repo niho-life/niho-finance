@@ -8,7 +8,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { attempt, formValues, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 
 /** How many その他の注記 the form may send (the repository allows 20; extra rows are a shape error). */
 const OTHER_NOTE_ROWS = 40;
@@ -64,9 +64,9 @@ export async function saveStatementSettingsAction(
   fiscalYearId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const result = await attempt(() =>
+  const result = await attempt(async () =>
     saveStatementSettings(getPrismaClient(), parseId(fiscalYearId), settingsInput(formData), {
-      actor: actor(),
+      actor: await actor(),
     }),
   );
   if (!result.ok) return result;

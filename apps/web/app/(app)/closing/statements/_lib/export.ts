@@ -26,7 +26,7 @@ import {
 } from "@niho-finance/reports";
 import { redirect } from "next/navigation";
 import { createElement, type ReactElement } from "react";
-import { actor } from "@/lib/env";
+import { actor } from "@/lib/actor";
 import { csvResponse, pdfResponse, textResponse, zipResponse } from "@/lib/pdf/download";
 import { renderPdf } from "@/lib/pdf/render";
 import {
@@ -206,7 +206,7 @@ export async function exportStatements(request: Request): Promise<Response> {
       to: year.endDate,
       encoding: written.encoding,
     },
-    { actor: actor() },
+    { actor: await actor() },
   );
   return written.response;
 }

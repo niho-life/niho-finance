@@ -32,9 +32,9 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
   beforeAll(async () => {
     prisma = testPrisma();
     year = await createFiscalYear(prisma, {
-      no: 61,
-      startDate: "2061-04-01",
-      endDate: "2062-03-31",
+      no: 71,
+      startDate: "2071-04-01",
+      endDate: "2072-03-31",
     });
   });
 
@@ -76,7 +76,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
       year.id,
       {
         issuedShares: "１０,０００",
-        shareholdersMeetingOn: "2062-05-28",
+        shareholdersMeetingOn: "2072-05-28",
         announcementPublishedOn: "",
         notes: {
           depreciation: `  ${DEFAULT_DEPRECIATION_POLICY}\r\n  `,
@@ -92,7 +92,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
       { actor },
     );
     expect(saved.issuedShares).toBe(10000);
-    expect(saved.shareholdersMeetingOn).toBe("2062-05-28");
+    expect(saved.shareholdersMeetingOn).toBe("2072-05-28");
     expect(saved.notes.depreciation).toBe(DEFAULT_DEPRECIATION_POLICY);
     // An empty text is kept as "" (left out on purpose); a text never sent stays null (雛形).
     expect(saved.notes.accountingPolicyChanges).toBe("");
@@ -119,7 +119,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     });
     expect(audits[0]?.after).toEqual({
       issuedShares: 10000,
-      shareholdersMeetingOn: "2062-05-28",
+      shareholdersMeetingOn: "2072-05-28",
       simplifiedTaxClass: 3,
       notes: {
         depreciation: DEFAULT_DEPRECIATION_POLICY,
@@ -164,7 +164,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     expect(await zodMessage({ issuedShares: "1万" })).toEqual([
       "発行済株式の総数は株数の整数で入力してください",
     ]);
-    expect(await zodMessage({ shareholdersMeetingOn: "2062/05/28" })).toEqual([
+    expect(await zodMessage({ shareholdersMeetingOn: "2072/05/28" })).toEqual([
       "株主総会の日は 2026-11-02 の形の日付にしてください",
     ]);
     expect(await zodMessage({ simplifiedTaxClass: "7" })).toEqual([
@@ -181,18 +181,18 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     ]);
 
     const beforeEnd = await rejectionOf(
-      saveStatementSettings(prisma, year.id, { shareholdersMeetingOn: "2062-03-31" }, { actor }),
+      saveStatementSettings(prisma, year.id, { shareholdersMeetingOn: "2072-03-31" }, { actor }),
     );
     expect(beforeEnd).toBeInstanceOf(SettingsError);
     expect((beforeEnd as SettingsError).field).toBe("shareholdersMeetingOn");
     expect((beforeEnd as SettingsError).message).toBe(
-      "株主総会の日は期末日（2062/03/31）より後の日にしてください",
+      "株主総会の日は期末日（2072/03/31）より後の日にしてください",
     );
     const beforeMeeting = await rejectionOf(
       saveStatementSettings(
         prisma,
         year.id,
-        { shareholdersMeetingOn: "2062-05-28", announcementPublishedOn: "2062-05-27" },
+        { shareholdersMeetingOn: "2072-05-28", announcementPublishedOn: "2072-05-27" },
         { actor },
       ),
     );
@@ -207,11 +207,11 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
 
   it("tells whether 計算書類 and 財務諸表 CSV were downloaded for the year", async () => {
     const own = await createFiscalYear(prisma, {
-      no: 62,
-      startDate: "2062-04-01",
-      endDate: "2063-03-31",
+      no: 72,
+      startDate: "2072-04-01",
+      endDate: "2073-03-31",
     });
-    const range = { from: "2062-04-01", to: "2063-03-31" } as const;
+    const range = { from: "2072-04-01", to: "2073-03-31" } as const;
     expect(await loadStatementsExportStatus(prisma, own.id)).toEqual({
       financialStatementsAt: null,
       etaxCsvAt: null,
@@ -220,12 +220,12 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     // Another year's download does not count.
     await recordExport(
       prisma,
-      { kind: "financial-statements", format: "pdf", fiscalYearNo: 63, ...range },
+      { kind: "financial-statements", format: "pdf", fiscalYearNo: 73, ...range },
       { actor },
     );
     await recordExport(
       prisma,
-      { kind: "financial-statements", format: "pdf", fiscalYearNo: 62, ...range },
+      { kind: "financial-statements", format: "pdf", fiscalYearNo: 72, ...range },
       { actor },
     );
     const half = await loadStatementsExportStatus(prisma, own.id);
@@ -234,7 +234,7 @@ describe.skipIf(!hasTestDatabase)("financial statements queries", () => {
     expect(half.done).toBe(false);
     await recordExport(
       prisma,
-      { kind: "etax-csv", format: "zip", fiscalYearNo: 62, encoding: "sjis", ...range },
+      { kind: "etax-csv", format: "zip", fiscalYearNo: 72, encoding: "sjis", ...range },
       { actor },
     );
     const done = await loadStatementsExportStatus(prisma, own.id);
