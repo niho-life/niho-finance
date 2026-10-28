@@ -263,20 +263,29 @@ enum UserRole {
 
 /// The company (one row). Real identifiers live only in the database, never in the repository.
 model Company {
-  id                        String   @id
+  id                        String    @id
   name                      String
-  nameKana                  String?  @map("name_kana")
+  nameKana                  String?   @map("name_kana")
   /// 法人番号 (13 digits)
-  corporateNumber           String?  @map("corporate_number")
+  corporateNumber           String?   @map("corporate_number")
   /// T + 13 digits, once registered
-  invoiceRegistrationNumber String?  @map("invoice_registration_number")
+  invoiceRegistrationNumber String?   @map("invoice_registration_number")
+  /// 登録日 of the qualified invoice issuer registration
+  invoiceRegisteredOn       DateTime? @map("invoice_registered_on") @db.Date
   address                   String?
   representative            String?
-  fiscalYearStartMonth      Int      @map("fiscal_year_start_month")
+  /// 設立日: the first fiscal year starts on this date
+  foundedOn                 DateTime  @map("founded_on") @db.Date
+  /// First month of the fiscal year (決算月 + 1, e.g. 4 for a March close)
+  fiscalYearStartMonth      Int       @map("fiscal_year_start_month")
   /// Bank account printed on invoices (v2)
-  bankAccountForInvoice     Json?    @map("bank_account_for_invoice")
-  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  bankAccountForInvoice     Json?     @map("bank_account_for_invoice")
+  /// Setup wizard: the 口座 step was postponed (「あとで」). Wallets can be added in the settings.
+  setupWalletsSkippedAt     DateTime? @map("setup_wallets_skipped_at") @db.Timestamptz(6)
+  /// Setup wizard: the 開始仕訳 step was postponed (「あとで」).
+  setupOpeningSkippedAt     DateTime? @map("setup_opening_skipped_at") @db.Timestamptz(6)
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   fiscalYears FiscalYear[]
 
@@ -477,8 +486,10 @@ model Wallet {
   /// CSV format key (e.g. a bank's CSV), `stripe`, or a bank API key
   importer           String?
   defaultSegmentId   String?    @map("default_segment_id")
+  /// Balance on the statement at `openingBalanceDate` (a wallet that existed before the books)
   openingBalanceDate DateTime?  @map("opening_balance_date") @db.Date
   openingBalance     BigInt?    @map("opening_balance")
+  note               String?
   isActive           Boolean    @default(true) @map("is_active")
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)

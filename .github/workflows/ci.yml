@@ -33,6 +33,9 @@ jobs:
         run: |
           npx prisma validate
           npx prisma format --check
+      # Pages read the database per request only, so the build needs no database.
+      - name: next build (apps/web)
+        run: npm -C apps/web run build
 
   db:
     name: db (migrate, test:db, seed)

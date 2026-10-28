@@ -6,9 +6,7 @@ import {
   CHART_TEMPLATE,
   inclusiveTaxAmount,
   resolveTaxRule,
-  STANDARD_SEGMENTS,
   STANDARD_TAX_RATE_RULES,
-  TAX_CATEGORIES,
   type CalendarDate,
   type EntryKind,
   type JournalLineInput,
@@ -16,6 +14,7 @@ import {
 } from "@niho-finance/ledger";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { appendAuditLog } from "./audit";
+import { bootstrapStandardData } from "./bootstrap";
 import { toDbDate } from "./dates";
 import { newId } from "./ids";
 import { postJournalEntryInTransaction, voidJournalEntryInTransaction } from "./journal";
@@ -27,6 +26,7 @@ export const SEED_COMPANY = {
   nameKana: "カクウショウカイ",
   address: "東京都架空区見本町 1-2-3",
   representative: "代表取締役 架空 太郎",
+  foundedOn: "2026-11-02" satisfies CalendarDate,
   fiscalYearStartMonth: 4,
 } as const;
 
@@ -255,7 +255,9 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
   }
 
   const companyId = newId();
-  await tx.company.create({ data: { id: companyId, ...SEED_COMPANY } });
+  await tx.company.create({
+    data: { id: companyId, ...SEED_COMPANY, foundedOn: toDbDate(SEED_COMPANY.foundedOn) },
+  });
   const fiscalYearId = newId();
   await tx.fiscalYear.create({
     data: {
@@ -270,47 +272,20 @@ async function seedInTransaction(tx: Prisma.TransactionClient): Promise<SeedResu
     },
   });
 
-  await tx.taxCategory.createMany({
-    data: TAX_CATEGORIES.map((category) => ({ id: newId(), ...category })),
-  });
-  await tx.taxRateRule.createMany({
-    data: STANDARD_TAX_RATE_RULES.map((rule) => ({
-      id: newId(),
-      taxCategoryCode: rule.taxCategoryCode,
-      effectiveFrom: toDbDate(rule.effectiveFrom),
-      effectiveTo: rule.effectiveTo === null ? null : toDbDate(rule.effectiveTo),
-      ratePercent: rule.ratePercent,
-      deductiblePercent: rule.deductiblePercent,
-      enabled: rule.enabled,
-      note: rule.note ?? null,
-    })),
-  });
-
-  const segmentIds = new Map(STANDARD_SEGMENTS.map((segment) => [segment.code as string, newId()]));
-  await tx.segment.createMany({
-    data: STANDARD_SEGMENTS.map((segment) => ({
-      id: lookup(segmentIds, segment.code, "segment"),
-      ...segment,
-    })),
-  });
-
-  const accountIds = new Map(CHART_TEMPLATE.map((account) => [account.code, newId()]));
-  await tx.account.createMany({
-    data: CHART_TEMPLATE.map((account) => ({
-      id: lookup(accountIds, account.code, "account"),
-      code: account.code,
-      name: account.name,
-      kind: account.kind,
-      group: account.group,
-      defaultTaxCategoryCode: account.defaultTaxCategoryCode,
-      defaultSegmentId: account.defaultSegmentCode
-        ? lookup(segmentIds, account.defaultSegmentCode, "segment")
-        : null,
-      isCashLike: account.isCashLike,
-      sortOrder: Number(account.code),
-      note: account.note ?? null,
-    })),
-  });
+  // Tax categories, rate rules, segments and the chart: the same standard data as the setup's Step 3.
+  await bootstrapStandardData(tx, { actor: SEED_ACTOR });
+  const segmentIds = new Map(
+    (await tx.segment.findMany({ select: { id: true, code: true } })).map((segment) => [
+      segment.code,
+      segment.id,
+    ]),
+  );
+  const accountIds = new Map(
+    (await tx.account.findMany({ select: { id: true, code: true } })).map((account) => [
+      account.code,
+      account.id,
+    ]),
+  );
 
   const subAccountIds = new Map<string, string>(SUB_ACCOUNTS.map((sub) => [sub.key, newId()]));
   await tx.subAccount.createMany({

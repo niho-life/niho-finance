@@ -1,14 +1,23 @@
 @import "tailwindcss";
 
-/* Color and shape tokens of docs/design/mock/v1.html (values only; components come in S2). */
+/*
+ * Tokens (05-ui-ux §3, D14): white base, as simple as possible, Notion / STUDIO as the reference.
+ * Page and surfaces are white; the sidebar and table headers are the one quiet grey; dividers are
+ * thin light-grey lines; shadows only on floating elements (sheets, dialogs, toasts). Components
+ * use them through the Tailwind theme below (bg-surface, text-muted, border-border, …).
+ */
 :root {
-  --bg: #fffcf5;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --text: #1c1c1a;
-  --muted: #6f6e68;
-  --muted-2: #9a9892;
-  --border: #e7e4db;
-  --border-2: #d9d6cc;
+  /* Sidebar, table headers and quiet fills. */
+  --surface-2: #f7f7f5;
+  /* Chips, tracks and segment tags. */
+  --track: #efefed;
+  --text: #1f1f1f;
+  --muted: #6b6b6b;
+  --muted-2: #9b9b9b;
+  --border: #e9e9e7;
+  --border-2: #d6d6d3;
   --primary: #4b9e5e;
   --primary-ink: #2f7a41;
   --primary-soft: #e9f4ec;
@@ -19,11 +28,184 @@
   --warn-soft: #fbf3e3;
   --radius: 12px;
   --radius-s: 8px;
-  --shadow: 0 1px 2px rgba(28, 28, 26, 0.06);
-  --shadow-2: 0 8px 24px rgba(28, 28, 26, 0.1);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
-body {
-  background: var(--bg);
-  color: var(--text);
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-track: var(--track);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-border: var(--border);
+  --color-border-2: var(--border-2);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --radius-card: var(--radius);
+  --radius-control: 9px;
+  --shadow-raised: var(--shadow);
+  --shadow-float: var(--shadow-2);
+  --font-sans:
+    "Hiragino Maru Gothic ProN", "Hiragino Sans", "Hiragino Kaku Gothic ProN", system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.32);
+  }
+}
+
+@layer components {
+  /* Numbers: tabular figures, right-aligned in tables (05-ui-ux §3). */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Form controls (Input, Select, Textarea). */
+  .control {
+    display: block;
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--border-2);
+    border-radius: 9px;
+    background: var(--surface);
+    padding: 7px 10px;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .control:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(75, 158, 94, 0.18);
+  }
+  .control[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+  .control:disabled,
+  .control[readonly] {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .control::placeholder {
+    color: var(--muted-2);
+  }
+  select.control,
+  select.cell-input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9b9b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    padding-right: 28px;
+  }
+
+  /*
+   * Cells edited in place (Google-form style lists): plain text until hovered or focused.
+   */
+  .cell-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    padding: 4px 7px;
+    font-size: 14px;
+    color: var(--text);
+    text-overflow: ellipsis;
+  }
+  .cell-input:hover:not(:disabled) {
+    border-color: var(--border-2);
+    background: var(--surface);
+  }
+  .cell-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: var(--surface);
+    box-shadow: 0 0 0 3px rgba(75, 158, 94, 0.18);
+  }
+  .cell-input[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+  .cell-input:disabled {
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  /*
+   * Grid tables (Table): `--cols` on PC, `--cols-sm` under 768px where a row becomes 2 lines
+   * (名前＋主要 2 項目, 10 §2). Cells marked data-sm="hide" are left out on phones.
+   */
+  .data-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    align-items: center;
+    column-gap: 12px;
+    min-height: 40px;
+    padding: 4px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-row:last-child {
+    border-bottom: 0;
+  }
+  .data-head {
+    min-height: 36px;
+    background: var(--surface-2);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--muted-2);
+  }
+  .data-group {
+    padding: 10px 14px 6px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--muted);
+  }
+  @media (max-width: 767.98px) {
+    .data-row {
+      grid-template-columns: var(--cols-sm, 1fr auto);
+      row-gap: 4px;
+      padding: 8px 12px;
+    }
+    .data-row > [data-sm="hide"],
+    .data-head {
+      display: none;
+    }
+    .data-row > [data-sm="full"],
+    .data-row > [data-sm="status"][data-state="error"] {
+      grid-column: 1 / -1;
+    }
+  }
 }
