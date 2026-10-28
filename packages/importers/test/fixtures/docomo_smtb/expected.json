@@ -1,0 +1,109 @@
+{
+  "format": "docomo_smtb",
+  "rows": [
+    {
+      "externalId": "0c603ff95917b4455467328d9d4311cac988a4e133951a7b912748db1e0ceae5",
+      "txnDate": "2026-11-01",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "200000",
+      "descriptionRaw": "振込 カ）サンプルショウジ",
+      "counterpartyRaw": null,
+      "balanceAfter": "700000",
+      "category": null,
+      "raw": ["2026/11/01", "振込 カ）サンプルショウジ", "", "200,000", "700,000", ""]
+    },
+    {
+      "externalId": "158bc24ae4b0d8bee78711be08d8a1450d8e9b3eb926914a4a23508279cd4b7c",
+      "txnDate": "2026-11-04",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-145",
+      "descriptionRaw": "振込手数料",
+      "counterpartyRaw": null,
+      "balanceAfter": "699855",
+      "category": null,
+      "raw": ["2026/11/04", "振込手数料", "145", "", "699,855", ""]
+    },
+    {
+      "externalId": "ef422925ee9601472e629f450bde534bc5e4654396126ec8f76583453571bfc4",
+      "txnDate": "2026-11-04",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-3300",
+      "descriptionRaw": "デビット テストストア",
+      "counterpartyRaw": null,
+      "balanceAfter": "696555",
+      "category": null,
+      "raw": ["2026/11/04", "デビット テストストア", "3,300", "", "696,555", ""]
+    },
+    {
+      "externalId": "8645c139029c4568b694fa180bb62c057630d3e91bee0743a27417459adf4862",
+      "txnDate": "2026-11-04",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-3300",
+      "descriptionRaw": "デビット テストストア",
+      "counterpartyRaw": null,
+      "balanceAfter": "693255",
+      "category": null,
+      "raw": ["2026/11/04", "デビット テストストア", "3,300", "", "693,255", ""]
+    },
+    {
+      "externalId": "128619de049037832d62cc0f84eb43755e499e85a2125b81927bda497656c80f",
+      "txnDate": "2026-11-10",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-12000",
+      "descriptionRaw": "口座振替 テスト,サービス",
+      "counterpartyRaw": null,
+      "balanceAfter": "681255",
+      "category": null,
+      "raw": ["2026/11/10", "口座振替 テスト,サービス", "12,000", "", "681,255", ""]
+    },
+    {
+      "externalId": "c5559f54a65d93322ce831f6feff169d90c0261d7acae1a7ec23e875cb2e3c73",
+      "txnDate": "2026-11-15",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "12",
+      "descriptionRaw": "利息",
+      "counterpartyRaw": null,
+      "balanceAfter": "681267",
+      "category": null,
+      "raw": ["2026/11/15", "利息", "", "12", "681,267", ""]
+    },
+    {
+      "externalId": "7f5a0b0de6dcbb47b1aa403f3649e7019c129638f94315dc1e6c842c30653cfb",
+      "txnDate": "2026-11-20",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-54000",
+      "descriptionRaw": "振込＊テストデンキ（カ",
+      "counterpartyRaw": null,
+      "balanceAfter": "627267",
+      "category": null,
+      "raw": ["2026/11/20", "振込＊テストデンキ（カ", "54,000", "", "627,267", ""]
+    },
+    {
+      "externalId": "7c1ba7a67cd808a8ec23a770d439f31fe75fa45e56e0850a7a474c5dd46d6cb4",
+      "txnDate": "2026-11-25",
+      "valueDate": null,
+      "occurredAt": null,
+      "amount": "-10000",
+      "descriptionRaw": "ATM 現金引出",
+      "counterpartyRaw": null,
+      "balanceAfter": "617267",
+      "category": null,
+      "raw": ["2026/11/25", "ATM 現金引出", "10,000", "", "617,267", "テストメモ"]
+    }
+  ],
+  "failures": [],
+  "warnings": [],
+  "openingBalance": null,
+  "closingBalance": null,
+  "period": {
+    "from": "2026-11-01",
+    "to": "2026-11-25"
+  }
+}

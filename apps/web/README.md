@@ -23,12 +23,17 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 | `/settings/partners` | 取引先（検索・直接編集） |
 | `/settings/segments` | セグメント |
 | `/settings/memo-tags` | タグ |
+| `/imports` | 明細の取込（取り込める口座と取込の履歴。Stripe はその場で同期） |
+| `/imports/csv` | CSV の取込（ファイル → プレビュー → 取込）。`?wallet=` で口座を選んで開く |
+| `/imports/<batchId>` | 取込の結果（新規 / 重複 / 失敗・失敗行・警告） |
+| `/imports/wallets/<walletId>` | 取込の設定（CSV の取込形式と汎用の列対応、Stripe の接続） |
 | `/settings/export` | 書き出しとバックアップ（freee・弥生・beancount・証憑一式・バックアップ・最近の書き出し） |
 | `/settings/export/download` | 上の書き出し（GET の route handler。`kind=freee / yayoi / beancount / documents / backup`） |
 | `/reports` | 報告。`/reports/trial-balance` へ redirect |
 | `/reports/trial-balance` ・ `monthly` ・ `segments` ・ `cash` ・ `journal` ・ `ledger` | 試算表・月次推移・セグメント損益・現預金・仕訳帳・総勘定元帳。条件は検索パラメータ（`fy` `period` `from` `to` `segment`、仕訳帳は `status` `page`、総勘定元帳は `account` `sub`） |
 | `/reports/export` | 報告の CSV / PDF（GET の route handler。`report` `format` と上の条件） |
 | `/api/health` | 死活と DB の疎通 |
+| `/api/jobs/stripe-sync` | Stripe の同期のジョブ（`POST` だけ。Cloud Scheduler の OIDC トークンで認証。12-imports §4.4） |
 
 会社・第 1 期・勘定科目（ウィザードの 1〜3）がないとき、`/` と `/entries`・`/settings` 配下は `/setup` へ redirect します。
 

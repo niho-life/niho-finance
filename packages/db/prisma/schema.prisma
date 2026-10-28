@@ -485,6 +485,8 @@ model Wallet {
   subAccountId       String?    @map("sub_account_id")
   /// CSV format key (e.g. a bank's CSV), `stripe`, or a bank API key
   importer           String?
+  /// Column mapping of the generic CSV format (`GenericCsvConfig`), when `importer` is `generic`
+  importerConfig     Json?      @map("importer_config")
   defaultSegmentId   String?    @map("default_segment_id")
   /// Balance on the statement at `openingBalanceDate` (a wallet that existed before the books)
   openingBalanceDate DateTime?  @map("opening_balance_date") @db.Date
@@ -528,11 +530,19 @@ model WalletTransaction {
   id              String                  @id
   walletId        String                  @map("wallet_id")
   txnDate         DateTime                @map("txn_date") @db.Date
+  /// 起算日 (全銀) or Stripe `available_on`, as a JST calendar date
+  valueDate       DateTime?               @map("value_date") @db.Date
+  /// Time of the transaction (Stripe `created`); null for CSV
+  occurredAt      DateTime?               @map("occurred_at") @db.Timestamptz(6)
   /// Signed: deposits into the wallet are positive
   amount          BigInt
   descriptionRaw  String                  @map("description_raw")
   counterpartyRaw String?                 @map("counterparty_raw")
   balanceAfter    BigInt?                 @map("balance_after")
+  /// The source's own classification (Stripe `reporting_category`, 全銀 取引区分, card 支払方法)
+  category        String?
+  /// The original row: CSV cells, or the Stripe balance transaction (`source` as its ID)
+  raw             Json?
   /// Unique within the wallet (CSV row hash or Stripe balance transaction ID)
   externalId      String                  @map("external_id")
   importBatchId   String?                 @map("import_batch_id")
@@ -567,14 +577,27 @@ model ImportBatch {
   walletId       String       @map("wallet_id")
   source         ImportSource
   importer       String?
+  /// Name of the imported file (CSV)
+  originalName   String?      @map("original_name")
   /// The imported file kept as evidence
   documentId     String?      @map("document_id")
   /// Re-importing the same file is rejected by this unique constraint
   fileSha256     String?      @unique @map("file_sha256")
+  /// The imported file itself, until S6 moves it to a document (`documentId`) and drops this column
+  fileBytes      Bytes?       @map("file_bytes")
+  /// First and last dates of the imported lines
+  periodFrom     DateTime?    @map("period_from") @db.Date
+  periodTo       DateTime?    @map("period_to") @db.Date
   rowCount       Int          @default(0) @map("row_count")
   importedCount  Int          @default(0) @map("imported_count")
   duplicateCount Int          @default(0) @map("duplicate_count")
   failedCount    Int          @default(0) @map("failed_count")
+  /// Rows that could not be read (`RowFailure[]`)
+  failures       Json?
+  /// Warnings such as a break in the statement balance (`string[]`)
+  warnings       Json?
+  /// Why the sync itself failed (no key, a Stripe API error); null when it completed
+  error          String?
   executedBy     String       @map("executed_by")
   executedAt     DateTime     @default(now()) @map("executed_at") @db.Timestamptz(6)
 
@@ -582,6 +605,7 @@ model ImportBatch {
   document     Document?           @relation(fields: [documentId], references: [id])
   transactions WalletTransaction[]
 
+  @@index([walletId, executedAt])
   @@map("import_batch")
 }
 

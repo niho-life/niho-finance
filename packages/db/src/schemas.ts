@@ -3,6 +3,7 @@
  * them; Server Actions pass form values (strings) or typed values straight through, and turn a
  * `ZodError` into field errors. Messages are owner-facing Japanese.
  */
+import { CSV_FORMAT_KEYS, type GenericCsvConfig } from "@niho-finance/importers";
 import {
   ACCOUNT_CODE_PATTERN,
   ACCOUNT_GROUPS,
@@ -731,6 +732,200 @@ export const auditLogFilterSchema = z.object({
   page: filterPage,
 });
 export type AuditLogFilter = z.output<typeof auditLogFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// Imports (取込, 12-imports)
+// ---------------------------------------------------------------------------
+
+/** Largest CSV file accepted (12-imports §1.2). The Server Actions' body limit matches it. */
+export const MAX_CSV_FILE_BYTES = 10 * 1024 * 1024;
+
+/** Highest 0-based column a mapping may name (statement CSVs have a handful of columns). */
+const MAX_CSV_COLUMN = 199;
+
+const CSV_ORDERS = ["asc", "desc", "auto"] as const;
+
+const OPTIONAL_CSV_COLUMNS = [
+  "amount",
+  "deposit",
+  "withdrawal",
+  "balance",
+  "counterparty",
+] as const;
+
+/** A 0-based column chosen in a select: a number, or its text (form values). */
+function csvColumnField(label: string) {
+  return fromText(label, (text) => {
+    if (text === "") return problem(`${label}を選んでください`);
+    return convertInteger(label, text, 0, MAX_CSV_COLUMN);
+  });
+}
+
+/** Empty (「なし」) or `null` → `null`: the column is not mapped. */
+function optionalCsvColumnField(label: string) {
+  return orNull(
+    fromText(label, (text): Conversion<number | null> =>
+      text === "" ? ok(null) : convertInteger(label, text, 0, MAX_CSV_COLUMN),
+    ),
+  );
+}
+
+/** A CSV format key from a select; empty or `null` → `null` (自動判別). */
+function optionalCsvFormatField(label: string) {
+  return orNull(
+    z.preprocess(
+      (value) => (value === "" || value === null || value === undefined ? null : asText(value)),
+      z.enum(CSV_FORMAT_KEYS, { error: `${label}を選んでください` }).nullable(),
+    ),
+  );
+}
+
+/**
+ * Column mapping of the generic format (`GenericCsvConfig`, 12-imports §1.2): the date and the
+ * description, and either the signed amount or the withdrawal / deposit columns. The output is a
+ * `GenericCsvConfig` without the columns that are not mapped, so it can be saved on the wallet.
+ */
+export const genericCsvConfigSchema = z
+  .object(
+    {
+      headerRows: fromText("ヘッダ行の数", (text) =>
+        text === "" ? ok(1) : convertInteger("ヘッダ行の数", text, 0, 50),
+      ).default(1),
+      columns: z.object(
+        {
+          date: csvColumnField("日付の列"),
+          description: csvColumnField("摘要の列"),
+          amount: optionalCsvColumnField("金額（符号付き）の列"),
+          deposit: optionalCsvColumnField("入金の列"),
+          withdrawal: optionalCsvColumnField("出金の列"),
+          balance: optionalCsvColumnField("残高の列"),
+          counterparty: optionalCsvColumnField("相手の列"),
+        },
+        { error: "列の対応を指定してください" },
+      ),
+      /** 「金額の正を出金として扱う」 (a card's 利用金額). */
+      invertSign: booleanField("金額の正を出金として扱う").default(false),
+      order: z
+        .preprocess(
+          (value) => (value === "" || value === null ? "auto" : asText(value)),
+          z.enum(CSV_ORDERS, { error: "並びは 自動・古い順・新しい順 のどれかを選んでください" }),
+        )
+        .default("auto"),
+    },
+    { error: "列の対応を指定してください" },
+  )
+  .superRefine((value, ctx) => {
+    const { amount, deposit, withdrawal } = value.columns;
+    const split = deposit !== null || withdrawal !== null;
+    if (amount !== null && split) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["columns", "amount"],
+        message: "金額（符号付き）と出金・入金は、どちらか一方だけを選んでください",
+      });
+    } else if (amount === null && !split) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["columns", "amount"],
+        message: "金額（符号付き）か、出金・入金の列を選んでください",
+      });
+    }
+    const seen = new Set<number>();
+    for (const [key, column] of Object.entries(value.columns)) {
+      if (column === null) continue;
+      if (seen.has(column)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["columns", key],
+          message: "同じ列を 2 つの項目に選んでいます。列の対応を確かめてください",
+        });
+      }
+      seen.add(column);
+    }
+  })
+  .transform((value): GenericCsvConfig => {
+    const columns: GenericCsvConfig["columns"] = {
+      date: value.columns.date,
+      description: value.columns.description,
+    };
+    for (const key of OPTIONAL_CSV_COLUMNS) {
+      const column = value.columns[key];
+      if (column !== null) columns[key] = column;
+    }
+    return {
+      headerRows: value.headerRows,
+      columns,
+      invertSign: value.invertSign,
+      order: value.order,
+    };
+  });
+export type GenericCsvConfigInput = z.input<typeof genericCsvConfigSchema>;
+
+/** 取込の設定 of a bank / card / other wallet: the format (`null` = 自動判別) and, for 汎用, the mapping. */
+export const walletImporterInputSchema = z.object({
+  walletId: idField("口座"),
+  importer: optionalCsvFormatField("取込形式"),
+  importerConfig: orNull(genericCsvConfigSchema.nullable()),
+});
+export type WalletImporterInput = z.input<typeof walletImporterInputSchema>;
+export type ParsedWalletImporterInput = z.output<typeof walletImporterInputSchema>;
+
+const STRIPE_ACCOUNT_ID_PATTERN = /^acct_[A-Za-z0-9]{8,64}$/;
+/**
+ * The environment variables a Stripe key may be read from (12-imports §4.1): only names under
+ * `NIHO_FINANCE_STRIPE_`, so a connection can never send another secret (`DATABASE_URL`, …) to
+ * Stripe as its API key.
+ */
+export const STRIPE_KEY_NAME_PATTERN = /^NIHO_FINANCE_STRIPE_[A-Z0-9_]{1,44}$/;
+const STRIPE_KEY_PATTERN = /^(?:rk|sk)_/i;
+
+/** Stripe の接続: the account ID and the name of the environment variable holding its key (§4.1). */
+export const stripeAccountLinkInputSchema = z.object({
+  walletId: idField("口座"),
+  stripeAccountId: fromText("アカウント ID", (text) => {
+    if (text === "") return problem("アカウント ID を入力してください");
+    if (!STRIPE_ACCOUNT_ID_PATTERN.test(text)) {
+      return problem("アカウント ID は acct_ で始まる Stripe のアカウント ID です");
+    }
+    return ok(text);
+  }),
+  secretName: fromText("鍵の名前", (text) => {
+    if (text === "") return problem("鍵の名前を入力してください");
+    if (STRIPE_KEY_PATTERN.test(text)) {
+      return problem("鍵そのものは入力しません。鍵を置いた環境変数の名前を入力してください");
+    }
+    if (!STRIPE_KEY_NAME_PATTERN.test(text)) {
+      return problem(
+        "鍵の名前は NIHO_FINANCE_STRIPE_ で始まる環境変数の名前にします（大文字の英数字と _。例 NIHO_FINANCE_STRIPE_KEY_PLATFORM）",
+      );
+    }
+    return ok(text);
+  }),
+});
+export type StripeAccountLinkInput = z.input<typeof stripeAccountLinkInputSchema>;
+
+/**
+ * A CSV file to preview or import (12-imports §1.2). `format` and `config` override what the wallet
+ * has saved; `rememberFormat` (「この形式と列対応を口座に保存し、次回から使う」) only matters to the import.
+ */
+export const csvImportInputSchema = z.object({
+  walletId: idField("口座"),
+  fileName: requiredText("ファイル名", 255),
+  /** Any `Uint8Array` (a Node `Buffer` too), whatever buffer backs it. */
+  bytes: z
+    .custom<Uint8Array>((value) => value instanceof Uint8Array, {
+      error: "ファイルを選んでください",
+    })
+    .refine((bytes) => bytes.byteLength > 0, { error: "ファイルが空です" })
+    .refine((bytes) => bytes.byteLength <= MAX_CSV_FILE_BYTES, {
+      error: "ファイルが大きすぎます（10 MB まで）",
+    }),
+  format: optionalCsvFormatField("取込形式"),
+  config: orNull(genericCsvConfigSchema.nullable()),
+  rememberFormat: booleanField("取込形式の保存").default(true),
+});
+export type CsvImportInput = z.input<typeof csvImportInputSchema>;
+export type ParsedCsvImportInput = z.output<typeof csvImportInputSchema>;
 
 // ---------------------------------------------------------------------------
 // 明細 (15-statements)
