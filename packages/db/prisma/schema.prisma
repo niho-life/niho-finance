@@ -302,23 +302,23 @@ model Company {
 }
 
 model FiscalYear {
-  id               String               @id
-  companyId        String               @map("company_id")
+  id                String               @id
+  companyId         String               @map("company_id")
   /// 第 n 期
-  no               Int
-  startDate        DateTime             @map("start_date") @db.Date
-  endDate          DateTime             @map("end_date") @db.Date
-  status           FiscalYearStatus     @default(open)
-  consumptionTax   ConsumptionTaxMethod @map("consumption_tax")
-  accountingMethod AccountingMethod     @map("accounting_method")
+  no                Int
+  startDate         DateTime             @map("start_date") @db.Date
+  endDate           DateTime             @map("end_date") @db.Date
+  status            FiscalYearStatus     @default(open)
+  consumptionTax    ConsumptionTaxMethod @map("consumption_tax")
+  accountingMethod  AccountingMethod     @map("accounting_method")
   /// Monthly close: no posting or voiding on or before this date
-  lockedThrough    DateTime?            @map("locked_through") @db.Date
+  lockedThrough     DateTime?            @map("locked_through") @db.Date
   /// Next JournalEntry.no to assign. Incremented in the posting transaction (no gaps).
-  nextEntryNo      Int                  @default(1) @map("next_entry_no")
+  nextEntryNo       Int                  @default(1) @map("next_entry_no")
   /// 決算書の設定 (17-financial-statements §3.1): words and dates of the statements, never numbers
-  statementSettings Json?               @map("statement_settings")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  statementSettings Json?                @map("statement_settings")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   company        Company        @relation(fields: [companyId], references: [id])
   journalEntries JournalEntry[]
