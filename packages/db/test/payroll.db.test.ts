@@ -397,6 +397,12 @@ describe.skipIf(!hasTestDatabase)("pay runs (支給の計算と確定)", () => {
     for (const entry of entries) {
       await voidJournalEntry(prisma, entry.id, { actor, reason: "給与のテストの後片付け" });
     }
+    // The deadlines of these test runs are in the past: close them so that other tests (the home's
+    // 「やること」) do not see them as overdue.
+    await prisma.calendarItem.updateMany({
+      where: { ruleKey: { startsWith: "payroll." }, completedAt: null },
+      data: { completedAt: new Date(), completedBy: actor },
+    });
   });
 
   it("starts from the employees' monthly amounts and the previous run's settings", async () => {

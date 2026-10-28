@@ -316,7 +316,7 @@ interface PayrollResult {
 | `/payroll/runs/[id]` | 確定した支給 |
 | `/payroll/runs/[id]/payslips/[employeeId]` | 給与明細（印刷用。PDF は S7 の基盤で `…/pdf`） |
 
-左ナビの末尾に「給与」、スマホは その他 › 給与。
+左ナビは「設定」の上に「給与」、スマホは その他 › 給与。
 
 ### 6.2 従業員 `/payroll/employees`
 
