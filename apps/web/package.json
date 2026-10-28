@@ -13,6 +13,7 @@
     "@google-cloud/storage": "^8.4.0",
     "@niho-finance/db": "*",
     "@niho-finance/importers": "*",
+    "@niho-finance/payroll": "*",
     "@niho-finance/reports": "*",
     "@react-pdf/renderer": "^4.9.0",
     "jose": "^6.2.13",

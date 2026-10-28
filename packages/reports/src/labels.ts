@@ -23,6 +23,7 @@ export const REPORT_SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
   fixed_asset: "固定資産",
   recurring: "定期取引",
   import: "取込",
+  payroll: "給与",
 };
 
 export const REPORT_ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {

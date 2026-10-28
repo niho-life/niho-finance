@@ -168,6 +168,7 @@ export const SOURCE_KIND_LABELS: Readonly<Record<SourceKind, string>> = {
   fixed_asset: "固定資産",
   recurring: "定期取引",
   import: "取込",
+  payroll: "給与",
 };
 
 export const ENTRY_STATUS_LABELS: Readonly<Record<EntryStatus, string>> = {
@@ -212,6 +213,11 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "wallet_transaction.reopen": "明細を未処理に戻す",
   "wallet_transaction.update": "明細のメモ",
   "rule.apply": "ルールの適用",
+  "employee.create": "従業員の追加",
+  "employee.update": "従業員の変更",
+  "payroll_run.confirm": "支給の確定",
+  "payroll_payment.post": "納付の登録",
+  "calendar_item.complete": "完了にする",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
@@ -255,6 +261,9 @@ export const AUDIT_ENTITIES = [
   "stripe_account_link",
   "wallet_transaction",
   "rule",
+  "employee",
+  "payroll_run",
+  "calendar_item",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -277,6 +286,9 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   stripe_account_link: "Stripe の接続",
   wallet_transaction: "明細",
   rule: "ルール",
+  employee: "従業員",
+  payroll_run: "給与の支給",
+  calendar_item: "期限",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

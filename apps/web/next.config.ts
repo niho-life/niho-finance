@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "@niho-finance/db",
     "@niho-finance/importers",
     "@niho-finance/ledger",
+    "@niho-finance/payroll",
     "@niho-finance/reports",
   ],
   // The GCS client (evidence files, lib/storage/gcs.ts) is Node-only and loaded on first use:
