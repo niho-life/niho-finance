@@ -1,0 +1,274 @@
+{
+  "model": "synthetic",
+  "note": "鍵が入るまでの合成の応答。正解に 2 枚の読み違いを加えたもの（r05: 合計の数字の読み違い 2,860 → 2,960、r07: 8% の対価の読み違い 2,392 → 2,892）。r03 の登録番号は印字どおりハイフン付き。`npm -w @niho-finance/reader run record` で実 API の応答に取り直す。",
+  "responses": {
+    "9633bd33ad38093a449438e1452f023c15dae46e45d05329594a5a40d8464c51": {
+      "fixture": "r01",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空食堂",
+        "registrationNumber": "T8999999999901",
+        "transactionDate": "2026-10-02",
+        "currency": "JPY",
+        "totalAmount": 2500,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 2500,
+            "taxIncluded": true,
+            "taxAmount": 227
+          }
+        ],
+        "description": "日替わり定食・ドリンク"
+      },
+      "usage": {
+        "inputTokens": 1612,
+        "outputTokens": 412
+      }
+    },
+    "23cff8d2011b57c2ec494e6caa311483be7c1955fa94e765bfc19f1ecaa81f1a": {
+      "fixture": "r02",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空マート 架空駅前店",
+        "registrationNumber": "T7999999999902",
+        "transactionDate": "2026-10-05",
+        "currency": "JPY",
+        "totalAmount": 1350,
+        "rates": [
+          {
+            "ratePercent": 8,
+            "amount": 470,
+            "taxIncluded": true,
+            "taxAmount": 34
+          },
+          {
+            "ratePercent": 10,
+            "amount": 880,
+            "taxIncluded": true,
+            "taxAmount": 80
+          }
+        ],
+        "description": "お茶・おにぎり・ボールペン・乾電池"
+      },
+      "usage": {
+        "inputTokens": 1794,
+        "outputTokens": 588
+      }
+    },
+    "7a78f19a54bb0213cf296bb9bb91dca92a9d283ee1f8feb8a5c9a84c5654909d": {
+      "fixture": "r03",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空タクシー株式会社",
+        "registrationNumber": "T6-9999-9999-9903",
+        "transactionDate": "2026-10-07",
+        "currency": "JPY",
+        "totalAmount": 2860,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 2860,
+            "taxIncluded": true,
+            "taxAmount": 260
+          }
+        ],
+        "description": "タクシー代として"
+      },
+      "usage": {
+        "inputTokens": 1655,
+        "outputTokens": 395
+      }
+    },
+    "66e4675d0fef21850e65235797690bf375130bb16ecd69fe0d819ee51bfef22e": {
+      "fixture": "r04",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空パーキング",
+        "registrationNumber": null,
+        "transactionDate": "2026-10-09",
+        "currency": "JPY",
+        "totalAmount": 800,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 800,
+            "taxIncluded": true,
+            "taxAmount": 72
+          }
+        ],
+        "description": "駐車料金"
+      },
+      "usage": {
+        "inputTokens": 1540,
+        "outputTokens": 361
+      }
+    },
+    "89de026b703a6bbdf40c0123c8c68cdcd05402e7d226d57cc4924a37b457f03a": {
+      "fixture": "r05",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空書店 本店",
+        "registrationNumber": "T5999999999904",
+        "transactionDate": "2026-10-12",
+        "currency": "JPY",
+        "totalAmount": 2960,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 2860,
+            "taxIncluded": true,
+            "taxAmount": 260
+          }
+        ],
+        "description": "書籍・雑誌"
+      },
+      "usage": {
+        "inputTokens": 1561,
+        "outputTokens": 437
+      }
+    },
+    "67b2c3e935fe001b894c08d373a7fa5e6b4caa626bf7348262dd9fa6ec7184ba": {
+      "fixture": "r06",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空文具店",
+        "registrationNumber": "T4999999999905",
+        "transactionDate": "2026-10-14",
+        "currency": "JPY",
+        "totalAmount": 2530,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 2530,
+            "taxIncluded": true,
+            "taxAmount": 230
+          }
+        ],
+        "description": "ノート・クリアファイル・万年筆インク"
+      },
+      "usage": {
+        "inputTokens": 1508,
+        "outputTokens": 452
+      }
+    },
+    "842ade2e551ca2f32147a9479d82de51acfd132ef14b4952f629b7b0c7f718be": {
+      "fixture": "r07",
+      "raw": {
+        "documentType": "receipt",
+        "legible": true,
+        "issuerName": "架空スーパー 架空店",
+        "registrationNumber": "T3999999999906",
+        "transactionDate": "2026-10-16",
+        "currency": "JPY",
+        "totalAmount": 3195,
+        "rates": [
+          {
+            "ratePercent": 8,
+            "amount": 2892,
+            "taxIncluded": true,
+            "taxAmount": 177
+          },
+          {
+            "ratePercent": 10,
+            "amount": 803,
+            "taxIncluded": true,
+            "taxAmount": 73
+          }
+        ],
+        "description": "食料品・日用品"
+      },
+      "usage": {
+        "inputTokens": 1863,
+        "outputTokens": 694
+      }
+    },
+    "26b4f3d4e1e48517faf3946f1d679d240aad323d7b52a7d367ca9ba93a27de56": {
+      "fixture": "r08",
+      "raw": {
+        "documentType": "invoice",
+        "legible": true,
+        "issuerName": "架空クラウドサービス株式会社",
+        "registrationNumber": "T2999999999907",
+        "transactionDate": "2026-10-20",
+        "currency": "JPY",
+        "totalAmount": 13200,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 12000,
+            "taxIncluded": false,
+            "taxAmount": 1200
+          }
+        ],
+        "description": "クラウド利用料（2026年10月分）"
+      },
+      "usage": {
+        "inputTokens": 2271,
+        "outputTokens": 517
+      }
+    },
+    "5d1318488fe201633bb2aeefce915b645dc1fa5697ce75e70cd473b3df47ea8d": {
+      "fixture": "r09",
+      "raw": {
+        "documentType": "invoice",
+        "legible": true,
+        "issuerName": "架空印刷株式会社",
+        "registrationNumber": "T1999999999908",
+        "transactionDate": "2026-10-23",
+        "currency": "JPY",
+        "totalAmount": 25300,
+        "rates": [
+          {
+            "ratePercent": 10,
+            "amount": 23000,
+            "taxIncluded": false,
+            "taxAmount": 2300
+          }
+        ],
+        "description": "名刺印刷・チラシ印刷"
+      },
+      "usage": {
+        "inputTokens": 2304,
+        "outputTokens": 563
+      }
+    },
+    "6a9a6f22b386116993d6d30b006d1837ba9f1000b22622dafb48efc824a5b26d": {
+      "fixture": "r10",
+      "raw": {
+        "documentType": "invoice",
+        "legible": true,
+        "issuerName": "架空食品株式会社",
+        "registrationNumber": "T9999999999909",
+        "transactionDate": "2026-10-27",
+        "currency": "JPY",
+        "totalAmount": 9740,
+        "rates": [
+          {
+            "ratePercent": 8,
+            "amount": 8000,
+            "taxIncluded": false,
+            "taxAmount": 640
+          },
+          {
+            "ratePercent": 10,
+            "amount": 1000,
+            "taxIncluded": false,
+            "taxAmount": 100
+          }
+        ],
+        "description": "菓子詰め合わせ・配送料"
+      },
+      "usage": {
+        "inputTokens": 2338,
+        "outputTokens": 846
+      }
+    }
+  }
+}

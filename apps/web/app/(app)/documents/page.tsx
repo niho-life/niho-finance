@@ -1,8 +1,13 @@
 import {
   countDocuments,
+  countUnreadInboxDocuments,
   documentSearchSchema,
   listPartners,
+  listUnreadInboxDocuments,
+  loadReadingStates,
   searchDocuments,
+  summarizeApiUsage,
+  todayInJapan,
 } from "@niho-finance/db";
 import {
   DOCUMENT_TAB_LABELS,
@@ -10,12 +15,16 @@ import {
   formatYenInput,
   type DocumentTab,
 } from "@niho-finance/ledger";
+import { estimatedCostPerDocumentNanoUsd, formatUsd } from "@niho-finance/reader";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { buttonClass, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
+import { readerStatus } from "@/lib/reader/config";
+import { japanMonthRange } from "@/lib/reader/month";
+import { BulkReader } from "./_components/bulk-reader";
 import { DocumentsSearch, type SearchValues } from "./_components/documents-search";
 import { DocumentsTable } from "./_components/documents-table";
 import {
@@ -55,6 +64,9 @@ function searchValuesOf(
   }
   return values;
 }
+
+/** まとめて読み取る reads at most this many documents at a time (cost and waiting, 20-reader §10.2). */
+const BULK_READ_LIMIT = 20;
 
 const EMPTY_TITLES: Readonly<Record<DocumentTab, string>> = {
   inbox: "受信箱は空です。すべてのタブで検索できます",
@@ -124,10 +136,43 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/docume
   const clearHref = documentsHref({ tab });
   const conditions = { ...filters, page: 1 };
 
+  // 読み取り (20-reader §10.2): the inbox's まとめて読み取る and this month's readings, and the
+  // reading state of each listed document.
+  const readingStates = await loadReadingStates(
+    prisma,
+    result.rows.map((row) => row.id),
+  );
+  const reader = readerStatus();
+  let bulk: { ids: string[]; total: number; costPerDocument: string } | null = null;
+  let readingUsage: string | null = null;
+  if (tab === "inbox") {
+    if (reader.model !== null) {
+      const total = await countUnreadInboxDocuments(prisma);
+      const unread =
+        total > 0 ? await listUnreadInboxDocuments(prisma, { limit: BULK_READ_LIMIT }) : [];
+      bulk = {
+        ids: unread.map((document) => document.id),
+        total,
+        costPerDocument: formatUsd(estimatedCostPerDocumentNanoUsd(reader.model)),
+      };
+    }
+    const usage = await summarizeApiUsage(prisma, {
+      service: "reader",
+      ...japanMonthRange(todayInJapan()),
+    });
+    if (usage.count > 0) {
+      readingUsage = `今月の読み取り ${usage.count.toLocaleString("ja-JP")} 件 · 約 ${formatUsd(usage.costNanoUsd)}`;
+    }
+  }
+
   return (
     <>
       <PageHeader title="証憑" />
       <Uploader />
+      {bulk ? (
+        <BulkReader ids={bulk.ids} total={bulk.total} costPerDocument={bulk.costPerDocument} />
+      ) : null}
+      {readingUsage ? <p className="num mb-3 text-[12px] text-muted">{readingUsage}</p> : null}
       <nav aria-label="証憑のタブ" className="mb-3 flex flex-wrap gap-1.5">
         {DOCUMENT_TABS.map((item) => {
           const active = item === tab;
@@ -180,7 +225,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/docume
               索引簿を書き出す
             </a>
           </div>
-          <DocumentsTable rows={result.rows} />
+          <DocumentsTable rows={result.rows} readingStates={readingStates} />
           <Pager
             page={result.page}
             pageSize={result.pageSize}

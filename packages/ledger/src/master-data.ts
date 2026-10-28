@@ -246,6 +246,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "expense_claim.pay": "支払",
   "expense_claim.unpay": "支払の取消",
   "expense_claim.void": "取消",
+  // 読み取りと照合 (20-reader §1)
+  "document.read": "証憑の読み取り",
+  "partner.registry_check": "登録番号の照合",
 };
 
 /** Verbs shared by every entity: `account.create` → 追加, `wallet.deactivate` → 無効化. */
