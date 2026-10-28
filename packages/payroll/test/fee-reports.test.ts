@@ -7,8 +7,10 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateFeePayments,
   FEE_CSV_FIELD_COUNT,
+  feeLinesOfEntries,
   feeReportCsvRows,
   feeReportTotals,
+  type FeeEntryLine,
   type FeeJournalLine,
   type FeePartner,
   type FeeWithholdingLine,
@@ -53,6 +55,78 @@ const withheld = (
   entryId: `e${entryNo}`,
   partnerId,
   amount,
+});
+
+describe("feeLinesOfEntries: 支払金額 = the fee line + its share of 1400 仮払消費税", () => {
+  const l = (
+    accountCode: string,
+    side: "debit" | "credit",
+    amount: bigint,
+    taxAmount = 0n,
+    partnerId: string | null = "p_tax",
+  ): FeeEntryLine => ({ accountCode, side, amount, taxAmount, partnerId });
+  const entry = (lines: FeeEntryLine[]) => ({
+    id: "e1",
+    no: 1,
+    date: "2026-08-10" as const,
+    lines,
+  });
+
+  it("keeps a 伝票's line (the tax stays in it, no 1400 line), also in a 税抜経理 year", () => {
+    const { lines, withholding } = feeLinesOfEntries([
+      entry([
+        l("5410", "debit", 110_000n, 10_000n),
+        l("2300", "credit", 11_231n),
+        l("2100", "credit", 98_769n),
+      ]),
+    ]);
+    expect(lines.map((line) => line.amount)).toEqual([110_000n]);
+    expect(withholding).toEqual([{ entryId: "e1", partnerId: "p_tax", amount: 11_231n }]);
+  });
+
+  it("adds the 1400 line of a 支出 (the line booked without the tax)", () => {
+    const { lines } = feeLinesOfEntries([
+      entry([
+        l("5410", "debit", 100_000n, 10_000n),
+        l("1400", "debit", 10_000n, 0n, null),
+        l("2300", "credit", 11_231n),
+        l("1100", "credit", 98_769n, 0n, null),
+      ]),
+    ]);
+    expect(lines.map((line) => line.amount)).toEqual([110_000n]);
+  });
+
+  it("shares the 1400 line with the other costs of the entry by their tax", () => {
+    const { lines } = feeLinesOfEntries([
+      entry([
+        l("5410", "debit", 100_000n, 10_000n),
+        l("5360", "debit", 50_000n, 5_000n, null),
+        l("1400", "debit", 15_000n, 0n, null),
+        l("2300", "credit", 11_231n),
+        l("2100", "credit", 153_769n, 0n, null),
+      ]),
+    ]);
+    expect(lines.map((line) => line.amount)).toEqual([110_000n]);
+  });
+
+  it("nets a credit (返金) and gives a 1400 line without tax amounts to fees only", () => {
+    const refund = feeLinesOfEntries([
+      entry([l("2100", "debit", 5_500n, 0n, null), l("5410", "credit", 5_500n, 500n)]),
+    ]);
+    expect(refund.lines.map((line) => line.amount)).toEqual([-5_500n]);
+    const manual = feeLinesOfEntries([
+      entry([
+        l("5110", "debit", 60_000n, 0n, "p_design"),
+        l("5110", "debit", 40_000n, 0n, "p_small"),
+        l("1400", "debit", 10_000n, 0n, null),
+        l("2100", "credit", 110_000n, 0n, null),
+      ]),
+    ]);
+    expect(manual.lines.map((line) => [line.partnerId, line.amount])).toEqual([
+      ["p_design", 66_000n],
+      ["p_small", 44_000n],
+    ]);
+  });
 });
 
 describe("aggregateFeePayments", () => {

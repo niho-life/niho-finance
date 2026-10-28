@@ -14,6 +14,7 @@
  */
 import { CORPORATE_SEGMENT_CODE, type CalendarDate } from "@niho-finance/ledger";
 import {
+  annualSalaryTotals,
   emptyYearEndDeclaration,
   unifiedCsvRow,
   type YearEndDeclaration,
@@ -331,6 +332,8 @@ describe.skipIf(!hasTestDatabase)("法定調書・退職 (§12)", () => {
   it("makes the 源泉徴収票 of the year, the 30 万円 rule and keeps no マイナンバー", async () => {
     await rolledBack(async (tx) => {
       await deactivateAll(tx);
+      // Other payroll files may leave their own (fictional) people paid in 2026: count from here.
+      const earlier = await loadStatements(tx, 2026);
       const officer = (
         await createEmployee(
           tx,
@@ -533,9 +536,18 @@ describe.skipIf(!hasTestDatabase)("法定調書・退職 (§12)", () => {
       const big = byId.get(leaver.id)!;
       expect(big.inSalaryReport).toBe(true);
       expect(big.slip.recipient.address).toBe("架空県架空市西町7-8-9");
-      expect(statements.totals.all.people).toBe(4);
-      expect(statements.totals.salaryReport.people).toBe(3);
-      expect(statements.pending).toBe(1);
+      // This scenario's people only (the counts of the whole year include other files' people).
+      const mine = statements.recipients.filter((row) => ours.has(row.employee.id));
+      const totals = annualSalaryTotals(mine.map((row) => row.slip));
+      expect(totals.all.people).toBe(4);
+      expect(totals.salaryReport.people).toBe(3);
+      expect(totals.all.paid).toBe(
+        officerSlip.slip.paid + 250_000n + big.slip.paid + byId.get(employee.id)!.slip.paid,
+      );
+      expect(mine.filter((row) => row.state === "pending")).toHaveLength(1);
+      // The year's rows grow by exactly ours (the people of other files are counted as before).
+      expect(statements.totals.all.people - earlier.totals.all.people).toBe(4);
+      expect(statements.totals.salaryReport.people - earlier.totals.salaryReport.people).toBe(3);
 
       const one = await loadWithholdingSlip(tx, 2026, officer.id);
       expect(one?.slip).toEqual(officerSlip.slip);

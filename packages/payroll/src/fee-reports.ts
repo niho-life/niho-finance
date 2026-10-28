@@ -1,4 +1,4 @@
-import type { CalendarDate, Money } from "@niho-finance/ledger";
+import { INPUT_TAX_ACCOUNT_CODE, type CalendarDate, type Money } from "@niho-finance/ledger";
 import type { StatementPayer } from "./statements";
 import { digitsOnly, toFullWidth, toHalfWidth, warekiYear2 } from "./statements-csv";
 
@@ -63,8 +63,118 @@ export interface FeeJournalLine {
   entryDate: CalendarDate;
   accountCode: FeeAccountCode;
   partnerId: string | null;
-  /** Tax-inclusive (税抜経理の期は仮払消費税を足した額), signed. */
+  /** 支払金額 (tax-inclusive, see `feeLinesOfEntries`), signed. */
   amount: Money;
+}
+
+/** A line of an entry with a payment line, as posted. */
+export interface FeeEntryLine {
+  accountCode: string;
+  side: "debit" | "credit";
+  /** Positive, as posted. */
+  amount: Money;
+  /** The consumption tax of the line (contained in it, or split off to 1400 仮払消費税). */
+  taxAmount: Money;
+  partnerId: string | null;
+}
+
+/** A posted entry (not voided, not a reversal) with at least one line of 5410 / 5110. */
+export interface FeeEntry {
+  id: string;
+  no: number;
+  date: CalendarDate;
+  lines: readonly FeeEntryLine[];
+}
+
+const signedAmount = (line: FeeEntryLine) => (line.side === "debit" ? line.amount : -line.amount);
+
+const isFeeAccount = (code: string): code is FeeAccountCode =>
+  (FEE_ACCOUNT_CODES as readonly string[]).includes(code);
+
+/**
+ * The payment lines and the 預り金 of the entries (§12.2). The rule of 支払金額 (tax-inclusive):
+ *
+ *   a 5410 / 5110 line's own amount (debit +, credit −) + its share of the entry's 1400 仮払消費税
+ *   lines (debit − credit), shared by the lines' `taxAmount`.
+ *
+ * It holds for both ways the books record a purchase: a 伝票 keeps the tax in the line (taxAmount
+ * only, no 1400 line → the line's amount), a 支出 of a 税抜経理 year books the line without the tax and
+ * the tax on a 1400 line (→ the line + that tax). As every entry balances, for an entry of only the
+ * fee, its tax and the payment it is the same as the payment side's credits (口座・未払金) plus the
+ * 2300 預り金 — but unlike that it stays right when the entry also books other costs. When the 1400
+ * lines cannot be shared by `taxAmount` (no line carries one), they go to the fee lines only if every
+ * other debit is a tax line, by the fee lines' amounts; otherwise they are left out.
+ *
+ * 源泉徴収税額 is the entry's 2300 預り金 (credit − debit), put to its payee by `aggregateFeePayments`.
+ */
+export function feeLinesOfEntries(entries: readonly FeeEntry[]): {
+  lines: FeeJournalLine[];
+  withholding: FeeWithholdingLine[];
+} {
+  const lines: FeeJournalLine[] = [];
+  const withholding: FeeWithholdingLine[] = [];
+  for (const entry of entries) {
+    const fees = entry.lines.filter((line) => isFeeAccount(line.accountCode));
+    const taxLines = entry.lines.filter((line) => line.accountCode === INPUT_TAX_ACCOUNT_CODE);
+    const tax = taxLines.reduce((total, line) => total + signedAmount(line), 0n);
+    const weightOf = (line: FeeEntryLine) =>
+      line.side === "debit" ? line.taxAmount : -line.taxAmount;
+    const weighted = entry.lines.filter(
+      (line) => line.accountCode !== INPUT_TAX_ACCOUNT_CODE && line.taxAmount !== 0n,
+    );
+    const allWeight = weighted.reduce((total, line) => total + weightOf(line), 0n);
+    let shares: Money[];
+    if (tax === 0n || fees.length === 0) {
+      shares = fees.map(() => 0n);
+    } else if (allWeight !== 0n) {
+      const feeWeight = fees.reduce((total, line) => total + weightOf(line), 0n);
+      shares = splitByWeight((tax * feeWeight) / allWeight, fees.map(weightOf));
+    } else if (
+      entry.lines.every(
+        (line) =>
+          line.side === "credit" ||
+          isFeeAccount(line.accountCode) ||
+          line.accountCode === INPUT_TAX_ACCOUNT_CODE,
+      )
+    ) {
+      shares = splitByWeight(tax, fees.map(signedAmount));
+    } else {
+      shares = fees.map(() => 0n);
+    }
+    fees.forEach((line, index) => {
+      lines.push({
+        entryId: entry.id,
+        entryNo: entry.no,
+        entryDate: entry.date,
+        accountCode: line.accountCode as FeeAccountCode,
+        partnerId: line.partnerId,
+        amount: signedAmount(line) + (shares[index] ?? 0n),
+      });
+    });
+    for (const line of entry.lines) {
+      if (line.accountCode !== FEE_WITHHOLDING_ACCOUNT_CODE) continue;
+      withholding.push({
+        entryId: entry.id,
+        partnerId: line.partnerId,
+        amount: line.side === "credit" ? line.amount : -line.amount,
+      });
+    }
+  }
+  return { lines, withholding };
+}
+
+/** `total` split by `weights` (whole yen; the last weighted line takes the rest). */
+function splitByWeight(total: Money, weights: readonly Money[]): Money[] {
+  const sum = weights.reduce((acc, weight) => acc + weight, 0n);
+  if (sum === 0n) return weights.map((_, index) => (index === weights.length - 1 ? total : 0n));
+  const shares = weights.map((weight) => (total * weight) / sum);
+  const rest = total - shares.reduce((acc, share) => acc + share, 0n);
+  let last = -1;
+  weights.forEach((weight, index) => {
+    if (weight !== 0n) last = index;
+  });
+  if (last >= 0) shares[last] = (shares[last] ?? 0n) + rest;
+  return shares;
 }
 
 /** One 2300 預り金 line of the same entries (signed: credit +, debit −). */
@@ -112,9 +222,9 @@ export interface FeeAggregation {
 }
 
 /**
- * Aggregates the year's lines per partner and account (§12.2): the payment is the net of the debit
- * and credit lines of 5410 / 5110 (posted entries; a voided entry and its reversal are both left out
- * by the caller), the 源泉徴収税額 is the net credit of 2300 預り金 of the same entries — put to the
+ * Aggregates the year's lines per partner and account (§12.2): the payment is the sum of the 5410 /
+ * 5110 lines' 支払金額 (`feeLinesOfEntries`; posted entries, a voided entry and its reversal both left
+ * out by the caller), the 源泉徴収税額 is the net credit of 2300 預り金 of the same entries — put to the
  * line's partner when it has one, else to the entry's only payee (and that payee's largest account).
  * `categories` picks the 区分 per `<partnerId>.<accountCode>` (default by account).
  */

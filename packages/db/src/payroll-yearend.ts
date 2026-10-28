@@ -15,13 +15,10 @@
 import {
   dateParts,
   formatYen,
-  getTaxCategory,
   lastDayOfMonth,
   LedgerValidationError,
-  resolveTaxRule,
   type CalendarDate,
   type Money,
-  type TaxRateRule,
 } from "@niho-finance/ledger";
 import {
   aggregateFeePayments,
@@ -29,7 +26,7 @@ import {
   BONUS_WITHHOLDING_METHOD_LABELS,
   buildWithholdingSlip,
   FEE_ACCOUNT_CODES,
-  FEE_WITHHOLDING_ACCOUNT_CODE,
+  feeLinesOfEntries,
   feeReportTotals,
   inSalaryReportRange,
   inTaxOfficeRange,
@@ -74,10 +71,9 @@ import {
   type BonusTables,
   type BonusWarning,
   type BonusWarningCode,
-  type FeeAccountCode,
   type FeeAggregation,
   type FeeCategory,
-  type FeeJournalLine,
+  type FeeEntry,
   type FeePayee,
   type FeeTotals,
   type PayrollBonusItem,
@@ -110,7 +106,7 @@ import type {
 import { z } from "zod";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, toDbDate } from "./dates";
-import { loadTaxRules, type EntryRef } from "./entries";
+import type { EntryRef } from "./entries";
 import { isUniqueViolation, SettingsError } from "./errors";
 import { newId } from "./ids";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
@@ -2455,27 +2451,14 @@ export interface FeeReportsOverview {
   accountNames: Record<string, string>;
 }
 
-/** A line's tax-inclusive amount: 税抜経理の期は仮払消費税 (控除できる分) を足す. */
-function grossAmount(
-  line: { amount: Money; taxAmount: Money; taxCategoryCode: string },
-  date: CalendarDate,
-  method: "tax_inclusive" | "tax_exclusive",
-  rules: readonly TaxRateRule[],
-): Money {
-  if (method !== "tax_exclusive" || line.taxAmount === 0n) return line.amount;
-  if (getTaxCategory(line.taxCategoryCode)?.kind !== "taxable") return line.amount;
-  const percent = resolveTaxRule(line.taxCategoryCode, date, rules)?.deductiblePercent ?? 100;
-  const taxLine = percent === 100 ? line.taxAmount : (line.taxAmount * BigInt(percent)) / 100n;
-  return line.amount + taxLine;
-}
-
 /**
  * 報酬の支払調書 (§12.2) of `year`: the posted entries dated in the year (a voided entry and its
- * reversal both left out, so a correction counts once), their lines of 5410 支払報酬料 and 5110
- * 業務委託費 per partner (debit − credit, tax-inclusive) and the 2300 預り金 of the same entries as
- * 源泉徴収税額. Only partners marked 個人 get a 支払調書 (年間 5 万円超); unmarked ones are listed
- * for the owner. `categories` is the 区分 chosen on the screen (`<partnerId>.<accountCode>`), never
- * stored.
+ * reversal both left out, so a correction counts once) with a line of 5410 支払報酬料 or 5110 業務委託費,
+ * read whole: each fee line's 支払金額 is its amount plus its share of the entry's 1400 仮払消費税
+ * (`feeLinesOfEntries`: right for a 伝票, which keeps the tax in the line, and for a 支出 of a 税抜経理
+ * year, which books it on 1400), the entry's 2300 預り金 is the 源泉徴収税額. Only partners marked 個人
+ * get a 支払調書 (年間 5 万円超); unmarked ones are listed for the owner. `categories` is the 区分 chosen
+ * on the screen (`<partnerId>.<accountCode>`), never stored.
  */
 export async function loadFeeReports(
   db: Db,
@@ -2484,68 +2467,51 @@ export async function loadFeeReports(
 ): Promise<FeeReportsOverview> {
   const from = toDbDate(dateOf(year, 1, 1));
   const to = toDbDate(dateOf(year, 12, 31));
-  const entryWhere = {
-    status: "posted" as const,
-    reversalOfId: null,
-    entryDate: { gte: from, lte: to },
-  };
-  const accounts = await db.account.findMany({
-    where: { code: { in: [...FEE_ACCOUNT_CODES, FEE_WITHHOLDING_ACCOUNT_CODE] } },
+  const feeAccounts = await db.account.findMany({
+    where: { code: { in: [...FEE_ACCOUNT_CODES] } },
     select: { id: true, code: true, name: true },
   });
-  const feeAccounts = accounts.filter((account) =>
-    (FEE_ACCOUNT_CODES as readonly string[]).includes(account.code),
-  );
-  const withholdingAccount = accounts.find(
-    (account) => account.code === FEE_WITHHOLDING_ACCOUNT_CODE,
-  );
-  const [feeRows, payer, rules, fiscalYears] = await Promise.all([
-    db.journalLine.findMany({
+  const [entries, payer] = await Promise.all([
+    db.journalEntry.findMany({
       where: {
-        accountId: { in: feeAccounts.map((account) => account.id) },
-        journalEntry: entryWhere,
+        status: "posted",
+        reversalOfId: null,
+        entryDate: { gte: from, lte: to },
+        lines: { some: { accountId: { in: feeAccounts.map((account) => account.id) } } },
       },
+      orderBy: [{ entryDate: "asc" }, { no: "asc" }],
       select: {
-        side: true,
-        amount: true,
-        taxAmount: true,
-        taxCategoryCode: true,
-        partnerId: true,
-        accountId: true,
-        journalEntry: { select: { id: true, no: true, entryDate: true, fiscalYearId: true } },
+        id: true,
+        no: true,
+        entryDate: true,
+        lines: {
+          orderBy: { lineNo: "asc" },
+          select: {
+            side: true,
+            amount: true,
+            taxAmount: true,
+            partnerId: true,
+            account: { select: { code: true } },
+          },
+        },
       },
     }),
     loadPayer(db),
-    loadTaxRules(db),
-    db.fiscalYear.findMany({ select: { id: true, accountingMethod: true } }),
   ]);
-  const methods = new Map(fiscalYears.map((row) => [row.id, row.accountingMethod]));
-  const codeOf = new Map(feeAccounts.map((account) => [account.id, account.code]));
-  const lines: FeeJournalLine[] = feeRows.map((row) => {
-    const date = fromDbDate(row.journalEntry.entryDate);
-    const gross = grossAmount(
-      row,
-      date,
-      methods.get(row.journalEntry.fiscalYearId) ?? "tax_inclusive",
-      rules,
-    );
-    return {
-      entryId: row.journalEntry.id,
-      entryNo: row.journalEntry.no,
-      entryDate: date,
-      accountCode: codeOf.get(row.accountId) as FeeAccountCode,
-      partnerId: row.partnerId,
-      amount: row.side === "debit" ? gross : -gross,
-    };
-  });
-  const entryIds = [...new Set(lines.map((line) => line.entryId))];
-  const withholdingRows =
-    withholdingAccount && entryIds.length > 0
-      ? await db.journalLine.findMany({
-          where: { accountId: withholdingAccount.id, journalEntryId: { in: entryIds } },
-          select: { side: true, amount: true, partnerId: true, journalEntryId: true },
-        })
-      : [];
+  const { lines, withholding } = feeLinesOfEntries(
+    entries.map((entry): FeeEntry => ({
+      id: entry.id,
+      no: entry.no,
+      date: fromDbDate(entry.entryDate),
+      lines: entry.lines.map((line) => ({
+        accountCode: line.account.code,
+        side: line.side,
+        amount: line.amount,
+        taxAmount: line.taxAmount,
+        partnerId: line.partnerId,
+      })),
+    })),
+  );
   const partnerIds = [
     ...new Set(lines.flatMap((line) => (line.partnerId === null ? [] : [line.partnerId]))),
   ];
@@ -2553,16 +2519,7 @@ export async function loadFeeReports(
     where: { id: { in: partnerIds } },
     select: { id: true, name: true, address: true, isIndividual: true },
   });
-  const aggregation = aggregateFeePayments({
-    lines,
-    withholding: withholdingRows.map((row) => ({
-      entryId: row.journalEntryId,
-      partnerId: row.partnerId,
-      amount: row.side === "credit" ? row.amount : -row.amount,
-    })),
-    partners,
-    categories,
-  });
+  const aggregation = aggregateFeePayments({ lines, withholding, partners, categories });
   return {
     year,
     payer,
