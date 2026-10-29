@@ -1291,3 +1291,37 @@ model ExternalApiUsage {
   @@index([service, at])
   @@map("external_api_usage")
 }
+
+// ---------------------------------------------------------------------------
+// Payroll: 賞与 (docs/design/22-payroll.md §10)
+// ---------------------------------------------------------------------------
+
+/// A confirmed bonus run (1 per pay month, apart from the monthly PayrollRun). Append-only (DB
+/// triggers): corrections are made by correcting its entries.
+model PayrollBonusRun {
+  id                    String   @id
+  /// 支給月 (YYYY-MM) = the month of paymentDate (also the premium month of its premiums)
+  payMonth              String   @unique @map("pay_month")
+  /// 支払日: the date of the entries and the year of the withholding tables
+  paymentDate           DateTime @map("payment_date") @db.Date
+  /// 題名 (夏季賞与 など): in the entries' descriptions
+  title                 String
+  /// 賞与の計算期間が 6 か月を超える (the monthly-table exceptions use ÷ 12 / × 12)
+  calcPeriodOver6Months Boolean  @map("calc_period_over_6_months")
+  /// 支払元の口座; null = 未払金〔給与〕
+  payFromWalletId       String?  @map("pay_from_wallet_id")
+  /// 源泉所得税の納期の特例
+  withholdingSpecialDue Boolean  @map("withholding_special_due")
+  /// Ids of the table versions used (bonus / monthly withholding / kenpo / pension / employment)
+  tableIds              Json     @map("table_ids")
+  /// Per person: input and result, amounts as strings (22-payroll §5.5・§10)
+  items                 Json
+  /// 1 本目 (本人分)
+  payEntryId            String   @map("pay_entry_id")
+  /// 2 本目 (会社負担); null when it is 0
+  employerEntryId       String?  @map("employer_entry_id")
+  confirmedAt           DateTime @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  confirmedBy           String   @map("confirmed_by")
+
+  @@map("payroll_bonus_run")
+}

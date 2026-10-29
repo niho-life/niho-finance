@@ -15,6 +15,7 @@ export const PAYROLL_TABLE_KINDS = [
   "kyokai-kenpo",
   "pension",
   "employment-insurance",
+  "withholding-bonus",
 ] as const;
 export type PayrollTableKind = (typeof PAYROLL_TABLE_KINDS)[number];
 
@@ -116,7 +117,33 @@ export interface EmploymentInsuranceTable extends TableHeader<"employment-insura
   rates: { employee: Rational; employer: Rational; total: Rational };
 }
 
-export type PayrollTable = WithholdingTable | KenpoTable | PensionTable | EmploymentInsuranceTable;
+/**
+ * A row's range of 前月の社会保険料等控除後の給与等の金額: `from` 以上 `to` 未満; `null` is open (the
+ * first row has only 「未満」, the last only 「以上」).
+ */
+export interface BonusWithholdingRange {
+  from: Money | null;
+  to: Money | null;
+}
+
+/** A row of the bonus table: the rate, and the range for 甲欄 0〜7 人以上 and 乙欄 (when it has one). */
+export interface BonusWithholdingRow {
+  /** The rate as published, e.g. `"2.042"` (percent). */
+  ratePercent: string;
+  rate: Rational;
+  /** 8 columns: 0〜6 人 and 7 人以上. */
+  kou: readonly BonusWithholdingRange[];
+  /** `null`: this rate is not one of 乙欄's. */
+  otsu: BonusWithholdingRange | null;
+}
+
+/** 賞与に対する源泉徴収税額の算出率の表 (22-payroll §10.1), one version per calendar year of payment. */
+export interface BonusWithholdingTable extends TableHeader<"withholding-bonus", CalendarDate> {
+  rows: readonly BonusWithholdingRow[];
+}
+
+export type PayrollTable =
+  WithholdingTable | KenpoTable | PensionTable | EmploymentInsuranceTable | BonusWithholdingTable;
 
 export function tableRef(table: PayrollTable): TableRef {
   return {
@@ -131,7 +158,10 @@ export function tableRef(table: PayrollTable): TableRef {
  * the table's own period. An `effectiveTo` of `null` counts as open-ended here.
  */
 export function isTableEffective(table: PayrollTable, when: string): boolean {
-  const valid = table.kind === "withholding-monthly" ? isCalendarDate(when) : isYearMonth(when);
+  const valid =
+    table.kind === "withholding-monthly" || table.kind === "withholding-bonus"
+      ? isCalendarDate(when)
+      : isYearMonth(when);
   if (!valid) throw new RangeError(`isTableEffective: "${when}" is not a period of ${table.kind}`);
   return table.effectiveFrom <= when && (table.effectiveTo === null || when <= table.effectiveTo);
 }
@@ -610,6 +640,95 @@ export function parseEmploymentInsuranceTable(json: unknown): EmploymentInsuranc
   return { ...header, businessType: "general", rates: { employee, employer, total } };
 }
 
+// ---------------------------------------------------------------------------------------------
+// 賞与に対する源泉徴収税額の算出率の表
+
+function readNullableRangeEnd(context: Context, value: unknown, path: string): Money | null {
+  return value === null ? null : readPositiveYen(context, value, path);
+}
+
+function readBonusRange(context: Context, value: unknown, path: string): BonusWithholdingRange {
+  const range = readObject(context, value, path, ["from", "to"]);
+  const from = readNullableRangeEnd(context, range.from, pathOf(path, "from"));
+  const to = readNullableRangeEnd(context, range.to, pathOf(path, "to"));
+  if (from !== null && to !== null && to <= from) {
+    fail(context, pathOf(path, "to"), "must be greater than from");
+  }
+  return { from, to };
+}
+
+/**
+ * The ranges of one column down the rows must start open (「未満」), continue each other without a
+ * gap or overlap, and end open (「以上」).
+ */
+function checkBonusColumn(
+  context: Context,
+  ranges: readonly { range: BonusWithholdingRange; path: string }[],
+  label: string,
+): void {
+  if (ranges.length < 2) fail(context, "rows", `${label} must have at least 2 rows`);
+  ranges.forEach(({ range, path }, index) => {
+    const first = index === 0;
+    const last = index === ranges.length - 1;
+    if (first !== (range.from === null)) {
+      fail(context, pathOf(path, "from"), first ? "must be null (未満 only)" : "must not be null");
+    }
+    if (last !== (range.to === null)) {
+      fail(context, pathOf(path, "to"), last ? "must be null (以上 only)" : "must not be null");
+    }
+    const previous = ranges[index - 1];
+    if (previous && range.from !== previous.range.to) {
+      fail(context, pathOf(path, "from"), `${label}: must continue the previous row without a gap`);
+    }
+  });
+}
+
+export function parseBonusWithholdingTable(json: unknown): BonusWithholdingTable {
+  const { context, object, header } = readHeader(json, "withholding-bonus", ["rows"], readDate);
+  const rows = readArray(context, object.rows, "rows").map((item, index): BonusWithholdingRow => {
+    const path = pathOf("rows", index);
+    const row = readObject(context, item, path, ["ratePercent", "kou", "otsu"]);
+    const ratePercent = row.ratePercent;
+    const rate = readRate(context, ratePercent, pathOf(path, "ratePercent"), 100n);
+    const cells = readArray(context, row.kou, pathOf(path, "kou"));
+    if (cells.length !== KOU_COLUMNS) {
+      fail(context, pathOf(path, "kou"), `must have ${KOU_COLUMNS} columns (0〜6 人・7 人以上)`);
+    }
+    return {
+      ratePercent: ratePercent as string,
+      rate,
+      kou: cells.map((cell, column) =>
+        readBonusRange(context, cell, pathOf(pathOf(path, "kou"), column)),
+      ),
+      otsu: row.otsu === null ? null : readBonusRange(context, row.otsu, pathOf(path, "otsu")),
+    };
+  });
+  rows.forEach((row, index) => {
+    const previous = rows[index - 1];
+    if (previous && compare(row.rate, previous.rate) <= 0) {
+      fail(context, pathOf(pathOf("rows", index), "ratePercent"), "must be greater than before");
+    }
+  });
+  for (let column = 0; column < KOU_COLUMNS; column++) {
+    checkBonusColumn(
+      context,
+      rows.map((row, index) => ({
+        range: row.kou[column]!,
+        path: pathOf(pathOf(pathOf("rows", index), "kou"), column),
+      })),
+      `甲欄 ${column} 人`,
+    );
+  }
+  checkBonusColumn(
+    context,
+    rows.flatMap((row, index) =>
+      row.otsu ? [{ range: row.otsu, path: pathOf(pathOf("rows", index), "otsu") }] : [],
+    ),
+    "乙欄",
+  );
+  return { ...header, rows };
+}
+
 /** Parses any table JSON by its `kind`. */
 export function parsePayrollTable(json: unknown): PayrollTable {
   const kind = isJsonObject(json) ? json.kind : undefined;
@@ -622,6 +741,8 @@ export function parsePayrollTable(json: unknown): PayrollTable {
       return parsePensionTable(json);
     case "employment-insurance":
       return parseEmploymentInsuranceTable(json);
+    case "withholding-bonus":
+      return parseBonusWithholdingTable(json);
     default:
       throw new PayrollTableFormatError(
         "(unknown)",

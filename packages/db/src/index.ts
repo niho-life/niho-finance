@@ -415,6 +415,24 @@ export {
   type PayrollWriteOptions,
   type Payslip,
 } from "./payroll";
+export {
+  confirmBonusRun,
+  getBonusRun,
+  listBonusRuns,
+  loadBonusDraft,
+  loadBonusPayslip,
+  previewBonusRun,
+  type BonusDraft,
+  type BonusDraftEmployee,
+  type BonusPayslip,
+  type BonusPreview,
+  type BonusRunDetail,
+  type BonusRunItemValues,
+  type BonusRunListRow,
+  type BonusRunValues,
+  type BonusRunWarning,
+  type BonusTableRefs,
+} from "./payroll-yearend";
 export * from "./schemas";
 export * from "./settings";
 export {
