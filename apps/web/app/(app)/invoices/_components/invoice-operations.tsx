@@ -51,6 +51,8 @@ export interface InvoiceOperationsModel {
   canSend: boolean;
   canVoid: boolean;
   canCopy: boolean;
+  /** 「この内容で定期請求を作る」 (18 §14.5): an issued, sent or paid invoice. */
+  canMakeRecurring: boolean;
   convertTo: InvoiceDocType[];
   /** メールで送付 (18 §11): the form's defaults and the attachment's name; `null` for drafts and void. */
   mail: { to: string; subject: string; text: string; attachmentName: string } | null;
@@ -467,6 +469,11 @@ export function InvoiceOperations({ model }: { model: InvoiceOperationsModel }) 
       {model.canCopy ? (
         <ButtonLink href={`/invoices/new?copy=${model.id}`} size="sm" variant="ghost">
           複製
+        </ButtonLink>
+      ) : null}
+      {model.canMakeRecurring ? (
+        <ButtonLink href={`/invoices/recurring/new?from=${model.id}`} size="sm" variant="ghost">
+          この内容で定期請求を作る
         </ButtonLink>
       ) : null}
       {model.canVoid ? <VoidButton model={model} /> : null}

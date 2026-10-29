@@ -15,10 +15,21 @@ const COLUMNS = {
   mobileColumns: "minmax(0,1fr) auto",
 };
 
-/** 下書き / 発行済み …, 期限超過（n 日）in the warn colour, 「→ 請求書 INV-…」 when converted. */
+/**
+ * 下書き / 発行済み …, 期限超過（n 日）in the warn colour, 「→ 請求書 INV-…」 when converted; a small
+ * muted 「定期」 before the state when made from a 定期請求 (18 §14.5).
+ */
 function StatusText({ row }: { row: InvoiceListRow }) {
   return (
     <>
+      {row.recurring ? (
+        <span
+          title={`定期請求 ${row.recurring.name}`}
+          className="mr-1.5 inline-block rounded border border-border px-1 text-[11px] leading-4 text-muted"
+        >
+          定期
+        </span>
+      ) : null}
       <span>{INVOICE_STATUS_LABELS[row.status]}</span>
       {row.overdue ? (
         <span className="ml-1.5 font-bold text-warn">期限超過（{row.overdueDays} 日）</span>

@@ -1,17 +1,20 @@
 import {
   invoicesFilterSchema,
   listInvoices,
+  listRecurringInvoices,
   loadCurrentFiscalYear,
   loadInvoiceFormOptions,
   todayInJapan,
 } from "@niho-finance/db";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { BillingSwitch } from "@/components/app-shell/billing-switch";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { db } from "@/lib/data";
+import { formatDate } from "@/lib/format";
 import { InvoicesFilter } from "./_components/invoices-filter";
 import { InvoicesTable } from "./_components/invoices-table";
 import { invoicesQuery } from "./_components/list-query";
@@ -25,6 +28,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
   const today = todayInJapan();
   const fiscalYear = await loadCurrentFiscalYear(prisma, today);
   const result = await listInvoices(prisma, filters, filters.page, { today });
+  const recurring = await listRecurringInvoices(prisma, { today });
   const options = await loadInvoiceFormOptions(prisma, {
     includeIds: filters.partner ? [filters.partner] : [],
   });
@@ -61,6 +65,24 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
         }
       />
       <BillingSwitch current="invoices" />
+      {recurring.activeCount > 0 ? (
+        <p className="-mt-2 mb-4 text-[13px] text-muted">
+          <Link href="/invoices/recurring" className="underline underline-offset-4">
+            定期請求 {recurring.activeCount} 件
+            {recurring.next
+              ? ` · 次回 ${formatDate(recurring.next.date)} ${recurring.next.name}`
+              : ""}
+          </Link>
+          {recurring.dueCount > 0 ? (
+            <Link
+              href="/invoices/recurring/due"
+              className="ml-3 font-bold text-warn underline underline-offset-4"
+            >
+              下書きを作る {recurring.dueCount} 件
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
       <InvoicesFilter
         key={listQuery}
         values={{

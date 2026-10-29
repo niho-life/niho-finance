@@ -1,5 +1,6 @@
 import {
   getInvoiceDetail,
+  getInvoiceReceipts,
   loadDepositCandidates,
   loadInvoiceFormOptions,
   loadInvoiceHistory,
@@ -7,7 +8,7 @@ import {
   type InvoiceDetail,
   type InvoiceRef,
 } from "@niho-finance/db";
-import { formatYen, INVOICE_STATUS_LABELS } from "@niho-finance/ledger";
+import { formatYen, INVOICE_STATUS_LABELS, type CalendarDate } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -24,6 +25,7 @@ import { InvoiceOperations, type InvoiceOperationsModel } from "../_components/i
 import { documentName, listHref } from "../_components/list-query";
 import { RecordPaymentButton, type PaymentSheetModel } from "../_components/payment-controls";
 import { PaymentsSection } from "../_components/payments-section";
+import { ReceiptSection, type ReceiptSectionModel } from "../_components/receipt-section";
 import { SavePdfButton } from "../_components/save-pdf-button";
 import { buildInvoiceMailDraft } from "../_lib/mail-draft";
 
@@ -55,6 +57,27 @@ function EntryLink({ entry }: { entry: { id: string; no: number } }) {
       {entryNo(entry.no)}
     </Link>
   );
+}
+
+/** A receipt for the client section (no bigint). */
+function receiptRow(receipt: {
+  id: string;
+  number: string;
+  issueDate: CalendarDate;
+  amount: bigint;
+  proviso: string;
+  pdfDocumentId: string | null;
+  voidReason: string | null;
+}): ReceiptSectionModel["voided"][number] {
+  return {
+    id: receipt.id,
+    number: receipt.number,
+    issueDate: receipt.issueDate,
+    amountText: formatYen(receipt.amount),
+    proviso: receipt.proviso,
+    pdfDocumentId: receipt.pdfDocumentId,
+    voidReason: receipt.voidReason,
+  };
 }
 
 /** The bands of the detail (18 §9.1), only the ones that apply. */
@@ -128,6 +151,18 @@ function Bands({ detail, blockedEdit }: { detail: InvoiceDetail; blockedEdit: bo
   }
   if (detail.status === "paid" && detail.paidOn) {
     bands.push(<Band key="paid">{formatDate(detail.paidOn)} に入金済み</Band>);
+  }
+  if (detail.recurring) {
+    bands.push(
+      <Band key="recurring">
+        <Link
+          href={`/invoices/recurring/${detail.recurring.id}`}
+          className="font-bold underline underline-offset-4"
+        >
+          定期請求: {detail.recurring.name}（{detail.recurring.monthLabel}の予定）
+        </Link>
+      </Band>,
+    );
   }
   if (detail.source) {
     bands.push(
@@ -248,6 +283,7 @@ export default async function InvoiceDetailPage({
     canSend: actions.canSend,
     canVoid: actions.canVoid,
     canCopy: detail.status !== "draft",
+    canMakeRecurring: actions.canMakeRecurring,
     convertTo: actions.convertTo,
     mail:
       detail.status === "draft" || detail.status === "void"
@@ -257,6 +293,27 @@ export default async function InvoiceDetailPage({
             attachmentName: invoicePdfFileNames(detail).utf8FileName,
           },
   };
+
+  const receipts =
+    detail.docType === "invoice" ? await getInvoiceReceipts(prisma, id, { today }) : null;
+  const receiptModel: ReceiptSectionModel | null = receipts?.available
+    ? {
+        invoiceId: id,
+        invoiceName: name,
+        current: receipts.current ? receiptRow(receipts.current) : null,
+        voided: receipts.voided.map(receiptRow),
+        canIssue: receipts.canIssue,
+        blocked: receipts.blocked,
+        today,
+        defaults: {
+          proviso: receipts.defaults.proviso,
+          receivedOn: receipts.defaults.receivedOn,
+          amountText: formatYen(receipts.defaults.amount),
+          recipientName: receipts.defaults.recipientName,
+          stampHelp: receipts.defaults.stampHelp,
+        },
+      }
+    : null;
 
   const meta = [
     INVOICE_STATUS_LABELS[detail.status],
@@ -297,6 +354,7 @@ export default async function InvoiceDetailPage({
         </div>
       ) : null}
       {detail.docType === "invoice" && issued ? <PaymentsSection detail={detail} /> : null}
+      {receiptModel ? <ReceiptSection model={receiptModel} /> : null}
       <InvoiceHistory rows={history} />
     </>
   );

@@ -46,7 +46,13 @@ export function recurringInvoiceTargetOffsetLabel(offset: number): string {
 /** 支払期限の「何か月後」: 0–3 (18 §14.1). */
 export const RECURRING_INVOICE_DUE_MONTHS = [0, 1, 2, 3] as const;
 
-const DUE_MONTH_LABELS: readonly string[] = ["当月", "翌月", "翌々月", "3 か月後"];
+/** 支払期限の月: 当月 / 翌月 / 翌々月 / 3 か月後, by `dueMonths`. */
+export const RECURRING_INVOICE_DUE_MONTH_LABELS: readonly string[] = [
+  "当月",
+  "翌月",
+  "翌々月",
+  "3 か月後",
+];
 
 /** 1–31 for the days of the rules; 31 is 末日. */
 export const RECURRING_INVOICE_LAST_DAY = 31;
@@ -217,7 +223,7 @@ function dayLabel(day: number): string {
 
 /** 「翌月末」「翌月 10 日」「当月末」「3 か月後の 5 日」. */
 export function describeRecurringInvoiceDueRule(rule: RecurringInvoiceDueRule): string {
-  const months = DUE_MONTH_LABELS[rule.dueMonths] ?? `${rule.dueMonths} か月後`;
+  const months = RECURRING_INVOICE_DUE_MONTH_LABELS[rule.dueMonths] ?? `${rule.dueMonths} か月後`;
   if (rule.dueMonths >= 3) return `${months}の${dayLabel(rule.dueDay)}`;
   return rule.dueDay >= RECURRING_INVOICE_LAST_DAY ? `${months}末` : `${months} ${rule.dueDay} 日`;
 }
