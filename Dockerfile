@@ -42,6 +42,9 @@ FROM base AS runtime
 ENV NODE_ENV=production PORT=8080 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+# The standalone output leaves out public/: the home-screen app's manifest, icons, service worker
+# and offline page (10 §1.1).
+COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
 USER node
 EXPOSE 8080
 CMD ["node", "apps/web/server.js"]

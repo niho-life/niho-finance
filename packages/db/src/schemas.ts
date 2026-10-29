@@ -27,6 +27,7 @@ import {
   isAcceptedDocumentMime,
   isAccountGroupOf,
   isCalendarDate,
+  isRecurringMonth,
   isSalesTaxCategoryCode,
   isTaxCategoryCode,
   isValidRuleRegex,
@@ -45,6 +46,7 @@ import {
   type DocumentMime,
   type EntryCounterpart,
   type Money,
+  type RecurringMonth,
   type RuleAction,
   type RuleMatch,
   type RuleSign,
@@ -2311,6 +2313,11 @@ const recurringFields = {
   endDate: optionalDate("終了日"),
   walletId: idField("口座"),
   accountId: idField("科目"),
+  /**
+   * 振替 (21 §10.1): the other wallet, chosen in the 科目 select's 「口座（振替）」 group; the
+   * repository keeps `accountId` on that wallet's account. `null` for 収入 / 支出.
+   */
+  transferWalletId: optionalIdField("相手の口座"),
   partnerId: optionalIdField("取引先"),
   /** Defaults to the wallet's default segment when left out on create. */
   segmentId: optionalIdField("セグメント"),
@@ -2318,7 +2325,14 @@ const recurringFields = {
   note: optionalText("メモ", 500),
 };
 
-export const recurringItemCreateSchema = z.object(recurringFields);
+/** A 振替 takes its account from the other wallet; anything else needs 科目. */
+export const recurringItemCreateSchema = z
+  .object({ ...recurringFields, accountId: optionalIdField("科目") })
+  .superRefine((value, ctx) => {
+    if (value.transferWalletId === null && value.accountId === null) {
+      ctx.addIssue({ code: "custom", path: ["accountId"], message: "科目を選んでください" });
+    }
+  });
 export type RecurringItemCreateInput = z.input<typeof recurringItemCreateSchema>;
 
 /** A partial update: a missing key leaves the column as is (無効にする / 有効にする included). */
@@ -2333,6 +2347,8 @@ export const recurringItemUpdateSchema = z.object({
   endDate: recurringFields.endDate.optional(),
   walletId: recurringFields.walletId.optional(),
   accountId: recurringFields.accountId.optional(),
+  /** `null` turns a 振替 back into 収入 / 支出; a new 科目 alone does the same. */
+  transferWalletId: recurringFields.transferWalletId.optional(),
   partnerId: recurringFields.partnerId.optional(),
   segmentId: recurringFields.segmentId.optional(),
   taxCategoryCode: recurringFields.taxCategoryCode.optional(),
@@ -2340,3 +2356,15 @@ export const recurringItemUpdateSchema = z.object({
   isActive: booleanField("状態").optional(),
 });
 export type RecurringItemUpdateInput = z.input<typeof recurringItemUpdateSchema>;
+
+/** 登録 of one occurrence (21 §10.5): the item, the month (`YYYY-MM`) and the positive amount. */
+export const recurringPostSchema = z.object({
+  recurringItemId: idField("定期取引"),
+  month: fromText("月", (text): Conversion<RecurringMonth> => {
+    if (!isRecurringMonth(text)) return problem("月は 2026-12 の形にしてください");
+    return ok(text);
+  }),
+  /** 1〜999,999,999,999 円; the entry's type gives the sign. */
+  amount: recurringAmountField("金額"),
+});
+export type RecurringPostInput = z.input<typeof recurringPostSchema>;

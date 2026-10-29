@@ -545,15 +545,16 @@ model Wallet {
   /// Why the last sync failed; cleared by the next one that completes
   bankApiError         String?    @map("bank_api_error")
 
-  account         Account             @relation(fields: [accountId], references: [id])
-  subAccount      SubAccount?         @relation(fields: [subAccountId], references: [id])
-  defaultSegment  Segment?            @relation(fields: [defaultSegmentId], references: [id])
-  stripeAccount   StripeAccountLink?
-  transactions    WalletTransaction[]
-  importBatches   ImportBatch[]
-  rules           Rule[]
-  recurringItems  RecurringItem[]
-  expensePayments ExpensePayment[]
+  account                Account             @relation(fields: [accountId], references: [id])
+  subAccount             SubAccount?         @relation(fields: [subAccountId], references: [id])
+  defaultSegment         Segment?            @relation(fields: [defaultSegmentId], references: [id])
+  stripeAccount          StripeAccountLink?
+  transactions           WalletTransaction[]
+  importBatches          ImportBatch[]
+  rules                  Rule[]
+  recurringItems         RecurringItem[]     @relation("RecurringItemWallet")
+  recurringTransferItems RecurringItem[]     @relation("RecurringItemTransferWallet")
+  expensePayments        ExpensePayment[]
 
   @@map("wallet")
 }
@@ -960,30 +961,33 @@ model FixedAsset {
 
 /// Recurring transaction (rent, subscriptions, taxes, salaries): cash-flow input and matching hint.
 model RecurringItem {
-  id              String              @id
-  name            String
-  accountId       String              @map("account_id")
+  id               String              @id
+  name             String
+  accountId        String              @map("account_id")
   /// Signed from the wallet's point of view: deposits are positive
-  amount          BigInt
-  frequency       RecurrenceFrequency
-  dayOfMonth      Int?                @map("day_of_month")
-  monthOfYear     Int?                @map("month_of_year")
-  startDate       DateTime            @map("start_date") @db.Date
-  endDate         DateTime?           @map("end_date") @db.Date
-  walletId        String?             @map("wallet_id")
-  taxCategoryCode String?             @map("tax_category_code")
-  segmentId       String?             @map("segment_id")
-  partnerId       String?             @map("partner_id")
-  isActive        Boolean             @default(true) @map("is_active")
-  note            String?
-  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  amount           BigInt
+  frequency        RecurrenceFrequency
+  dayOfMonth       Int?                @map("day_of_month")
+  monthOfYear      Int?                @map("month_of_year")
+  startDate        DateTime            @map("start_date") @db.Date
+  endDate          DateTime?           @map("end_date") @db.Date
+  walletId         String?             @map("wallet_id")
+  /// 振替 only (21-cashflow §10.1): the other wallet; `accountId` is kept on that wallet's account
+  transferWalletId String?             @map("transfer_wallet_id")
+  taxCategoryCode  String?             @map("tax_category_code")
+  segmentId        String?             @map("segment_id")
+  partnerId        String?             @map("partner_id")
+  isActive         Boolean             @default(true) @map("is_active")
+  note             String?
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  account     Account      @relation(fields: [accountId], references: [id])
-  wallet      Wallet?      @relation(fields: [walletId], references: [id])
-  taxCategory TaxCategory? @relation(fields: [taxCategoryCode], references: [code])
-  segment     Segment?     @relation(fields: [segmentId], references: [id])
-  partner     Partner?     @relation(fields: [partnerId], references: [id])
+  account        Account      @relation(fields: [accountId], references: [id])
+  wallet         Wallet?      @relation("RecurringItemWallet", fields: [walletId], references: [id])
+  transferWallet Wallet?      @relation("RecurringItemTransferWallet", fields: [transferWalletId], references: [id])
+  taxCategory    TaxCategory? @relation(fields: [taxCategoryCode], references: [code])
+  segment        Segment?     @relation(fields: [segmentId], references: [id])
+  partner        Partner?     @relation(fields: [partnerId], references: [id])
 
   @@map("recurring_item")
 }

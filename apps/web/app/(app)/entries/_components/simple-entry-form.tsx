@@ -142,6 +142,20 @@ function fitsDirection(code: string | null | undefined, direction: TaxDirection)
   return Boolean(category && (category.direction === direction || category.direction === "none"));
 }
 
+/** First values of the form; a 科目・税区分・セグメント given here counts as chosen (no defaults over it). */
+export interface SimpleEntryInitial {
+  entryDate?: string;
+  /** 3-digit grouping. */
+  amount?: string;
+  partnerId?: string;
+  /** `wallet:<id>` / `account:<id>`. */
+  counterpart?: string;
+  accountId?: string;
+  taxCategoryCode?: string;
+  segmentId?: string;
+  description?: string;
+}
+
 export function SimpleEntryForm({
   type,
   options,
@@ -152,8 +166,11 @@ export function SimpleEntryForm({
   type: FlowType;
   options: EntryFormOptions;
   today: string;
-  /** First values from 「この証憑から取引を登録」 (the amount with 3-digit grouping). */
-  initial?: { entryDate?: string; amount?: string; partnerId?: string };
+  /**
+   * First values from 「この証憑から取引を登録」 (date, amount, partner) or 「テンプレートから」
+   * (21-cashflow §10.7: the recurring item's wallet, account, tax, partner, segment, amount, name).
+   */
+  initial?: SimpleEntryInitial;
   /** The document to link to the entry once it is registered (13 §4). */
   linkDocument?: { id: string; name: string };
 }) {
@@ -209,29 +226,32 @@ export function SimpleEntryForm({
   }
 
   const firstWallet = options.wallets.find((wallet) => wallet.isActive);
-  const [edited, setEdited] = useState<Edited>({
-    accountId: false,
-    taxCategoryCode: false,
-    segmentId: false,
-  });
+  const initialEdited: Edited = {
+    accountId: Boolean(initial?.accountId),
+    taxCategoryCode: Boolean(initial?.taxCategoryCode),
+    segmentId: Boolean(initial?.segmentId),
+  };
+  const [edited, setEdited] = useState<Edited>(initialEdited);
   const [draft, setDraft] = useState<Draft>(() =>
     withDefaults(
       {
         entryDate: initial?.entryDate ?? today,
-        description: "",
-        counterpart: firstWallet
-          ? `wallet:${firstWallet.id}`
-          : lookups.counterAccounts[0]
-            ? `account:${lookups.counterAccounts[0].id}`
-            : "",
-        accountId: "",
+        description: initial?.description ?? "",
+        counterpart:
+          initial?.counterpart ??
+          (firstWallet
+            ? `wallet:${firstWallet.id}`
+            : lookups.counterAccounts[0]
+              ? `account:${lookups.counterAccounts[0].id}`
+              : ""),
+        accountId: initial?.accountId ?? "",
         amount: initial?.amount ?? "",
-        taxCategoryCode: text.defaultTax,
-        segmentId: "",
+        taxCategoryCode: initial?.taxCategoryCode || text.defaultTax,
+        segmentId: initial?.segmentId ?? "",
         partnerId: initial?.partnerId ?? "",
         memoTagIds: [],
       },
-      { accountId: false, taxCategoryCode: false, segmentId: false },
+      initialEdited,
     ),
   );
   const [error, setError] = useState<ActionError | null>(null);
