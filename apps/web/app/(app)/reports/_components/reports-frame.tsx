@@ -22,6 +22,7 @@ export function ReportsFrame({
   exportParams = {},
   exportable,
   conditions = true,
+  segmentSwitch,
   meta,
   children,
 }: {
@@ -39,6 +40,8 @@ export function ReportsFrame({
   exportable: boolean;
   /** `false`: the tab takes no conditions (資金繰り, 21 §6) and the form is left out. */
   conditions?: boolean;
+  /** Overrides whether the segment switch is shown (集計's segment axis hides it). */
+  segmentSwitch?: boolean;
   /** Replaces 「第 n 期 …」 next to the title (資金繰り shows its 90 days). */
   meta?: ReactNode;
   children: ReactNode;
@@ -68,6 +71,7 @@ export function ReportsFrame({
                 hidden={hidden}
                 linkParams={linkParams}
                 controls={controls}
+                segmentSwitch={segmentSwitch}
               />
             ) : null}
             {exportable ? (
