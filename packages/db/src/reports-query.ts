@@ -133,6 +133,7 @@ export async function loadReportSource(db: Db): Promise<ReportSource> {
       name: sub.name,
       isActive: sub.isActive,
       sortOrder: sub.sortOrder,
+      partnerId: sub.partnerId,
     })),
     segments: segments.map((segment) => ({
       id: segment.id,

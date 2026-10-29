@@ -1,8 +1,16 @@
 /**
  * 総勘定元帳 (14-reports §8): one account (optionally one sub-account) over `from`..`to`, one row
  * per line with the counter account and the running balance, with the opening and the totals.
+ * 集計 (§15.3) narrows it further to one partner or one tag.
  */
 import { normalSide, type CalendarDate, type EntryStatus, type Money } from "@niho-finance/ledger";
+import {
+  matchesPartnerFilter,
+  matchesTagFilter,
+  partnerFilterLabel,
+  tagFilterLabel,
+  type BreakdownFilterLabel,
+} from "./breakdown";
 import { slashDate } from "./format";
 import { entryStateLabel } from "./labels";
 import type { ReportPeriod } from "./period";
@@ -45,6 +53,10 @@ export interface GeneralLedgerReport {
   subAccount: ReportSubAccount | null;
   /** Sub-accounts of the account that have lines through `to` (the chips). */
   subAccounts: ReportSubAccount[];
+  /** 集計's partner filter (§15.3): the chip 「取引先: …」. */
+  partnerFilter: BreakdownFilterLabel | null;
+  /** 集計's tag filter: the chip 「タグ: …」. */
+  tagFilter: BreakdownFilterLabel | null;
   /** Balance before `from` on the normal side (P&L accounts: since the start of the year). */
   opening: Money;
   rows: LedgerRow[];
@@ -82,10 +94,22 @@ function counterpartOf(entry: ReportEntry, line: ReportLine, index: SourceIndex)
   return COUNTERPART_SUNDRY;
 }
 
+export interface GeneralLedgerTarget {
+  accountId: string;
+  subAccountId?: string | null;
+  /**
+   * Only lines of this partner, decided as in 集計 (§15.1: revenue and expense lines may take it
+   * from the entry's other lines); `none`: lines without one.
+   */
+  partnerId?: string | null;
+  /** Only lines with this tag; `none`: lines without a tag. */
+  tagId?: string | null;
+}
+
 export function buildGeneralLedger(
   source: ReportSource,
   period: ReportPeriod,
-  target: { accountId: string; subAccountId?: string | null },
+  target: GeneralLedgerTarget,
 ): GeneralLedgerReport {
   const index = indexSource(source);
   const account = index.accountsById.get(target.accountId);
@@ -102,10 +126,17 @@ export function buildGeneralLedger(
   let creditTotal: Money = 0n;
   let running: Money = 0n;
 
-  const accepted = (line: ReportLine): boolean => {
+  const partnerFilter = target.partnerId ?? null;
+  const tagFilter = target.tagId ?? null;
+
+  const accepted = (entry: ReportEntry, line: ReportLine): boolean => {
     if (line.accountId !== account.id) return false;
     if (subAccountId !== null && line.subAccountId !== subAccountId) return false;
     if (period.segmentId && line.segmentId !== period.segmentId) return false;
+    if (partnerFilter && !matchesPartnerFilter(entry, line, account, index, partnerFilter)) {
+      return false;
+    }
+    if (tagFilter && !matchesTagFilter(line, tagFilter)) return false;
     return true;
   };
 
@@ -115,7 +146,7 @@ export function buildGeneralLedger(
     if (since !== undefined && entry.entryDate < since) continue;
     for (const line of entry.lines) {
       if (line.accountId === account.id && line.subAccountId) usedSubs.add(line.subAccountId);
-      if (!accepted(line)) continue;
+      if (!accepted(entry, line)) continue;
       openingNet += line.side === "debit" ? line.amount : -line.amount;
     }
   }
@@ -124,7 +155,7 @@ export function buildGeneralLedger(
     if (entry.entryDate < period.from || entry.entryDate > period.to) continue;
     for (const line of entry.lines) {
       if (line.accountId === account.id && line.subAccountId) usedSubs.add(line.subAccountId);
-      if (!accepted(line)) continue;
+      if (!accepted(entry, line)) continue;
       const debit = line.side === "debit" ? line.amount : 0n;
       const credit = line.side === "credit" ? line.amount : 0n;
       debitTotal += debit;
@@ -159,6 +190,8 @@ export function buildGeneralLedger(
     account,
     subAccount,
     subAccounts,
+    partnerFilter: partnerFilter ? partnerFilterLabel(source, partnerFilter) : null,
+    tagFilter: tagFilter ? tagFilterLabel(source, tagFilter) : null,
     opening: sign * openingNet,
     rows,
     debitTotal,
