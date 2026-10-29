@@ -9,6 +9,8 @@ import {
 } from "@niho-finance/db";
 import type { CalendarDate } from "@niho-finance/ledger";
 import {
+  breakdownCsvRows,
+  buildBreakdown,
   buildCashflowForecast,
   buildCashReport,
   buildGeneralLedger,
@@ -37,6 +39,7 @@ import { csvResponse, pdfResponse } from "@/lib/pdf/download";
 import { renderPdf } from "@/lib/pdf/render";
 import { CashPdf } from "../_pdf/cash";
 import { CashflowPdf } from "../_pdf/cashflow";
+import { BreakdownPdf } from "../_pdf/breakdown";
 import type { PdfReportHeader } from "../_pdf/common";
 import { JournalPdf } from "../_pdf/journal";
 import { LedgerPdf } from "../_pdf/ledger";
@@ -61,6 +64,17 @@ interface ReportOutput {
    * the file name, the PDF header and the audit log use them, without a fiscal year or segment.
    */
   range?: { from: CalendarDate; to: CalendarDate; label: string };
+  /**
+   * The segment the output is narrowed to, when it differs from the URL's (集計's segment axis
+   * ignores the switch): the PDF header and the audit log use it.
+   */
+  segmentId?: string | null;
+}
+
+/** 「セグメント: ① プラットフォーム · 取引先: 架空クラウド株式会社」 */
+function filterSubtitle(parts: readonly (string | null | undefined | false)[]): string | undefined {
+  const shown = parts.filter((part): part is string => Boolean(part));
+  return shown.length > 0 ? shown.join(" · ") : undefined;
 }
 
 function notFound(message: string): Response {
@@ -91,7 +105,9 @@ async function outputOf(
       };
     }
     case "monthly": {
-      const report = buildMonthlyTrend(source, period);
+      const report = buildMonthlyTrend(source, period, {
+        compareWithPriorYear: params.comparePrior,
+      });
       if (report.empty) return null;
       return {
         name: tab,
@@ -106,6 +122,25 @@ async function outputOf(
         name: tab,
         csv: () => segmentsCsvRows(report),
         pdf: (header) => createElement(SegmentsPdf, { report, header }),
+      };
+    }
+    case "breakdown": {
+      const report = buildBreakdown(source, period, {
+        ...params.breakdown,
+        partnerId: params.partner,
+        tagId: params.tag,
+      });
+      if (report.empty) return null;
+      const subtitle = filterSubtitle([
+        report.segmentId && `セグメント: ${segmentName(source.segments, report.segmentId)}`,
+        report.partnerFilter && `${report.partnerFilter.name}: ${report.partnerFilter.label}`,
+        report.tagFilter && `${report.tagFilter.name}: ${report.tagFilter.label}`,
+      ]);
+      return {
+        name: `breakdown-${report.axis}-${report.side}`,
+        csv: () => breakdownCsvRows(report),
+        pdf: (header) => createElement(BreakdownPdf, { report, header: { ...header, subtitle } }),
+        segmentId: report.segmentId,
       };
     }
     case "cash": {
@@ -145,9 +180,15 @@ async function outputOf(
       const report = buildGeneralLedger(source, period, {
         accountId: params.account,
         subAccountId: params.sub,
+        partnerId: params.partner,
+        tagId: params.tag,
       });
       if (report.empty) return null;
-      const subject = `${report.account.code} ${report.account.name}${report.subAccount ? ` / ${report.subAccount.name}` : ""}`;
+      const subject = filterSubtitle([
+        `${report.account.code} ${report.account.name}${report.subAccount ? ` / ${report.subAccount.name}` : ""}`,
+        report.partnerFilter && `${report.partnerFilter.name}: ${report.partnerFilter.label}`,
+        report.tagFilter && `${report.tagFilter.name}: ${report.tagFilter.label}`,
+      ]);
       return {
         name: `ledger-${report.account.code}`,
         csv: () => ledgerCsvRows(report),
@@ -205,7 +246,7 @@ export async function exportReport(request: Request): Promise<Response> {
       fiscalYearNo: range ? null : period.fiscalYear.no,
       from: range ? range.from : period.from,
       to: range ? range.to : period.to,
-      segment: range ? null : period.segmentId,
+      segment: range ? null : output.segmentId !== undefined ? output.segmentId : period.segmentId,
       encoding: format === "csv" ? "utf8" : null,
     },
     { actor: await actor() },

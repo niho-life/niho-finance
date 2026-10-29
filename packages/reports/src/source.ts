@@ -53,6 +53,11 @@ export interface ReportSubAccount {
   name: string;
   isActive: boolean;
   sortOrder: number;
+  /**
+   * The partner of the sub-account (`SubAccount.partnerId`): a line without its own partner
+   * counts for it (14-reports §15.1). Optional so that fixtures without partners stay short.
+   */
+  partnerId?: string | null;
 }
 
 export interface ReportSegment {

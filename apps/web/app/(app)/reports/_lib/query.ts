@@ -1,10 +1,19 @@
 import { loadReportSource, todayInJapan } from "@niho-finance/db";
 import { isCalendarDate, type CalendarDate } from "@niho-finance/ledger";
 import {
+  isBreakdownAxis,
+  isBreakdownSide,
+  isBreakdownSort,
+  isBreakdownTop,
   isJournalStatusFilter,
   isPeriodPreset,
+  NONE_KEY,
   periodSearchParams,
   resolveReportPeriod,
+  type BreakdownAxis,
+  type BreakdownSide,
+  type BreakdownSort,
+  type BreakdownTop,
   type JournalStatusFilter,
   type ReportPeriod,
   type ReportQuery,
@@ -17,6 +26,21 @@ import type { ExportFormat, ReportTab } from "./tabs";
 /** What `searchParams` of a page (or `URLSearchParams` of a route) gives. */
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
+/** 集計's conditions (14-reports §15). */
+export interface BreakdownParams {
+  axis: BreakdownAxis;
+  side: BreakdownSide;
+  top: BreakdownTop;
+  sort: BreakdownSort;
+}
+
+export const BREAKDOWN_DEFAULTS: BreakdownParams = {
+  axis: "partner",
+  side: "revenue",
+  top: "10",
+  sort: "amount",
+};
+
 /** The URL of a report, parsed (14-reports §1). Unknown or malformed values are dropped. */
 export interface ReportParams {
   query: ReportQuery;
@@ -27,6 +51,13 @@ export interface ReportParams {
   /** 総勘定元帳: the account and, optionally, one of its sub-accounts. */
   account: string | null;
   sub: string | null;
+  /** 集計 and 総勘定元帳 (§15.3): an existing partner id or `none` (取引先なし). */
+  partner: string | null;
+  /** 集計 and 総勘定元帳: an existing tag id or `none` (タグなし). */
+  tag: string | null;
+  breakdown: BreakdownParams;
+  /** 月次推移: 前年同月 (`compare=prior`, §15.6). */
+  comparePrior: boolean;
 }
 
 function first(value: string | string[] | undefined | null): string | undefined {
@@ -66,6 +97,12 @@ export function parseReportParams(raw: RawSearchParams, source: ReportSource): R
     )
       ? sub
       : null;
+  const partner = first(raw.partner);
+  const tag = first(raw.tag);
+  const axis = first(raw.axis);
+  const side = first(raw.side);
+  const top = first(raw.top);
+  const sort = first(raw.sort);
   return {
     query: {
       fy: positiveInteger(first(raw.fy)),
@@ -79,6 +116,42 @@ export function parseReportParams(raw: RawSearchParams, source: ReportSource): R
     status: isJournalStatusFilter(status) ? status : "all",
     account: accountId,
     sub: subAccountId,
+    partner:
+      partner === NONE_KEY || source.partners.some((candidate) => candidate.id === partner)
+        ? (partner ?? null)
+        : null,
+    tag:
+      tag === NONE_KEY || source.memoTags.some((candidate) => candidate.id === tag)
+        ? (tag ?? null)
+        : null,
+    breakdown: {
+      axis: isBreakdownAxis(axis) ? axis : BREAKDOWN_DEFAULTS.axis,
+      side: isBreakdownSide(side) ? side : BREAKDOWN_DEFAULTS.side,
+      top: isBreakdownTop(top) ? top : BREAKDOWN_DEFAULTS.top,
+      sort: isBreakdownSort(sort) ? sort : BREAKDOWN_DEFAULTS.sort,
+    },
+    comparePrior: first(raw.compare) === "prior",
+  };
+}
+
+/**
+ * 集計's parameters for a link: the defaults are left out (shorter URLs), the filters kept.
+ * `overrides` replaces some (a drill-down, the 収益 / 費用 switch).
+ */
+export function breakdownLinkParams(
+  params: Pick<ReportParams, "breakdown" | "partner" | "tag">,
+  overrides: Partial<BreakdownParams> & { partner?: string | null; tag?: string | null } = {},
+): ExtraParams {
+  const merged = { ...params.breakdown, ...overrides };
+  const keyed = (key: keyof BreakdownParams) =>
+    merged[key] === BREAKDOWN_DEFAULTS[key] ? null : merged[key];
+  return {
+    axis: keyed("axis"),
+    side: keyed("side"),
+    top: keyed("top"),
+    sort: keyed("sort"),
+    partner: overrides.partner !== undefined ? overrides.partner : params.partner,
+    tag: overrides.tag !== undefined ? overrides.tag : params.tag,
   };
 }
 
