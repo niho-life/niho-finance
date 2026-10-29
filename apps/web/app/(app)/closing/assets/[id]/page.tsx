@@ -8,6 +8,11 @@ import {
   type FixedAssetScheduleRow,
 } from "@niho-finance/db";
 import { ENTRY_KIND_LABELS, formatYen, formatYenInput } from "@niho-finance/ledger";
+import {
+  defaultPropertyTaxAssetType,
+  PROPERTY_TAX_ASSET_TYPES,
+  propertyTaxAssetTypeText,
+} from "@niho-finance/reports";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
@@ -25,6 +30,22 @@ export const metadata: Metadata = { title: "固定資産の詳細" };
 function methodText(detail: FixedAssetDetail): string {
   const label = methodLabel(detail.method, detail.cost);
   return detail.usefulLifeYears !== null ? `${label}（${detail.usefulLifeYears} 年）` : label;
+}
+
+/** 資産の種類 of 償却資産申告 (16 §14.2): the asset's own or the account's; 未選択 otherwise. */
+function propertyTaxTypeText(detail: FixedAssetDetail): string {
+  const type = detail.propertyTax.assetType;
+  return type === null ? "未選択" : propertyTaxAssetTypeText(type);
+}
+
+const ASSET_TYPE_OPTIONS = PROPERTY_TAX_ASSET_TYPES.map((type) => ({
+  value: String(type),
+  label: propertyTaxAssetTypeText(type),
+}));
+
+function propertyTaxDefault(accountCode: string): string | null {
+  const type = defaultPropertyTaxAssetType(accountCode);
+  return type === null ? null : propertyTaxAssetTypeText(type);
 }
 
 /** 除却済み / 売却済み（日付・仕訳 No.）, 登録を取り消した（理由） (16 §5.2). */
@@ -276,6 +297,9 @@ export default async function FixedAssetDetailPage({ params }: PageProps<"/closi
                   method: detail.method,
                   usefulLifeYears:
                     detail.usefulLifeYears !== null ? String(detail.usefulLifeYears) : "",
+                  propertyTaxAssetType:
+                    detail.propertyTaxAssetType !== null ? String(detail.propertyTaxAssetType) : "",
+                  propertyTaxExcludedReason: detail.propertyTaxExcludedReason ?? "",
                 }}
                 canEditParameters={detail.canEditParameters}
                 editBlockedReason={detail.editBlockedReason}
@@ -283,7 +307,9 @@ export default async function FixedAssetDetailPage({ params }: PageProps<"/closi
                   id: account.id,
                   code: account.code,
                   label: `${account.code} ${account.name}${account.isActive ? "" : "（無効）"}`,
+                  propertyTaxDefault: propertyTaxDefault(account.code),
                 }))}
+                assetTypes={ASSET_TYPE_OPTIONS}
                 segments={options.segments.map((segment) => ({
                   id: segment.id,
                   name: segment.isActive ? segment.name : `${segment.name}（無効）`,
@@ -333,13 +359,19 @@ export default async function FixedAssetDetailPage({ params }: PageProps<"/closi
               "—"
             ),
           },
-          { label: "償却資産税", value: detail.isDepreciableAssetTaxed ? "対象" : "対象外" },
+          { label: "償却資産申告", value: detail.propertyTax.taxable ? "対象" : "対象外" },
+          { label: "資産の種類（償却資産申告）", value: propertyTaxTypeText(detail) },
           {
             label: "中小企業者の特例（別表十六(七)）",
             value: detail.isSpecialSmallAsset ? "該当" : "—",
           },
         ]}
       />
+      {!detail.propertyTax.taxable && detail.propertyTax.reason ? (
+        <p className="mt-3 text-[13px] break-words text-muted">
+          償却資産申告の対象外の理由: {detail.propertyTax.reason}
+        </p>
+      ) : null}
       {detail.note ? (
         <p className="mt-3 text-[13px] break-words whitespace-pre-wrap text-muted">
           メモ: {detail.note}

@@ -19,7 +19,8 @@ function otherDialogOpen(): boolean {
 }
 
 /**
- * 全体検索の入口 (10 §7.1): the box under the brand in the side navigation, the palette, and the keys.
+ * 全体検索の入口 (10 §7.1): the box under the brand in the side navigation (a magnifier button named
+ * 検索 in the 76px rail, 10 §1), the palette, and the keys.
  * `/` opens the palette outside the fields and the dialogs, except on /statements (its `/` goes to
  * the statements' own search, 15 §6); Ctrl+K / ⌘K opens it on every screen. The palette is put in
  * `<body>`: the side navigation is hidden on phones, where Ctrl+K still opens it.
@@ -82,7 +83,7 @@ export function SearchLauncher() {
         onClick={openPalette}
         aria-haspopup="dialog"
         aria-keyshortcuts="/ Control+K Meta+K"
-        className="mb-3 flex min-h-9 w-full items-center gap-2 rounded-[9px] border border-border-2 bg-surface px-2.5 text-left text-[13px] text-muted-2 hover:border-muted-2 hover:text-muted"
+        className="mx-auto mb-3 flex size-10 shrink-0 items-center justify-center gap-2 rounded-[9px] border border-border-2 bg-surface text-left text-[13px] text-muted hover:border-muted-2 hover:text-text lg:mx-0 lg:h-auto lg:min-h-9 lg:w-full lg:justify-start lg:px-2.5 lg:text-muted-2 lg:hover:text-muted"
       >
         <svg
           aria-hidden="true"
@@ -97,10 +98,10 @@ export function SearchLauncher() {
           <circle cx="11" cy="11" r="6.5" />
           <path d="M16 16l4.5 4.5" />
         </svg>
-        <span className="min-w-0 flex-1 truncate">検索</span>
+        <span className="sr-only lg:not-sr-only lg:flex-1">検索</span>
         <kbd
           aria-hidden="true"
-          className="rounded border border-border px-1.5 font-sans text-[11px] leading-[18px] text-muted-2"
+          className="hidden rounded border border-border px-1.5 font-sans text-[11px] leading-[18px] text-muted-2 lg:inline"
         >
           /
         </kbd>

@@ -6,7 +6,7 @@ import {
   todayInJapan,
 } from "@niho-finance/db";
 import { displayDate, formatYen } from "@niho-finance/ledger";
-import { yearMonthLabel, yearMonthOf } from "@niho-finance/payroll";
+import { yearMonthLabel, yearMonthOf, yearMonthParts } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -55,9 +55,28 @@ export default async function PayrollPage() {
       <PageHeader
         title="給与"
         actions={
-          <ButtonLink href="/payroll/employees" size="sm">
-            従業員
-          </ButtonLink>
+          <>
+            <ButtonLink href="/payroll/bonus" size="sm">
+              賞与
+            </ButtonLink>
+            <ButtonLink href={`/payroll/year-end?year=${yearMonthParts(month).year}`} size="sm">
+              年末調整
+            </ButtonLink>
+            {/* 1〜3 月は前年分の法定調書の時期 (22-payroll §12.1). */}
+            <ButtonLink
+              href={`/payroll/statements?year=${
+                yearMonthParts(month).month <= 3
+                  ? yearMonthParts(month).year - 1
+                  : yearMonthParts(month).year
+              }`}
+              size="sm"
+            >
+              法定調書
+            </ButtonLink>
+            <ButtonLink href="/payroll/employees" size="sm">
+              従業員
+            </ButtonLink>
+          </>
         }
       />
       <div className="flex flex-col gap-8">
