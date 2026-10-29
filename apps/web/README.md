@@ -6,7 +6,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 
 | パス | 内容 |
 | --- | --- |
-| `/` | ホーム。現預金と口座・今月と今期の損益（セグメント別の利益）・やること（[14 §9](../../docs/design/14-reports.md)） |
+| `/` | ホーム。現預金（口座ごとの残高を含む）・やること・損益（`?pl=month / year` で今月と今期を切り替え。既定は今月。セグメント別の利益）・資金繰り（90 日）（[14 §9](../../docs/design/14-reports.md)） |
 | `/setup` | 初期化ウィザード。`?step=company / fiscal-year / accounts / wallets / opening / done`。進捗は DB から導出し、`/setup` は続きのステップを開く |
 | `/entries` | 取引（仕訳帳）。絞り込みは URL の `from` `to` `account` `partner` `segment` `tag` `status` `q` `page`（日付がなければ今期） |
 | `/entries/new` | 取引の登録。`?type=income / expense / transfer / voucher`（既定は支出） |

@@ -38,8 +38,9 @@ function RowContent({ row }: { row: TodoRow }) {
 }
 
 /**
- * やること (14-reports §9): badge (count or date) ・ text ・ 「›」 when the screen exists. Rows with
- * nothing to do are not there; with none at all, 「やることはありません」.
+ * やること (14-reports §9): one list of the lanes' rows and the setup rows. A row is badge (count or
+ * date) ・ text ・ 「›」, and the whole row is the way to its screen (at least 44px high). Rows with
+ * nothing to do are not there; with none at all, 「今日やることはありません」.
  */
 export function TodoCard({
   rows,
@@ -51,7 +52,7 @@ export function TodoCard({
   return (
     <HomeCard id="home-todo" title="やること" className={className}>
       {rows.length === 0 ? (
-        <p className="py-1 text-[14px] text-muted">やることはありません</p>
+        <p className="py-1 text-[14px] text-muted">今日やることはありません</p>
       ) : (
         <ul className="flex flex-col">
           {rows.map((row) => {

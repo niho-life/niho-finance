@@ -7,6 +7,7 @@ export function HomeCard({
   title,
   href,
   aside,
+  controls,
   className = "",
   children,
 }: {
@@ -15,6 +16,8 @@ export function HomeCard({
   /** The report behind the numbers (the heading becomes a link). */
   href?: string;
   aside?: ReactNode;
+  /** Controls at the right end of the heading's line (損益's 「今月 | 今期」). */
+  controls?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
@@ -37,6 +40,7 @@ export function HomeCard({
           )}
         </h2>
         {aside ? <span className="text-[12px] text-muted-2">{aside}</span> : null}
+        {controls ? <div className="ml-auto">{controls}</div> : null}
       </div>
       {children}
     </section>
