@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./icons";
+import { NavPendingHint } from "./nav-pending-hint";
 import {
   isActiveItem,
   NAV_GROUPS,
@@ -22,7 +23,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
       <Link
         href={item.href}
         aria-current={active ? "page" : undefined}
-        className={`flex min-h-11 flex-col items-center justify-center gap-1 rounded-[10px] px-0.5 py-1 text-[10px] leading-tight whitespace-nowrap lg:min-h-9 lg:flex-row lg:justify-start lg:gap-2.5 lg:px-2.5 lg:py-0 lg:text-[14px] ${
+        className={`relative flex min-h-11 flex-col items-center justify-center gap-1 rounded-[10px] px-0.5 py-1 text-[10px] leading-tight whitespace-nowrap lg:min-h-9 lg:flex-row lg:justify-start lg:gap-2.5 lg:px-2.5 lg:py-0 lg:text-[14px] ${
           active
             ? "bg-track font-bold text-text"
             : "font-medium text-muted hover:bg-black/[0.04] hover:text-text"
@@ -30,6 +31,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
       >
         <NavIcon name={item.key} className="size-5 lg:size-[18px]" />
         {item.label}
+        <NavPendingHint className="absolute right-1.5 top-1.5 lg:right-2.5 lg:top-1/2 lg:-translate-y-1/2" />
       </Link>
     </li>
   );
