@@ -16,8 +16,10 @@ export interface PayslipLine {
  * page and as this PDF, so the two never differ.
  */
 export interface PayslipData {
+  /** 「給与明細」 when left out; 「賞与明細」 for a bonus (22-payroll §10.5). */
+  title?: string;
   companyName: string;
-  /** 「2026 年 12 月支給」 */
+  /** 「2026 年 12 月支給」 (a bonus: 「夏季賞与 · 2026 年 7 月支給」) */
   payMonthLabel: string;
   /** 「2026/12/25」 */
   paymentDate: string;
@@ -75,7 +77,7 @@ function LinesTable({
   );
 }
 
-/** 給与明細 on one A4 portrait page, with the fonts and styles of every PDF of the app. */
+/** 給与明細 (or 賞与明細) on one A4 portrait page, with the fonts and styles of every PDF of the app. */
 export function PayslipDocument({
   payslip,
   exportedAt,
@@ -85,7 +87,7 @@ export function PayslipDocument({
 }) {
   return (
     <ReportDocument
-      title="給与明細"
+      title={payslip.title ?? "給与明細"}
       company={payslip.companyName}
       periodLabel={`${payslip.payMonthLabel} · 支払日 ${payslip.paymentDate}`}
       {...(exportedAt ? { exportedAt } : {})}

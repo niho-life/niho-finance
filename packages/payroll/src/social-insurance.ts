@@ -160,7 +160,21 @@ export function socialInsurancePremiums(
     });
   }
   if (issues.length > 0) throw new PayrollInputError(issues);
+  return premiumsOn(kenpo, pension, premiumMonth, smr, coverage);
+}
 
+/**
+ * The premiums of §2.3・§2.4 on the given amounts without checking them: the 標準報酬月額 of a month
+ * (after `socialInsurancePremiums` has checked the grades) or the 標準賞与額 of a bonus (22-payroll
+ * §10.2: the same rates, the same rounding once on the combined rate, the same employer shares).
+ */
+export function premiumsOn(
+  kenpo: KenpoTable,
+  pension: PensionTable,
+  premiumMonth: YearMonth,
+  smr: { health: Money; pension: Money },
+  coverage: SocialInsuranceCoverage,
+): SocialInsurancePremiums {
   const healthSmr = ratio(smr.health);
   const breakdown = coverage.health
     ? {

@@ -294,7 +294,7 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
   describe("loadCashflowInputs", () => {
     const window = { start: "2026-12-01", days: 90 } as const;
 
-    it("passes every recurring item and leaves the received invoices unconnected", async () => {
+    it("passes every recurring item and connects the received invoices", async () => {
       const item = await createRecurringItem(
         prisma,
         rent({ name: "入力の確認", frequency: "yearly", monthOfYear: "2", dayOfMonth: "29" }),
@@ -316,7 +316,8 @@ describe.skipIf(!hasTestDatabase)("recurring items", () => {
         isActive: false,
       });
       expect(inputs.receivables).not.toBeNull();
-      expect(inputs.payables).toBeNull();
+      // 未払の請求 (25-payables): connected; payables.db.test.ts checks what it holds.
+      expect(inputs.payables).not.toBeNull();
     });
 
     it("gives what issued invoices still wait for, by their due date", async () => {

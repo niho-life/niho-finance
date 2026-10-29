@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build:data": "node --experimental-strip-types scripts/build-withholding-table.ts 2026 && node --experimental-strip-types scripts/build-withholding-table.ts 2027 && prettier --write data",
+    "build:data": "node --experimental-strip-types scripts/build-withholding-table.ts 2026 && node --experimental-strip-types scripts/build-withholding-table.ts 2027 && node --experimental-strip-types scripts/build-withholding-bonus-table.ts 2026 && node --experimental-strip-types scripts/build-withholding-bonus-table.ts 2027 && prettier --write data",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run"
   },

@@ -585,12 +585,19 @@ describe.skipIf(!hasTestDatabase)("pay runs (支給の計算と確定)", () => {
       amount: 10_000n,
     });
     expect(byKey.get("payroll.social_insurance.2026-09")?.dueDate).toBe("2026-10-31");
+    // The payments (the 賞与支払届 of a bonus run is a filing, payroll-bonus.db.test.ts).
     const items = await prisma.calendarItem.findMany({
-      where: { ruleKey: { startsWith: "payroll." } },
+      where: {
+        ruleKey: { startsWith: "payroll." },
+        NOT: { ruleKey: { startsWith: "payroll.bonus_report." } },
+      },
     });
     expect(items.every((item) => item.kind === "payment" && item.fiscalYearId === null)).toBe(true);
 
-    const runs = await listPayrollRuns(prisma);
+    // This file's runs (payroll-bonus.db.test.ts confirms a run of its own month).
+    const runs = (await listPayrollRuns(prisma)).filter((row) =>
+      ["2026-09", "2026-10"].includes(row.payMonth),
+    );
     expect(runs.map((row) => [row.payMonth, row.totals.headcount, row.totals.netPay])).toEqual([
       ["2026-10", 2, 250_895n + 207_045n],
       ["2026-09", 2, 457_840n],
@@ -776,8 +783,10 @@ describe.skipIf(!hasTestDatabase)("pay runs (支給の計算と確定)", () => {
     await expect(prisma.payrollRun.delete({ where: { id: run1.id } })).rejects.toThrow(
       /append-only/,
     );
+    // payroll_year_end references payroll_run, so PostgreSQL may refuse the TRUNCATE for the foreign
+    // key before the guard trigger runs; either way the table cannot be emptied.
     await expect(prisma.$executeRawUnsafe(`TRUNCATE "payroll_run"`)).rejects.toThrow(
-      /ledger guard: TRUNCATE on payroll_run is not allowed/,
+      /ledger guard: TRUNCATE on payroll_run is not allowed|cannot truncate a table referenced in a foreign key constraint/,
     );
     expect(await prisma.payrollRun.findUnique({ where: { id: run1.id } })).not.toBeNull();
   });

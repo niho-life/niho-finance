@@ -92,6 +92,7 @@ import {
   type ParsedInvoiceLine,
 } from "./schemas";
 import { requireCompanyRow } from "./settings";
+import { settleWalletTransactionWithEntry } from "./statements";
 import { lockSettings, runInTransaction, type Tx } from "./transaction";
 
 // ---------------------------------------------------------------------------
@@ -2271,18 +2272,7 @@ export async function recordInvoicePayment(
     }
 
     if (statementLineId) {
-      await tx.walletTransaction.update({
-        where: { id: statementLineId },
-        data: { status: "registered", journalEntryId },
-      });
-      await appendAuditLog(tx, {
-        actor: options.actor,
-        action: "wallet_transaction.register",
-        entity: "wallet_transaction",
-        entityId: statementLineId,
-        before: { status: "pending", journalEntryId: null },
-        after: { status: "registered", journalEntryId },
-      });
+      await settleWalletTransactionWithEntry(tx, statementLineId, journalEntryId, options);
     }
 
     const payment: StoredInvoicePayment = {
@@ -2362,7 +2352,7 @@ export async function cancelInvoicePayment(
     if (line && line.status === "registered" && line.journalEntryId === payment.journalEntryId) {
       await tx.walletTransaction.update({
         where: { id: line.id },
-        data: { status: "pending", journalEntryId: null },
+        data: { status: "pending", journalEntryId: null, settledAt: null },
       });
       await appendAuditLog(tx, {
         actor: options.actor,
