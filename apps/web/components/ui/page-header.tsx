@@ -13,7 +13,7 @@ export interface PageHeaderProps {
 export function PageHeader({ title, meta, back, actions }: PageHeaderProps) {
   return (
     <header className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
         {back ? (
           <Link
             href={back.href}
