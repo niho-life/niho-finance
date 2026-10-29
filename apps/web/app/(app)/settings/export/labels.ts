@@ -3,6 +3,7 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   "trial-balance": "試算表",
   monthly: "月次推移",
   segments: "セグメント損益",
+  breakdown: "集計",
   cash: "現預金",
   cashflow: "資金繰り",
   journal: "仕訳帳",
@@ -23,6 +24,10 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   "account-details": "勘定科目内訳の元データ",
   "consumption-tax": "消費税の集計",
   announcement: "決算公告",
+  // 受け渡しパッケージ (14-reports §16.5)
+  package: "受け渡しパッケージ",
+  // 償却資産申告 (16-year-end §14.4)
+  "depreciable-assets-return": "償却資産申告の元データ",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {

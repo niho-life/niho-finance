@@ -27,6 +27,7 @@ import {
   type SuggestContext,
   type SuggestHistoryItem,
   type SuggestPartner,
+  type SuggestRecurringItem,
   type SuggestRule,
   type SuggestWallet,
   type TransferCandidate,
@@ -713,5 +714,170 @@ describe("suggest", () => {
       mode: "ignore",
       source: "none",
     });
+  });
+});
+
+/** 定期取引の段 (21-cashflow §10.6): rule → candidate → recurring → history → partner → default. */
+describe("suggest: the recurring stage", () => {
+  const recurring = (
+    overrides: Partial<SuggestRecurringItem> & { id: string },
+  ): SuggestRecurringItem => ({
+    name: "家賃",
+    walletId: "w_bank",
+    amount: -88_000n,
+    frequency: "monthly",
+    dayOfMonth: 31,
+    monthOfYear: null,
+    startDate: "2026-01-01",
+    endDate: null,
+    transferWalletId: null,
+    accountId: "acc_rent",
+    taxCategoryCode: "purchase_10",
+    partnerId: "p_realty",
+    segmentId: "seg_kamakura",
+    bookedMonths: new Set(),
+    ...overrides,
+  });
+  const rent = recurring({ id: "rc_rent" });
+  // 2027-01-05 is 5 days after the 12/31 occurrence.
+  const january = line({ descriptionRaw: "振込 カクウ 01/05" });
+
+  it("3. matches the same wallet and signed amount within ±7 days of an occurrence, dotted", () => {
+    expect(suggest(january, context({ recurring: [rent] }))).toMatchObject({
+      mode: "register",
+      source: "recurring",
+      recurringItemId: "rc_rent",
+      autoPost: false,
+      ruleId: null,
+      accountId: "acc_rent",
+      taxCategoryCode: "purchase_10",
+      partnerId: "p_realty",
+      segmentId: "seg_kamakura",
+      description: null,
+      sources: {
+        account: "recurring",
+        taxCategory: "recurring",
+        partner: "recurring",
+        segment: "recurring",
+      },
+    });
+    // 8 days away from 12/31 and from 1/31: no occurrence near enough.
+    const far = line({ txnDate: "2027-01-08", descriptionRaw: "振込 カクウ" });
+    expect(suggest(far, context({ recurring: [rent] }))).toMatchObject({
+      source: "none",
+      recurringItemId: null,
+    });
+    expect(
+      suggest(
+        line({ txnDate: "2027-01-07", descriptionRaw: "振込" }),
+        context({ recurring: [rent] }),
+      ).recurringItemId,
+    ).toBe("rc_rent");
+  });
+
+  it("3. needs the same signed amount and the same wallet", () => {
+    for (const other of [
+      line({ amount: -88_001n, descriptionRaw: "振込" }),
+      line({ amount: 88_000n, descriptionRaw: "振込" }),
+      line({ walletId: "w_cash", descriptionRaw: "振込" }),
+    ]) {
+      expect(suggest(other, context({ recurring: [rent] })).recurringItemId).toBeNull();
+    }
+  });
+
+  it("3. leaves out the months already registered", () => {
+    const booked = recurring({ id: "rc_rent", bookedMonths: new Set(["2026-12"]) });
+    expect(suggest(january, context({ recurring: [booked] })).recurringItemId).toBeNull();
+    // The 1/31 occurrence is still open for a line near it.
+    const late = line({ txnDate: "2027-01-29", descriptionRaw: "振込" });
+    expect(suggest(late, context({ recurring: [booked] })).recurringItemId).toBe("rc_rent");
+  });
+
+  it("3. takes the nearest occurrence, then the name", () => {
+    const tenth = recurring({ id: "rc_b", name: "駐車場", dayOfMonth: 3 });
+    const same = recurring({ id: "rc_a", name: "倉庫", dayOfMonth: 3 });
+    expect(suggest(january, context({ recurring: [rent, tenth] })).recurringItemId).toBe("rc_b");
+    expect(suggest(january, context({ recurring: [tenth, same, rent] })).recurringItemId).toBe(
+      "rc_a",
+    );
+  });
+
+  it("3. a 振替 item suggests its other wallet", () => {
+    const withdrawal = recurring({
+      id: "rc_card",
+      name: "カードの引落し",
+      dayOfMonth: 5,
+      transferWalletId: "w_card",
+      accountId: null,
+      taxCategoryCode: null,
+      partnerId: null,
+      segmentId: null,
+    });
+    expect(suggest(january, context({ recurring: [withdrawal] }))).toMatchObject({
+      mode: "transfer",
+      source: "recurring",
+      recurringItemId: "rc_card",
+      transferToWalletId: "w_card",
+      candidate: null,
+      accountId: null,
+      sources: { transfer: "recurring" },
+    });
+    const inactive = { ...withdrawal, transferWalletId: "w_old" };
+    expect(suggest(january, context({ recurring: [inactive] })).recurringItemId).toBeNull();
+  });
+
+  it("3. runs after a rule and a transfer candidate, and before the history", () => {
+    const rentRule = rule({
+      id: "r_rent",
+      walletId: "w_bank",
+      match: { ...NO_MATCH, descriptionContains: "カクウフドウサン", sign: "out" },
+      action: { ...REGISTER, accountId: "acc_fee" },
+    });
+    const viaRule = suggest(line(), context({ rules: [rentRule], recurring: [rent] }));
+    expect(viaRule).toMatchObject({
+      source: "rule",
+      ruleId: "r_rent",
+      accountId: "acc_fee",
+      recurringItemId: null,
+    });
+    const candidates = [candidate({ id: "c_card" })];
+    expect(suggest(january, context({ candidates, recurring: [rent] }))).toMatchObject({
+      source: "candidate",
+      recurringItemId: null,
+    });
+    const past = history([
+      { key: descriptionKey(january.descriptionRaw), accountId: "acc_fee", taxCategoryCode: null },
+    ]);
+    expect(suggest(january, context({ history: past, recurring: [rent] }))).toMatchObject({
+      source: "recurring",
+      accountId: "acc_rent",
+    });
+  });
+
+  it("3. leaves empty fields to the partner and the defaults, never posting by itself", () => {
+    const bare = recurring({
+      id: "rc_sales",
+      name: "保守",
+      amount: 330_000n,
+      dayOfMonth: 5,
+      accountId: "acc_sales",
+      taxCategoryCode: null,
+      partnerId: null,
+      segmentId: null,
+    });
+    const deposit = line({ amount: 330_000n, descriptionRaw: "振込 ｶｸｳﾃﾞｻﾞｲﾝ(ﾄﾞ" });
+    expect(suggest(deposit, context({ recurring: [bare] }))).toMatchObject({
+      mode: "register",
+      source: "recurring",
+      autoPost: false,
+      accountId: "acc_sales",
+      partnerId: "p_design",
+      taxCategoryCode: "sales_10",
+      segmentId: "seg_contract",
+      sources: { account: "recurring", partner: "partner", taxCategory: "partner" },
+    });
+    // An account the line cannot take (a 収益 for money out) is not a match at all.
+    const wrong = recurring({ id: "rc_wrong", accountId: "acc_sales" });
+    expect(suggest(january, context({ recurring: [wrong] })).recurringItemId).toBeNull();
   });
 });

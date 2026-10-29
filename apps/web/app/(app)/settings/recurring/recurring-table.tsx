@@ -1,6 +1,7 @@
 "use client";
 
 import type { SelectOption } from "@niho-finance/db";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import {
   activeToggledMessage,
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { gridStyle, Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { entryNo, formatDate } from "@/lib/format";
 import {
   createRecurringItemAction,
   setRecurringItemActiveAction,
@@ -45,6 +47,11 @@ export interface RecurringRow {
   walletName: string | null;
   accountId: string;
   accountLabel: string;
+  /** 振替 (21 §10.1): the other wallet, chosen in the 科目 select's 「口座（振替）」. */
+  transferWalletId: string | null;
+  transferWalletName: string | null;
+  /** 登録した取引 (§10.8): newest first, at most 6. */
+  entries: RecurringEntryLink[];
   partnerId: string | null;
   segmentId: string | null;
   taxCategoryCode: string | null;
@@ -52,6 +59,18 @@ export interface RecurringRow {
   isActive: boolean;
   /** The end date has passed (「終了」 next to the state). */
   ended: boolean;
+}
+
+/** An entry registered from the item (the sheet's 「登録した取引」). */
+export interface RecurringEntryLink {
+  id: string;
+  no: number;
+  entryDate: string;
+  /** 3-digit grouping. */
+  amount: string;
+  voided: boolean;
+  /** 訂正済み: the number of the correction. */
+  replacedByNo: number | null;
 }
 
 /** An option that may have been deactivated since the item chose it. */
@@ -95,6 +114,24 @@ const DAY_OPTIONS: Option[] = Array.from({ length: 31 }, (_, i) => ({
 }));
 
 const none = (options: readonly Option[]) => [{ value: "", label: "なし" }, ...options];
+
+/** 科目 or, in 「口座（振替）」, another wallet: `wallet:<id>` (21 §10.1). */
+const TRANSFER_PREFIX = "wallet:";
+const TRANSFER_GROUP = "口座（振替）";
+
+/** The 科目 select: the accounts, then the wallets a 振替 can go to (not the item's own). */
+function accountOptions(options: Options, ownWalletId: string | null): Option[] {
+  return [
+    ...options.accounts,
+    ...options.wallets
+      .filter((wallet) => wallet.value !== ownWalletId)
+      .map((wallet) => ({
+        value: `${TRANSFER_PREFIX}${wallet.value}`,
+        label: wallet.label,
+        group: TRANSFER_GROUP,
+      })),
+  ];
+}
 
 /** The options plus the row's own value when it is no longer among them (shown as 無効). */
 function withCurrent(
@@ -178,6 +215,17 @@ function cells(item: RecurringRow, options: Options, row: Save) {
       patch.monthOfYear = String(Number(item.startDate.slice(5, 7)));
     }
     const result = await row.track(() => updateRecurringItemAction(item.id, patch), "frequency");
+    return result.ok ? { ok: true } : { ok: false };
+  };
+  // 口座（振替） saves the other wallet (the repository takes its account); a 科目 ends a 振替.
+  const accountValue = item.transferWalletId
+    ? `${TRANSFER_PREFIX}${item.transferWalletId}`
+    : item.accountId;
+  const commitAccount = async (value: string): Promise<CommitOutcome> => {
+    const patch: Record<string, string> = value.startsWith(TRANSFER_PREFIX)
+      ? { transferWalletId: value.slice(TRANSFER_PREFIX.length) }
+      : { accountId: value, transferWalletId: "" };
+    const result = await row.track(() => updateRecurringItemAction(item.id, patch), "accountId");
     return result.ok ? { ok: true } : { ok: false };
   };
   const direction = (
@@ -291,9 +339,13 @@ function cells(item: RecurringRow, options: Options, row: Save) {
     account: (
       <SelectCell
         label={`${name} の科目`}
-        value={item.accountId}
-        options={withCurrent(options.accounts, item.accountId, item.accountLabel)}
-        onCommit={(value) => row.commit("accountId", value)}
+        value={accountValue}
+        options={withCurrent(
+          accountOptions(options, item.walletId),
+          accountValue,
+          item.transferWalletId ? item.transferWalletName : item.accountLabel,
+        )}
+        onCommit={commitAccount}
       />
     ),
     startDate,
@@ -383,6 +435,34 @@ function RecurringItemRow({
   );
 }
 
+/** 登録した取引 (21 §10.8): No.・日付・金額, 取消済み in muted, each opening the entry. */
+function RecurringEntries({ entries }: { entries: readonly RecurringEntryLink[] }) {
+  if (entries.length === 0) {
+    return <span className="text-[13px] text-muted">まだありません</span>;
+  }
+  return (
+    <ul className="flex flex-col gap-1 text-[13px]">
+      {entries.map((entry) => (
+        <li key={entry.id} className="flex flex-wrap items-baseline gap-x-2">
+          <Link
+            href={`/entries/${entry.id}`}
+            className="font-bold underline-offset-4 hover:underline"
+          >
+            {entryNo(entry.no)}
+          </Link>
+          <span className="num text-muted">{formatDate(entry.entryDate)}</span>
+          <span className="num">{entry.amount}</span>
+          {entry.voided ? (
+            <span className="text-[12px] text-muted">
+              {entry.replacedByNo ? `→ ${entryNo(entry.replacedByNo)} に訂正` : "取消済み"}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** 詳細: every field, 取引先・セグメント・税区分・メモ included (phones edit everything here). */
 function RecurringSheet({
   item,
@@ -418,6 +498,9 @@ function RecurringSheet({
           {item.isActive ? "有効" : "無効"}
           {cell.active}
         </span>
+      </SheetField>
+      <SheetField label="登録した取引">
+        <RecurringEntries entries={item.entries} />
       </SheetField>
     </Sheet>
   );
@@ -535,6 +618,15 @@ function AddRecurringRow({ options }: { options: Options }) {
             {option.label}
           </option>
         ))}
+        {options.wallets.length > 0 ? (
+          <optgroup label={TRANSFER_GROUP}>
+            {options.wallets.map((option) => (
+              <option key={option.value} value={`${TRANSFER_PREFIX}${option.value}`}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
       </select>
       <Button type="submit" size="sm" variant="primary" disabled={pending}>
         追加

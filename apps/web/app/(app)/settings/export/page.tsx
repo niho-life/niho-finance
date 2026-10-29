@@ -1,4 +1,4 @@
-import { listRecentExports, loadReportSource, todayInJapan } from "@niho-finance/db";
+import { listRecentExportsWithPackages, loadReportSource, todayInJapan } from "@niho-finance/db";
 import { fiscalYearOn } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -54,7 +54,7 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
   const viewer = user.state === "unregistered" || user.role === "viewer";
   const prisma = await db();
   const source = await loadReportSource(prisma);
-  const recent = viewer ? [] : await listRecentExports(prisma);
+  const recent = viewer ? [] : await listRecentExportsWithPackages(prisma);
   const years = [...source.fiscalYears].sort((a, b) => a.no - b.no);
   const current = fiscalYearOn(years, todayInJapan());
   const yearOptions = years.map((year) => ({
@@ -115,6 +115,16 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
             書き出す
           </Button>
         </form>
+      </Section>
+
+      <Section
+        id="export-package"
+        title="受け渡しパッケージ"
+        description="税理士や経理の担当に渡すため、期を選んで帳簿・決算書・証憑の索引簿（任意で証憑のファイル）を 1 つの zip にまとめます。"
+      >
+        <ButtonLink href="/settings/export/package" variant="primary">
+          受け渡しパッケージを開く
+        </ButtonLink>
       </Section>
 
       {viewer ? null : (

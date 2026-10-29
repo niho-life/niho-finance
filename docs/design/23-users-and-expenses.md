@@ -68,7 +68,7 @@ v1 は 1 人（IAP で認証したメール）で、許可された人は誰で�
 | --- | --- |
 | `/reports/export`、`/settings/export/download`（freee・弥生・beancount） | 閲覧以上 |
 | `/api/bank/gmo-aozora/authorize`・`callback`（銀行 API の接続） | 管理者 |
-| `/settings/export/download`（証憑・バックアップ）、`/invoices/[id]/pdf`、給与明細の PDF、`/closing/statements/export`、`/api/documents/*` | 経理以上 |
+| `/settings/export/download`（証憑・バックアップ）、`/invoices/[id]/pdf`、給与明細の PDF、`/closing/statements/export`、`/closing/assets/return/export`（償却資産申告）、`/api/documents/*` | 経理以上 |
 | `/api/health`、`/api/jobs/*` | 変えない（利用者の要求ではない。ジョブは S4 の認証） |
 
 入口は `const denied = await authorizeRoute(<最低の役割>); if (denied) return denied;`。拒否は 403（actor が分からないときは 401）と 1 行の本文（ダウンロードのリンクから開くため「…開けません。ブラウザの「戻る」で前の画面に戻ってください」）。`/api/documents/*` は画面が読む `{ error }` の JSON で返す。
