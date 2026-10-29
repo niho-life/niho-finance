@@ -239,6 +239,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   // 定期取引からの登録 (21-cashflow §10.5)
   "recurring_item.post": "定期取引の登録",
   "payroll_bonus_run.confirm": "賞与の確定",
+  // 年末調整 (22-payroll §11.4)
+  "payroll_year_end_declaration.save": "年末調整の申告の保存",
+  "payroll_year_end.confirm": "年末調整の確定",
   "calendar_item.complete": "完了にする",
   // 期限 (24-calendar §2)
   "calendar_item.reopen": "未完了に戻す",
@@ -307,6 +310,8 @@ export const AUDIT_ENTITIES = [
   "user",
   "expense_claim",
   "payroll_bonus_run",
+  "payroll_year_end_declaration",
+  "payroll_year_end",
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
@@ -338,6 +343,8 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   user: "利用者",
   expense_claim: "立替精算",
   payroll_bonus_run: "賞与",
+  payroll_year_end_declaration: "年末調整の申告",
+  payroll_year_end: "年末調整",
 };
 
 export function isAuditEntity(value: unknown): value is AuditEntity {

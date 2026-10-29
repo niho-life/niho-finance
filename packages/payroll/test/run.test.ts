@@ -451,6 +451,7 @@ describe("scheduled amounts", () => {
       employer: 0n,
       payMonths: ["2026-12"],
       bonusMonths: [],
+      yearEndMonths: [],
     });
     expect(scheduleAmount("payroll.withholding.2027-H1", runs).payMonths).toEqual(["2027-01"]);
     // 住民税（納期の特例）: both are in December–May.
@@ -460,6 +461,7 @@ describe("scheduled amounts", () => {
       employer: 0n,
       payMonths: ["2026-12", "2027-01"],
       bonusMonths: [],
+      yearEndMonths: [],
     });
     // 社会保険料: one premium month each, employee + employer.
     expect(scheduleAmount("payroll.social_insurance.2026-11", runs)).toEqual({
@@ -468,6 +470,7 @@ describe("scheduled amounts", () => {
       employer: 81_676n,
       payMonths: ["2026-12"],
       bonusMonths: [],
+      yearEndMonths: [],
     });
     expect(scheduleAmount("payroll.social_insurance.2026-12", runs).withheld).toBe(79_760n);
     expect(scheduleAmount("payroll.withholding.2027-12", runs).total).toBe(0n);

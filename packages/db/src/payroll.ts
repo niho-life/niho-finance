@@ -59,10 +59,12 @@ import {
   premiumMonthFor,
   runPaymentSlots,
   scheduleAmount,
+  scheduledPayments,
   serializePayrollRunItems,
   serializePayrollTableIds,
   summarizeBonusRun,
   summarizePayrollRun,
+  summarizeYearEndSettlement,
   tableIdsOf,
   tableRef,
   yearMonthLabel,
@@ -76,9 +78,11 @@ import {
   type PayrollRunItem,
   type PayrollRunItemInput,
   type PayrollRunSummary,
+  type PayrollScheduleSlotRef,
   type PayrollTableIds,
   type PayrollTables,
   type PremiumTiming,
+  type ScheduledPayment,
   type SocialInsuranceAggregate,
   type TableRef,
   type TaxColumn,
@@ -442,10 +446,102 @@ export async function loadBonusSummaries(db: Db): Promise<PayrollRunSummary[]> {
   );
 }
 
-/** The summaries of every confirmed run, monthly and bonus: what the schedule is derived from. */
-async function loadSummaries(db: Db): Promise<PayrollRunSummary[]> {
+/**
+ * What the confirmed 年末調整 settle (22-payroll §11.4): each 過不足 (≠ 0) goes to the 源泉所得税
+ * deadline of its December run's month (that run's 納期の特例 decides the deadline).
+ */
+export async function loadYearEndSummaries(
+  db: Db,
+  runs: readonly StoredRun[],
+): Promise<PayrollRunSummary[]> {
+  const rows = await db.payrollYearEnd.findMany({
+    where: { difference: { not: 0n } },
+    select: { id: true, settledRunId: true, difference: true },
+    orderBy: { confirmedAt: "asc" },
+  });
+  const byId = new Map(runs.map((run) => [run.row.id, run]));
+  return rows.map((row) => {
+    const run = byId.get(row.settledRunId);
+    if (!run) throw new Error(`payroll year-end ${row.id}: run ${row.settledRunId} is missing`);
+    return summarizeYearEndSettlement({
+      payMonth: run.payMonth,
+      withholdingSpecialDue: run.row.withholdingSpecialDue,
+      difference: row.difference,
+    });
+  });
+}
+
+/**
+ * The summaries of every confirmed run, monthly and bonus, and of every 年末調整's settlement: what
+ * the schedule is derived from.
+ */
+export async function loadSummaries(db: Db): Promise<PayrollRunSummary[]> {
   const [runs, bonuses] = await Promise.all([loadRuns(db), loadBonusSummaries(db)]);
-  return [...runs.map((run) => run.summary), ...bonuses];
+  const yearEnds = await loadYearEndSummaries(db, runs);
+  return [...runs.map((run) => run.summary), ...bonuses, ...yearEnds];
+}
+
+/** The payment deadlines (not the filings) among calendar items, for the carry-over's order. */
+function slotRefsOf(items: readonly CalendarItem[]): PayrollScheduleSlotRef[] {
+  return items.flatMap((item) =>
+    item.ruleKey && paymentCategoryOfRuleKey(item.ruleKey)
+      ? [{ ruleKey: item.ruleKey, dueDate: fromDbDate(item.dueDate) }]
+      : [],
+  );
+}
+
+/**
+ * The payroll deadlines of the calendar and their scheduled amounts (§7.2), with the carry-over of a
+ * 年末調整's refund across the 源泉所得税 deadlines (§11.4).
+ */
+export async function loadPayrollPayments(
+  db: Db,
+  summaries?: readonly PayrollRunSummary[],
+): Promise<{ items: CalendarItem[]; amounts: Map<string, ScheduledPayment> }> {
+  const [items, runs] = await Promise.all([
+    db.calendarItem.findMany({
+      where: { fiscalYearId: null, ruleKey: { startsWith: PAYROLL_RULE_KEY_PREFIX } },
+      orderBy: [{ dueDate: "asc" }, { ruleKey: "asc" }],
+    }),
+    summaries ? Promise.resolve(summaries) : loadSummaries(db),
+  ]);
+  return { items, amounts: scheduledPayments(slotRefsOf(items), runs) };
+}
+
+/**
+ * Refuses a confirmation that would change the scheduled amount of a deadline already paid (納付済み):
+ * with a refund carried over (§11.4), adding to an earlier deadline moves what a later one takes. A
+ * paid deadline keeps the amount it was paid with. The deadlines `added` pays into itself are the
+ * caller's own check (its message names the setting to change).
+ */
+export async function assertPaidPaymentsUnchanged(
+  db: Db,
+  added: readonly PayrollRunSummary[],
+  field?: string,
+): Promise<void> {
+  const summaries = await loadSummaries(db);
+  const { items, amounts: before } = await loadPayrollPayments(db, summaries);
+  const own = added.flatMap((summary) =>
+    runPaymentSlots(summary).map(({ slot }) => ({ ruleKey: slot.ruleKey, dueDate: slot.dueDate })),
+  );
+  const ownKeys = new Set(own.map((slot) => slot.ruleKey));
+  const after = scheduledPayments([...slotRefsOf(items), ...own], [...summaries, ...added]);
+  const changed = items.find((item) => {
+    if (!item.completedAt || !item.ruleKey || ownKeys.has(item.ruleKey)) return false;
+    const was = before.get(item.ruleKey);
+    const will = after.get(item.ruleKey);
+    return (
+      was !== undefined &&
+      will !== undefined &&
+      (was.total !== will.total || was.withheld !== will.withheld || was.employer !== will.employer)
+    );
+  });
+  if (changed) {
+    throw new SettingsError(
+      `納付済みにした「${changed.title}」の予定額が変わるので確定できません（年末調整の過納の充当が動きます）。納付の予定を確かめてください`,
+      field ? { field } : {},
+    );
+  }
 }
 
 export async function entryRefs(
@@ -953,7 +1049,7 @@ interface RunPlan {
   tableIds: PayrollTableIds;
   summary: PayrollRunSummary;
   runs: StoredRun[];
-  /** The confirmed bonus runs (they pay into the same deadlines). */
+  /** The confirmed bonus runs and 年末調整 settlements (they pay into the same deadlines). */
   bonuses: PayrollRunSummary[];
   pay: PayrollEntryPlan;
   employer: PayrollEntryPlan | null;
@@ -1028,7 +1124,8 @@ function requestedTables(
 }
 
 async function planRun(db: Db, data: ParsedPayrollRun): Promise<RunPlan> {
-  const [runs, bonuses] = await Promise.all([loadRuns(db), loadBonusSummaries(db)]);
+  const [runs, bonusRuns] = await Promise.all([loadRuns(db), loadBonusSummaries(db)]);
+  const bonuses = [...bonusRuns, ...(await loadYearEndSummaries(db, runs))];
   const premiumMonth = checkRunRules(data, runs);
 
   const activeRows = (await db.employee.findMany({ where: { isActive: true } })).sort(
@@ -1289,6 +1386,7 @@ export async function confirmPayrollRun(
   return runInTransaction(db, async (tx) => {
     await lockSettings(tx, "payroll");
     const plan = await planRun(tx, data);
+    await assertPaidPaymentsUnchanged(tx, [plan.summary], "payMonth");
     const runId = newId();
     let payEntryId: string;
     let employerEntryId: string | null = null;
@@ -1684,6 +1782,14 @@ export interface PayrollScheduleRow {
   payMonths: YearMonth[];
   /** The pay months of the bonus runs paying into it (22-payroll §10.4). */
   bonusMonths: YearMonth[];
+  /** The months of the 年末調整 settlements in it (§11.4: the December run's month). */
+  yearEndMonths: YearMonth[];
+  /** What the runs add up to before the carry-over (negative after a large refund). */
+  derived: Money;
+  /** 源泉所得税: an earlier deadline's refund taken off this one (充当). */
+  refundApplied: Money;
+  /** 源泉所得税: the refund left after this deadline (翌月以降の源泉所得税から充当). */
+  refundCarried: Money;
   completedAt: Date | null;
   completedBy: string | null;
   /** The entry `postPayrollPayment` made, when it was registered here. */
@@ -1692,12 +1798,18 @@ export interface PayrollScheduleRow {
 
 export function scheduleRowOf(
   item: CalendarItem,
-  runs: readonly PayrollRunSummary[],
+  amounts: ReadonlyMap<string, ScheduledPayment>,
   paymentEntry: EntryRef | null,
 ): PayrollScheduleRow | null {
   const category = item.ruleKey ? paymentCategoryOfRuleKey(item.ruleKey) : null;
   if (!category || !item.ruleKey) return null;
-  const amount = scheduleAmount(item.ruleKey, runs);
+  const derived = scheduleAmount(item.ruleKey, []);
+  const amount = amounts.get(item.ruleKey) ?? {
+    ...derived,
+    derived: 0n,
+    refundApplied: 0n,
+    refundCarried: 0n,
+  };
   return {
     id: item.id,
     category,
@@ -1710,6 +1822,10 @@ export function scheduleRowOf(
     employer: amount.employer,
     payMonths: amount.payMonths,
     bonusMonths: amount.bonusMonths,
+    yearEndMonths: amount.yearEndMonths,
+    derived: amount.derived,
+    refundApplied: amount.refundApplied,
+    refundCarried: amount.refundCarried,
     completedAt: item.completedAt,
     completedBy: item.completedBy,
     paymentEntry,
@@ -1718,13 +1834,7 @@ export function scheduleRowOf(
 
 /** 納付の予定: every deadline made by the pay runs, by due date, with derived amounts and state. */
 export async function listPayrollSchedule(db: Db): Promise<PayrollScheduleRow[]> {
-  const [items, summaries] = await Promise.all([
-    db.calendarItem.findMany({
-      where: { fiscalYearId: null, ruleKey: { startsWith: PAYROLL_RULE_KEY_PREFIX } },
-      orderBy: [{ dueDate: "asc" }, { ruleKey: "asc" }],
-    }),
-    loadSummaries(db),
-  ]);
+  const { items, amounts } = await loadPayrollPayments(db);
   const entries = await db.journalEntry.findMany({
     where: {
       sourceKind: "payroll",
@@ -1746,7 +1856,7 @@ export async function listPayrollSchedule(db: Db): Promise<PayrollScheduleRow[]>
     }
   }
   return items
-    .map((item) => scheduleRowOf(item, summaries, paymentEntries.get(item.id) ?? null))
+    .map((item) => scheduleRowOf(item, amounts, paymentEntries.get(item.id) ?? null))
     .filter((row): row is PayrollScheduleRow => row !== null)
     .sort(
       (a, b) =>
@@ -1786,11 +1896,12 @@ async function planPayment(db: Db, data: ParsedPayrollPayment): Promise<PaymentP
   const item = await openPayrollItem(db, data.calendarItemId, "calendarItemId");
   const category = paymentCategoryOfRuleKey(item.ruleKey ?? "");
   if (!category) throw new Error("unreachable: checked by openPayrollItem");
-  const {
-    payMonths: _payMonths,
-    bonusMonths: _bonusMonths,
-    ...scheduled
-  } = scheduleAmount(item.ruleKey ?? "", await loadSummaries(db));
+  const payment = (await loadPayrollPayments(db)).amounts.get(item.ruleKey ?? "");
+  const scheduled: PaymentAmount = {
+    total: payment?.total ?? 0n,
+    withheld: payment?.withheld ?? 0n,
+    employer: payment?.employer ?? 0n,
+  };
   if (scheduled.total <= 0n) {
     throw new SettingsError(
       `「${item.title}」の納付予定の額は ${formatYen(scheduled.total)} 円です。納付する額がないので「納付済みにする」で片付けてください`,
@@ -1842,7 +1953,7 @@ export async function previewPayrollPayment(
       pendingSubAccounts: true,
     });
     assertPostable(entry, refs);
-    const row = scheduleRowOf(payment.item, await loadSummaries(db), null);
+    const row = scheduleRowOf(payment.item, (await loadPayrollPayments(db)).amounts, null);
     if (!row) throw new Error("unreachable: a payroll deadline");
     return {
       item: row,
@@ -1922,7 +2033,7 @@ export async function postPayrollPayment(
         scheduled: payment.scheduled,
       },
     });
-    const row = scheduleRowOf(updated, await loadSummaries(tx), entryRef);
+    const row = scheduleRowOf(updated, (await loadPayrollPayments(tx)).amounts, entryRef);
     if (!row) throw new Error("unreachable: a payroll deadline");
     return { item: row, entry: entryRef };
   });
@@ -1957,7 +2068,7 @@ export async function markPayrollPaymentDone(
       before: { completedAt: null, completedBy: null },
       after: { completedAt, completedBy: options.actor },
     });
-    const row = scheduleRowOf(updated, await loadSummaries(tx), null);
+    const row = scheduleRowOf(updated, (await loadPayrollPayments(tx)).amounts, null);
     if (!row) throw new Error("unreachable: a payroll deadline");
     return row;
   });

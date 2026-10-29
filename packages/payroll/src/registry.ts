@@ -4,6 +4,7 @@ import employment2026 from "../data/2026/employment-insurance.json";
 import kenpo2026 from "../data/2026/kyokai-kenpo-kanagawa.json";
 import bonusWithholding2026 from "../data/2026/withholding-bonus.json";
 import withholding2026 from "../data/2026/withholding-monthly.json";
+import yearEnd2026 from "../data/2026/year-end.json";
 import pension2027 from "../data/2027/pension.json";
 import bonusWithholding2027 from "../data/2027/withholding-bonus.json";
 import withholding2027 from "../data/2027/withholding-monthly.json";
@@ -15,12 +16,14 @@ import {
   parseKenpoTable,
   parsePensionTable,
   parseWithholdingTable,
+  parseYearEndTable,
   type BonusWithholdingTable,
   type EmploymentInsuranceTable,
   type KenpoTable,
   type PayrollTable,
   type PensionTable,
   type WithholdingTable,
+  type YearEndTable,
 } from "./tables";
 
 /**
@@ -61,6 +64,7 @@ const BONUS_WITHHOLDING_TABLES = versions([
   parseBonusWithholdingTable(bonusWithholding2026),
   parseBonusWithholdingTable(bonusWithholding2027),
 ]);
+const YEAR_END_TABLES = versions([parseYearEndTable(yearEnd2026)]);
 
 /** Rejects an id registered twice (ids are what a payroll run stores). */
 function uniqueIds(tables: readonly PayrollTable[]): readonly PayrollTable[] {
@@ -79,6 +83,7 @@ export const REGISTERED_TABLES: readonly PayrollTable[] = uniqueIds([
   ...PENSION_TABLES,
   ...EMPLOYMENT_INSURANCE_TABLES,
   ...BONUS_WITHHOLDING_TABLES,
+  ...YEAR_END_TABLES,
 ]);
 
 /** The version in force at `when`: the latest one starting on or before it, unless it has ended. */
@@ -142,6 +147,26 @@ export function findBonusWithholdingTable(paymentDate: CalendarDate): BonusWithh
     "withholding-bonus",
     paymentDate,
     `支払日 ${paymentDate} に使う賞与に対する源泉徴収税額の算出率の表の ${year} 年分が登録されていません。国税庁の ${year} 年分の算出率の表を取り込んでください`,
+  );
+}
+
+/** The 年分 of 年末調整 (22-payroll §11.3): the data of `year`; every other year is missing. */
+export function findYearEndTable(year: number): YearEndTable {
+  if (!Number.isSafeInteger(year) || year < 2000 || year > 2100) {
+    throw new PayrollInputError([
+      {
+        code: "INVALID_YEAR",
+        field: "year",
+        message: `年「${String(year)}」が正しくありません（2026 などの西暦）`,
+      },
+    ]);
+  }
+  const table = YEAR_END_TABLES.find((candidate) => candidate.year === year);
+  if (table) return table;
+  throw new PayrollTableMissingError(
+    "year-end",
+    String(year),
+    `${year} 年分の年末調整の表（給与所得控除後の給与等の金額の表・所得控除・税率）が登録されていません。国税庁の「年末調整のしかた」（${year} 年分）を取り込んでください`,
   );
 }
 

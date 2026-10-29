@@ -54,7 +54,15 @@ import {
   type RuleSign,
   type SalesTaxCategoryCode,
 } from "@niho-finance/ledger";
-import { isYearMonth, PREMIUM_TIMINGS, type YearMonth } from "@niho-finance/payroll";
+import {
+  DEPENDENT_CATEGORIES,
+  DISABILITY_KINDS,
+  isYearMonth,
+  PREMIUM_TIMINGS,
+  SELF_DISABILITY_KINDS,
+  WIDOW_STATUSES,
+  type YearMonth,
+} from "@niho-finance/payroll";
 import {
   SIMPLIFIED_TAX_CLASSES,
   STATEMENT_OTHER_NOTES_MAX,
@@ -2537,3 +2545,114 @@ export const payrollBonusRunSchema = z.object({
 });
 export type PayrollBonusRunInput = z.input<typeof payrollBonusRunSchema>;
 export type ParsedPayrollBonusRun = z.output<typeof payrollBonusRunSchema>;
+
+// ---------------------------------------------------------------------------
+// 年末調整 (22-payroll §11)
+// ---------------------------------------------------------------------------
+
+/** An amount of a declaration: whole yen, 0 or more; empty → 0. */
+const yearEndAmount = (label: string) => nonNegativeYen(label, { emptyAs: 0n });
+
+/** At most this many 扶養親族 / 特定親族 rows. */
+export const YEAR_END_PEOPLE_MAX = 30;
+
+const yearEndDependentSchema = z
+  .object({
+    category: enumField("扶養親族の区分", DEPENDENT_CATEGORIES),
+    disability: enumField("障害の区分", DISABILITY_KINDS),
+    /** 一般の扶養親族だけ: 16〜18 歳 (23 歳未満). */
+    under23: booleanField("23 歳未満"),
+  })
+  .transform((value) => ({
+    ...value,
+    under23: value.category === "general" ? value.under23 : false,
+  }));
+
+const yearEndSpouseSchema = z.object({
+  totalIncome: yearEndAmount("配偶者の合計所得の見積額"),
+  elderly: booleanField("老人控除対象配偶者"),
+  disability: enumField("配偶者の障害の区分", DISABILITY_KINDS),
+});
+
+const yearEndInsuranceSchema = z.object({
+  newGeneral: yearEndAmount("一般の生命保険料（新）"),
+  oldGeneral: yearEndAmount("一般の生命保険料（旧）"),
+  medical: yearEndAmount("介護医療保険料"),
+  newPension: yearEndAmount("個人年金保険料（新）"),
+  oldPension: yearEndAmount("個人年金保険料（旧）"),
+  under23Dependent: booleanField("23 歳未満の扶養親族"),
+  earthquake: yearEndAmount("地震保険料"),
+  oldLongTerm: yearEndAmount("旧長期損害保険料"),
+  socialInsurance: yearEndAmount("申告による社会保険料"),
+  smallBusinessMutualAid: yearEndAmount("小規模企業共済等掛金"),
+});
+
+const yearEndPreviousEmployerSchema = z.object({
+  paid: yearEndAmount("前職の支払金額"),
+  socialInsurance: yearEndAmount("前職の社会保険料"),
+  withheld: yearEndAmount("前職の源泉徴収税額"),
+});
+
+/**
+ * 年末調整の申告 (22-payroll §11.4): categories, counts and income estimates only — no relative's
+ * name. Validates both the form's values and the stored JSON (`PayrollYearEndDeclaration.
+ * declarations`, amounts as decimal strings); the output is `YearEndDeclaration` of the payroll core.
+ */
+export const yearEndDeclarationSchema = z.object({
+  dependents: z
+    .array(yearEndDependentSchema, { error: "扶養親族の形式が正しくありません" })
+    .max(YEAR_END_PEOPLE_MAX, { error: `扶養親族は ${YEAR_END_PEOPLE_MAX} 人までです` }),
+  self: z.object({
+    disability: enumField("本人の障害", SELF_DISABILITY_KINDS),
+    widowStatus: enumField("寡婦・ひとり親", WIDOW_STATUSES),
+    workingStudent: booleanField("勤労学生"),
+  }),
+  otherIncome: yearEndAmount("給与以外の所得の見積額"),
+  spouse: yearEndSpouseSchema.nullish().transform((value) => value ?? null),
+  specificRelatives: z
+    .array(z.object({ totalIncome: yearEndAmount("特定親族の合計所得の見積額") }), {
+      error: "特定親族の形式が正しくありません",
+    })
+    .max(YEAR_END_PEOPLE_MAX, { error: `特定親族は ${YEAR_END_PEOPLE_MAX} 人までです` }),
+  incomeAdjustment: booleanField("所得金額調整控除の要件"),
+  insurance: yearEndInsuranceSchema,
+  housingLoanCredit: yearEndAmount("住宅借入金等特別控除額"),
+  previousEmployer: yearEndPreviousEmployerSchema.nullish().transform((value) => value ?? null),
+});
+export type YearEndDeclarationFormInput = z.input<typeof yearEndDeclarationSchema>;
+
+/** 申告を保存 (§11.5). */
+export const yearEndDeclarationSaveSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  employeeId: idField("従業員"),
+  declaration: yearEndDeclarationSchema,
+});
+export type YearEndDeclarationSaveInput = z.input<typeof yearEndDeclarationSaveSchema>;
+
+/** The year and the person of 年末調整を確定, with what the confirmation dialog showed. */
+export const yearEndConfirmSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  employeeId: idField("従業員"),
+  /** 年調年税額 and 過不足 shown: the confirmation is refused when they changed meanwhile. */
+  expected: z
+    .object({
+      annualTax: signedYenOrZero("年調年税額"),
+      difference: signedYenOrZero("過不足"),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
+});
+export type YearEndConfirmInput = z.input<typeof yearEndConfirmSchema>;
+
+/** The inputs kept in `PayrollYearEnd.snapshot.input` (amounts as decimal strings). */
+export const yearEndSnapshotInputSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  taxColumn: enumField("源泉徴収の区分", EMPLOYEE_TAX_COLUMNS),
+  salary: z.object({
+    pay: yearEndAmount("給与の課税支給額"),
+    bonus: yearEndAmount("賞与の額"),
+    socialInsurance: yearEndAmount("社会保険料"),
+    withheld: yearEndAmount("源泉所得税"),
+  }),
+  declaration: yearEndDeclarationSchema,
+});

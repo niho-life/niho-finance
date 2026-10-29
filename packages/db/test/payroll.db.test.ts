@@ -783,8 +783,10 @@ describe.skipIf(!hasTestDatabase)("pay runs (支給の計算と確定)", () => {
     await expect(prisma.payrollRun.delete({ where: { id: run1.id } })).rejects.toThrow(
       /append-only/,
     );
+    // payroll_year_end references payroll_run, so PostgreSQL may refuse the TRUNCATE for the foreign
+    // key before the guard trigger runs; either way the table cannot be emptied.
     await expect(prisma.$executeRawUnsafe(`TRUNCATE "payroll_run"`)).rejects.toThrow(
-      /ledger guard: TRUNCATE on payroll_run is not allowed/,
+      /ledger guard: TRUNCATE on payroll_run is not allowed|cannot truncate a table referenced in a foreign key constraint/,
     );
     expect(await prisma.payrollRun.findUnique({ where: { id: run1.id } })).not.toBeNull();
   });

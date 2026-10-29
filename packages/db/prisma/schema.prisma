@@ -731,6 +731,7 @@ model JournalEntry {
   expensePayments         ExpensePayment[]    @relation("ExpensePaymentEntry")
   expensePaymentReversals ExpensePayment[]    @relation("ExpensePaymentReversal")
   payables                Document[]          @relation("PayableEntry")
+  payrollYearEnds         PayrollYearEnd[]    @relation("PayrollYearEndSettlement")
 
   @@unique([fiscalYearId, no])
   @@index([fiscalYearId, entryDate])
@@ -1129,6 +1130,9 @@ model Employee {
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  yearEndDeclarations PayrollYearEndDeclaration[]
+  yearEnds            PayrollYearEnd[]
+
   @@map("employee")
 }
 
@@ -1160,6 +1164,9 @@ model PayrollRun {
   employerEntryId       String?       @map("employer_entry_id")
   confirmedAt           DateTime      @default(now()) @map("confirmed_at") @db.Timestamptz(6)
   confirmedBy           String        @map("confirmed_by")
+
+  /// The 年末調整 settled with this (December) run (22-payroll §11.4)
+  yearEnds PayrollYearEnd[]
 
   @@map("payroll_run")
 }
@@ -1324,4 +1331,63 @@ model PayrollBonusRun {
   confirmedBy           String   @map("confirmed_by")
 
   @@map("payroll_bonus_run")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll: 年末調整 (docs/design/22-payroll.md §11)
+// ---------------------------------------------------------------------------
+
+/// 年末調整の申告 of one person and year (22-payroll §11.4): the contents of 扶養控除等・基礎控除・配偶者
+/// 控除等・保険料控除・住宅借入金等特別控除の申告書 and 前職分. Categories, counts and income estimates only:
+/// no relative's name. Changed until the year-end adjustment is confirmed; every save is in the audit
+/// log (payroll_year_end_declaration.save).
+model PayrollYearEndDeclaration {
+  id           String   @id
+  /// 年分
+  year         Int
+  employeeId   String   @map("employee_id")
+  /// The declarations (validated by `yearEndDeclarationSchema`; amounts as decimal strings)
+  declarations Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy    String   @map("updated_by")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([year, employeeId])
+  @@index([employeeId])
+  @@map("payroll_year_end_declaration")
+}
+
+/// A confirmed 年末調整 of one person and year (22-payroll §11.4), made after that year's December
+/// pay run. Append-only (DB triggers): the snapshot holds the declarations, the year's totals and
+/// every step's result; the settlement is posted on the December run's payment date.
+model PayrollYearEnd {
+  id                String   @id
+  /// 年分
+  year              Int
+  employeeId        String   @map("employee_id")
+  /// The December pay run the settlement goes with (its payment date is the entry's date)
+  settledRunId      String   @map("settled_run_id")
+  /// The year-end table version used (e.g. year-end-2026)
+  tableId           String   @map("table_id")
+  /// Inputs (declarations, totals of the year), the totals' runs and the result, amounts as strings
+  snapshot          Json
+  /// 年調年税額
+  annualTax         BigInt   @map("annual_tax")
+  /// 過不足 = 年調年税額 − 徴収済み税額: + 不足 (徴収), − 過納 (還付)
+  difference        BigInt
+  /// 精算の仕訳; null when 過不足 is 0
+  settlementEntryId String?  @map("settlement_entry_id")
+  confirmedAt       DateTime @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  confirmedBy       String   @map("confirmed_by")
+
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  settledRun      PayrollRun    @relation(fields: [settledRunId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  settlementEntry JournalEntry? @relation("PayrollYearEndSettlement", fields: [settlementEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([year, employeeId])
+  @@index([employeeId])
+  @@index([settledRunId])
+  @@map("payroll_year_end")
 }

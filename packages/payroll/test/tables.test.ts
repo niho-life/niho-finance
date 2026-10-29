@@ -130,6 +130,7 @@ describe("the registry", () => {
       "withholding-bonus-2027",
       "withholding-monthly-2026",
       "withholding-monthly-2027",
+      "year-end-2026",
     ]);
     expect(findTableById("pension-2027")?.kind).toBe("pension");
     expect(findTableById("pension-2019")).toBeUndefined();

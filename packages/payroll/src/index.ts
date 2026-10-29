@@ -9,3 +9,4 @@ export * from "./employment-insurance";
 export * from "./payroll";
 export * from "./run";
 export * from "./bonus";
+export * from "./year-end";

@@ -417,11 +417,18 @@ export {
 } from "./payroll";
 export {
   confirmBonusRun,
+  confirmYearEnd,
   getBonusRun,
+  getYearEndDeclaration,
+  getYearEndRecord,
   listBonusRuns,
   loadBonusDraft,
   loadBonusPayslip,
+  loadWithholdingLedger,
+  loadYearEnd,
   previewBonusRun,
+  previewYearEnd,
+  saveYearEndDeclaration,
   type BonusDraft,
   type BonusDraftEmployee,
   type BonusPayslip,
@@ -432,6 +439,18 @@ export {
   type BonusRunValues,
   type BonusRunWarning,
   type BonusTableRefs,
+  type WithholdingLedger,
+  type WithholdingLedgerBonus,
+  type WithholdingLedgerMonth,
+  type YearEndDecemberRun,
+  type YearEndDeclarationRecord,
+  type YearEndListRow,
+  type YearEndOverview,
+  type YearEndPreview,
+  type YearEndRecord,
+  type YearEndRunLine,
+  type YearEndSettlementPreview,
+  type YearEndTotals,
 } from "./payroll-yearend";
 export * from "./schemas";
 export * from "./settings";

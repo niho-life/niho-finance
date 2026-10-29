@@ -65,6 +65,8 @@ export const BACKUP_TABLES = [
   { table: "import_batch", model: "ImportBatch" },
   { table: "payroll_run", model: "PayrollRun" },
   { table: "payroll_bonus_run", model: "PayrollBonusRun" },
+  { table: "payroll_year_end_declaration", model: "PayrollYearEndDeclaration" },
+  { table: "payroll_year_end", model: "PayrollYearEnd" },
   { table: "wallet_transaction", model: "WalletTransaction" },
   { table: "invoice", model: "Invoice" },
   { table: "document_link", model: "DocumentLink" },

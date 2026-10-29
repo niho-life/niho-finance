@@ -239,6 +239,7 @@ const TABLE_LABELS: Record<PayrollTableKind, string> = {
   pension: "厚生年金の料率・等級表",
   "employment-insurance": "雇用保険料率",
   "withholding-bonus": "賞与に対する源泉徴収税額の算出率の表",
+  "year-end": "年末調整の表",
 };
 
 /** A pinned table must be of its kind and in force at the date or month it is used for. */

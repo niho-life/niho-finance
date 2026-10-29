@@ -15,6 +15,7 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   backup: "バックアップ",
   payslip: "給与明細",
   "payslip-bonus": "賞与明細",
+  "withholding-ledger": "源泉徴収簿",
   // 決算書と申告用データ (17-financial-statements §1)
   "financial-statements": "計算書類",
   "opening-balance-sheet": "開始貸借対照表",
