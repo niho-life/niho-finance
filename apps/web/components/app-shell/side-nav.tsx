@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./icons";
 import {
-  isActivePath,
+  isActiveItem,
   NAV_GROUPS,
   SETTINGS_NAV_ITEM,
   VIEWER_NAV_ITEMS,
@@ -16,7 +16,7 @@ import {
  * is the light grey fill, bold, in the text colour, without a shadow (10 §1, 05 §3).
  */
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
-  const active = isActivePath(pathname, item.href);
+  const active = isActiveItem(pathname, item);
   return (
     <li>
       <Link

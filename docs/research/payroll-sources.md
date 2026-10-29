@@ -61,6 +61,21 @@
 
 市区町村の「特別徴収税額決定通知書」の額を入力する（自社計算しない）。鎌倉市の事業者向けページ: https://www.city.kamakura.kanagawa.jp/shiminzei/zeimokubetsu/01650002kojinjuuminzei-kyuyokaranotokubetsuchoshu.html
 
+## 8. 賞与・年末調整（Issue #52。取込日 2026-10-29）
+
+| 資料 | URL | SHA-256（原本） | 取り込んだ先 |
+| --- | --- | --- | --- |
+| 賞与に対する源泉徴収税額の算出率の表（令和 8 年分）Excel | https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/15-16.xls | `e74e6ba66623b67d8d478dfcc8187f702742e6e75554feebd948dd5b7beea9cf` | `data/2026/source/withholding-bonus.csv` → `data/2026/withholding-bonus.json` |
+| 同（令和 8 年分）PDF（検算用） | https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/15-16.pdf | `5ab9d7d875ccb14769862757b4f8e027178925dae6e8ac40f903b1d55a9ae71b` | ゴールデンテスト |
+| 賞与に対する源泉徴収税額の算出率の表（令和 9 年分）Excel | https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2027/data/15-16.xls | `8acbf38e76bf41584ab90ff1cd663ed688c9b468fb0b1f68498934ca2a78e6bf` | `data/2027/source/withholding-bonus.csv` → `data/2027/withholding-bonus.json` |
+| 同（令和 9 年分）PDF（検算用） | https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2027/data/15-16.pdf | `32b90d4ee9f9c05b9997afc531a3009031db7113c6b24ec22dc6901f109e661b` | ゴールデンテスト |
+| No.2523 賞与に対する源泉徴収（計算方法と令和 8 年分の具体例） | https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2523.htm | — | 22 §10.1・§10.6 |
+| 令和８年分 年末調整のしかた（一括） | https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/nencho_all.pdf | `337bd78fdc3f6dc74e9fe7b3a5998e95fc690b144742d0f0b32044dbbca65498` | 22 §11（改正点・表・設例） |
+| 令和８年度税制改正（基礎控除の引上げ等関係）Q&A | https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf | `a3c12744dbed64e7a03383868baa055f51eb1d0434ee3267d6374d2fe959cea8` | 22 §11.1 |
+| 昨年と比べて変わった点（令和 8 年分） | https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/102.pdf | `e2dc0a6afc8d8fe8af93fd3e7c1c2f7062f7f0165d542194554154461ee80e1e` | 22 §11.1 |
+
+- 賞与の標準賞与額（1,000 円未満切り捨て、健保・介護・支援金は年度 573 万円、厚年・拠出金は月 150 万円が上限）は協会けんぽ 神奈川支部 保険料額表（§2）の注記による。
+
 ## 7. 取り込みの手順（年 1 回）
 
 1. 上の URL から原本をダウンロードし、SHA-256 をこの文書に追記する。

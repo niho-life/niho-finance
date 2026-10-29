@@ -4,6 +4,8 @@ export interface NavItem {
   key: NavIconName;
   label: string;
   href: string;
+  /** Other paths where the item is the current one (請求: 支払 too, 25 §5). */
+  match?: readonly string[];
 }
 
 export type NavGroupKey = "daily" | "view" | "work" | "yearly";
@@ -56,7 +58,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     key: "work",
     label: "業務",
     items: [
-      { key: "invoices", label: "請求", href: "/invoices" },
+      { key: "invoices", label: "請求", href: "/invoices", match: ["/payables"] },
       { key: "payroll", label: "給与", href: "/payroll" },
       { key: "expenses", label: "立替精算", href: "/expenses" },
     ],
@@ -79,6 +81,9 @@ export const BOTTOM_TAB_ITEMS = [HOME, STATEMENTS, REPORTS] as const;
 /** 明細の取込 opens from 明細 on PC; on phones it is the first row of その他 › 日々 (10 §1). */
 const IMPORTS = { label: "明細の取込", href: "/imports" };
 
+/** 支払 opens from 請求 on PC (25 §5); on phones it is its own row of その他 › 業務, after 請求. */
+const PAYABLES = { label: "支払", href: "/payables" };
+
 /** What each row of その他 holds (by href). */
 const MORE_SUMMARIES: Readonly<Record<string, string>> = {
   "/imports": "銀行・カードの CSV と Stripe の同期",
@@ -86,6 +91,7 @@ const MORE_SUMMARIES: Readonly<Record<string, string>> = {
   "/documents": "受信箱・検索・索引簿",
   "/calendar": "申告・届出・納付の期限と完了の記録",
   "/invoices": "見積・納品・請求と入金の消込",
+  "/payables": "受領した請求書の未払と支払期日",
   "/payroll": "従業員・支給・給与明細・納付",
   "/expenses": "社員・業務委託の立替の提出と支払",
   "/closing": "決算整理・固定資産・締め",
@@ -104,7 +110,9 @@ export const MORE_GROUPS: readonly MoreGroup[] = NAV_GROUPS.map((group) => ({
   label: group.label,
   items: [
     ...(group.key === "daily" ? [IMPORTS] : []),
-    ...group.items.filter((item) => !BOTTOM_TAB_HREFS.includes(item.href)),
+    ...group.items
+      .filter((item) => !BOTTOM_TAB_HREFS.includes(item.href))
+      .flatMap((item) => (item.href === "/invoices" ? [item, PAYABLES] : [item])),
   ].map(moreItem),
 })).filter((group) => group.items.length > 0);
 
@@ -113,6 +121,11 @@ export const MORE_SETTINGS_ITEM: MoreItem = moreItem(SETTINGS_NAV_ITEM);
 
 export function isActivePath(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** The item is the current one: its own path or one of `match`. */
+export function isActiveItem(pathname: string, item: { href: string; match?: readonly string[] }) {
+  return [item.href, ...(item.match ?? [])].some((path) => isActivePath(pathname, path));
 }
 
 /** その他 itself, 検索 (its form is at the top of その他, 10 §7.1) and every section it lists. */

@@ -1,6 +1,6 @@
 import { getPayrollRun, todayInJapan, type PayrollRunDetail } from "@niho-finance/db";
 import { displayDate, formatYen } from "@niho-finance/ledger";
-import { PREMIUM_TIMING_LABELS, yearMonthLabel } from "@niho-finance/payroll";
+import { PREMIUM_TIMING_LABELS, yearMonthLabel, yearMonthParts } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -84,6 +84,19 @@ export default async function PayrollRunPage({ params }: { params: Promise<{ id:
       <p className="mb-6 rounded-lg bg-surface-2 px-3.5 py-2.5 text-[14px]">
         確定した支給は変えられません。直すときは次の支給の調整で行うか、取引で仕訳を訂正してください。
       </p>
+      {yearMonthParts(run.payMonth).month === 12 ? (
+        <p className="mb-6 rounded-lg bg-surface-2 px-3.5 py-2.5 text-[14px]">
+          年末調整は{" "}
+          <Link
+            href={`/payroll/year-end?year=${yearMonthParts(run.payMonth).year}`}
+            className="font-bold underline underline-offset-4"
+          >
+            給与 › 年末調整
+          </Link>{" "}
+          で、この支給の確定後に行います。精算は支払日 {displayDate(run.paymentDate)}{" "}
+          の仕訳にし、この月の源泉所得税の納付に足します（還付は引きます）。
+        </p>
+      ) : null}
       <div className="flex flex-col gap-8">
         <Section title="支給の設定">
           <dl className="grid gap-4 rounded-card border border-border bg-surface p-4 sm:grid-cols-2 md:grid-cols-3">

@@ -7,8 +7,10 @@ import {
   premiumMonthFor,
   yearMonthLabel,
   yearMonthOf,
+  yearMonthParts,
 } from "@niho-finance/payroll";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -61,12 +63,20 @@ export default async function NewPayrollRunPage({
     const settings = wallets.find((candidate) => candidate.id === wallet.id);
     return { value: wallet.id, label: settings ? walletLabel(settings) : wallet.name };
   });
-  const employees: RunEmployee[] = draft.employees.map(({ employee, coverage }) => ({
-    id: employee.id,
-    name: employee.name,
-    kind: employee.kind,
-    coverageNotes: coverageNotes(coverage, employee.kind, draft.premiumMonth, employee),
-  }));
+  const employees: RunEmployee[] = draft.employees.map(
+    ({ employee, coverage, extraPremiumMonth }) => ({
+      id: employee.id,
+      name: employee.name,
+      kind: employee.kind,
+      coverageNotes: coverageNotes(
+        coverage,
+        employee.kind,
+        draft.premiumMonth,
+        employee,
+        extraPremiumMonth,
+      ),
+    }),
+  );
   const initialDraft: RunDraft = {
     paymentDate: draft.input.paymentDate,
     premiumTiming: draft.input.premiumTiming,
@@ -91,6 +101,18 @@ export default async function NewPayrollRunPage({
         meta="計算して確定します"
         back={{ href: "/payroll", label: "給与" }}
       />
+      {yearMonthParts(draft.payMonth).month === 12 ? (
+        <p className="mb-6 rounded-lg bg-surface-2 px-3.5 py-2.5 text-[14px]">
+          年末調整は{" "}
+          <Link
+            href={`/payroll/year-end?year=${yearMonthParts(draft.payMonth).year}`}
+            className="font-bold underline underline-offset-4"
+          >
+            給与 › 年末調整
+          </Link>{" "}
+          で、この支給の確定後に行います。
+        </p>
+      ) : null}
       <RunForm
         payMonth={draft.payMonth}
         payMonthLabel={yearMonthLabel(draft.payMonth)}

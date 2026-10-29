@@ -1,6 +1,10 @@
-import type { Payslip } from "@niho-finance/db";
+import type { BonusPayslip, Payslip } from "@niho-finance/db";
 import { displayDate, formatYen, type Money } from "@niho-finance/ledger";
-import { yearMonthLabel, yearMonthParts } from "@niho-finance/payroll";
+import {
+  BONUS_WITHHOLDING_METHOD_LABELS,
+  yearMonthLabel,
+  yearMonthParts,
+} from "@niho-finance/payroll";
 import type { PayslipData } from "@/lib/pdf/payslip";
 import { taxColumnText, WORKER_KIND_LABELS } from "./labels";
 
@@ -38,6 +42,18 @@ export function payslipData(payslip: Payslip): PayslipData {
     deductions: [
       { label: "健康保険（介護・支援金を含む）", amount: formatYen(deductions.health) },
       { label: "厚生年金", amount: formatYen(deductions.pension) },
+      ...(deductions.extraPremium
+        ? [
+            {
+              label: `健康保険（${yearMonthLabel(deductions.extraPremium.premiumMonth)}分・退職月）`,
+              amount: formatYen(deductions.extraPremium.health),
+            },
+            {
+              label: `厚生年金（${yearMonthLabel(deductions.extraPremium.premiumMonth)}分・退職月）`,
+              amount: formatYen(deductions.extraPremium.pension),
+            },
+          ]
+        : []),
       { label: "雇用保険", amount: formatYen(deductions.employmentInsurance) },
       { label: "所得税", amount: formatYen(deductions.incomeTax) },
       { label: "住民税", amount: formatYen(deductions.residentTax) },
@@ -56,7 +72,12 @@ export function payslipData(payslip: Payslip): PayslipData {
         label: "扶養親族等の数",
         value: taxColumnText(reference.taxColumn.column, dependents),
       },
-      { label: "社会保険料の対象月", value: `${yearMonthLabel(reference.premiumMonth)}分` },
+      {
+        label: "社会保険料の対象月",
+        value: deductions.extraPremium
+          ? `${yearMonthLabel(reference.premiumMonth)}分・${yearMonthLabel(deductions.extraPremium.premiumMonth)}分`
+          : `${yearMonthLabel(reference.premiumMonth)}分`,
+      },
       ...(reference.adjustmentNote
         ? [{ label: "調整のメモ", value: reference.adjustmentNote }]
         : []),
@@ -83,5 +104,65 @@ export function payslipFileNames(payslip: Payslip): { ascii: string; utf8: strin
   return {
     ascii: `payslip_${ym}_${payslip.employee.id.slice(-8).toLowerCase()}.pdf`,
     utf8: `給与明細_${year}年${month}月_${fileSafe(payslip.employee.name)}.pdf`,
+  };
+}
+
+/** 賞与明細 (22-payroll §10.5) as text: the printable page and the PDF draw the same lines. */
+export function bonusPayslipData(payslip: BonusPayslip): PayslipData {
+  const { deductions, reference } = payslip;
+  const dependents =
+    reference.taxColumn.column === "kou"
+      ? reference.taxColumn.dependents
+      : (reference.taxColumn.secondaryDependents ?? 0);
+  const { withholding } = reference;
+  const method =
+    withholding.method === "rate"
+      ? `${BONUS_WITHHOLDING_METHOD_LABELS.rate} ${withholding.ratePercent ?? ""}%`
+      : `${BONUS_WITHHOLDING_METHOD_LABELS[withholding.method]}（${withholding.divisor ?? 6} 倍）`;
+  return {
+    title: "賞与明細",
+    companyName: payslip.companyName,
+    payMonthLabel: `${payslip.title} · ${yearMonthLabel(payslip.payMonth)}支給`,
+    paymentDate: displayDate(payslip.paymentDate),
+    employeeName: payslip.employee.name,
+    kindLabel: WORKER_KIND_LABELS[payslip.employee.kind],
+    pay: [{ label: "賞与", amount: formatYen(payslip.bonus) }],
+    grossPay: formatYen(payslip.bonus),
+    deductions: [
+      { label: "健康保険（介護・支援金を含む）", amount: formatYen(deductions.health) },
+      { label: "厚生年金", amount: formatYen(deductions.pension) },
+      { label: "雇用保険", amount: formatYen(deductions.employmentInsurance) },
+      { label: "所得税", amount: formatYen(deductions.incomeTax) },
+    ],
+    totalDeductions: formatYen(deductions.total),
+    netPay: formatYen(payslip.netPay),
+    reference: [
+      { label: "標準賞与額", value: `${formatYen(reference.standardBonus)} 円` },
+      { label: "標準賞与額（健康保険）", value: smrText(reference.healthStandardBonus) },
+      { label: "標準賞与額（厚生年金）", value: smrText(reference.pensionStandardBonus) },
+      { label: "扶養親族等の数", value: taxColumnText(reference.taxColumn.column, dependents) },
+      {
+        label: "社会保険料等控除後の賞与の額",
+        value: `${formatYen(reference.withholdingBase)} 円`,
+      },
+      {
+        label: "前月の給与（社会保険料等控除後）",
+        value:
+          reference.previousMonthPay === null
+            ? "なし"
+            : `${formatYen(reference.previousMonthPay)} 円`,
+      },
+      { label: "源泉所得税の求め方", value: method },
+    ],
+  };
+}
+
+/** `payslip-bonus_202607_9k3f2a7q.pdf` and 「賞与明細_2026年7月_<氏名>.pdf」. */
+export function bonusPayslipFileNames(payslip: BonusPayslip): { ascii: string; utf8: string } {
+  const { year, month } = yearMonthParts(payslip.payMonth);
+  const ym = `${year}${String(month).padStart(2, "0")}`;
+  return {
+    ascii: `payslip-bonus_${ym}_${payslip.employee.id.slice(-8).toLowerCase()}.pdf`,
+    utf8: `賞与明細_${year}年${month}月_${fileSafe(payslip.employee.name)}.pdf`,
   };
 }
