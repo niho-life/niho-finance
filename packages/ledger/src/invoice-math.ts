@@ -614,6 +614,77 @@ export function invoiceBalance(total: Money, payments: Iterable<InvoicePaymentAm
 }
 
 // ---------------------------------------------------------------------------
+// 領収書 (18 §15)
+// ---------------------------------------------------------------------------
+
+/** `RC-2026-0001`: numbered like the documents (18 §2), per fiscal year of the issue date. */
+export const RECEIPT_NUMBER_PREFIX = "RC";
+
+/** 但し書き: at most this many characters. */
+export const RECEIPT_PROVISO_MAX = 100;
+
+/** 印紙税: a receipt of 50,000 円 or more (without the tax, stated separately) is taxable on paper. */
+export const RECEIPT_STAMP_THRESHOLD: Money = 50_000n;
+
+/** The note on the PDF of a receipt at or above the threshold (it is sent electronically). */
+export const RECEIPT_STAMP_NOTE = "電子領収書につき収入印紙は不要です";
+
+/** The help of the issue sheet at or above the threshold. */
+export const RECEIPT_STAMP_HELP = "紙に印刷して渡すときは収入印紙が要ります（5 万円以上）";
+
+/** `RC-2026-`: the prefix of the receipts of the fiscal year starting on the date. */
+export function receiptNumberPrefix(fiscalYearStartDate: CalendarDate): string {
+  return `${RECEIPT_NUMBER_PREFIX}-${dateParts(fiscalYearStartDate).year}-`;
+}
+
+/** `RC-2026-0001`: 4 digits, more when the sequence passes 9,999. */
+export function formatReceiptNumber(fiscalYearStartDate: CalendarDate, sequence: number): string {
+  if (!Number.isSafeInteger(sequence) || sequence < 1) {
+    throw new RangeError(`formatReceiptNumber: ${sequence} is not a valid sequence`);
+  }
+  return `${receiptNumberPrefix(fiscalYearStartDate)}${String(sequence).padStart(4, "0")}`;
+}
+
+/**
+ * 但し書き by default (18 §15.1): 「<件名> の代金として」, or 「お品代として」 without a title. A long
+ * title is shortened (…) so that the default fits in `RECEIPT_PROVISO_MAX` characters.
+ */
+export function defaultReceiptProviso(title: string | null | undefined): string {
+  const name = title?.trim() ?? "";
+  if (name === "") return "お品代として";
+  const suffix = " の代金として";
+  const room = RECEIPT_PROVISO_MAX - suffix.length;
+  const chars = [...name];
+  const shown = chars.length > room ? `${chars.slice(0, room - 1).join("")}…` : name;
+  return `${shown}${suffix}`;
+}
+
+/**
+ * The 収入印紙 note of a receipt (18 §15.1): the tax is stated per rate, so the stamp duty is judged
+ * on the amount without the tax. `RECEIPT_STAMP_NOTE` when it is 50,000 円 or more, else `null`.
+ */
+export function receiptStampNote(
+  rates: Iterable<Pick<InvoiceRateTotal, "amountExclusive">>,
+): string | null {
+  let amountExclusive = 0n;
+  for (const rate of rates) amountExclusive += rate.amountExclusive;
+  return amountExclusive >= RECEIPT_STAMP_THRESHOLD ? RECEIPT_STAMP_NOTE : null;
+}
+
+/** Why a receipt cannot be issued on `issueDate` (on or after the last payment, not after today). */
+export function receiptDateProblem(
+  issueDate: CalendarDate,
+  receivedOn: CalendarDate,
+  today: CalendarDate,
+): string | null {
+  if (issueDate < receivedOn) {
+    return `発行日は入金日（${displayDate(receivedOn)}）以後にしてください`;
+  }
+  if (issueDate > today) return "発行日は今日以前にしてください";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Journal entries (18 §5, 02 §4.4)
 // ---------------------------------------------------------------------------
 

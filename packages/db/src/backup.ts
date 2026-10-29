@@ -68,7 +68,10 @@ export const BACKUP_TABLES = [
   { table: "payroll_year_end_declaration", model: "PayrollYearEndDeclaration" },
   { table: "payroll_year_end", model: "PayrollYearEnd" },
   { table: "wallet_transaction", model: "WalletTransaction" },
+  { table: "recurring_invoice", model: "RecurringInvoice" },
   { table: "invoice", model: "Invoice" },
+  // A receipt points at its invoice and at the stored PDF (document), so it comes after both.
+  { table: "receipt", model: "Receipt" },
   { table: "document_link", model: "DocumentLink" },
   { table: "fixed_asset", model: "FixedAsset" },
   { table: "recurring_item", model: "RecurringItem" },

@@ -213,6 +213,14 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "invoice.cancel_payment": "入金の取消",
   "invoice.void": "書類の無効",
   "invoice.attach_pdf": "PDF の保存",
+  // 定期請求 (18 §14.6): 追加 comes from the shared verb.
+  "recurring_invoice.update": "編集",
+  "recurring_invoice.pause": "停止",
+  "recurring_invoice.resume": "再開",
+  // 領収書 (18 §15.5): mixed into the invoice's history, so they say 領収書.
+  "receipt.issue": "領収書の発行",
+  "receipt.attach_pdf": "領収書の PDF の保存",
+  "receipt.void": "領収書の無効",
   // 支払 (25-payables §1)
   ...PAYABLE_AUDIT_ACTION_LABELS,
   "import_batch.import": "明細の取込",
@@ -299,6 +307,8 @@ export const AUDIT_ENTITIES = [
   "standard_data",
   "setup",
   "invoice",
+  "recurring_invoice",
+  "receipt",
   "import_batch",
   "stripe_account_link",
   "wallet_transaction",
@@ -332,6 +342,8 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<AuditEntity, string>> = {
   standard_data: "標準データ",
   setup: "初期設定",
   invoice: "請求",
+  recurring_invoice: "定期請求",
+  receipt: "領収書",
   import_batch: "取込",
   stripe_account_link: "Stripe の接続",
   wallet_transaction: "明細",

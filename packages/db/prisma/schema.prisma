@@ -244,6 +244,15 @@ enum RecurrenceFrequency {
   @@map("recurrence_frequency")
 }
 
+/// 定期請求の周期 (18 §14.1): 毎月 / 隔月 (from the start month) / 毎年 (in the start month)
+enum RecurringInvoiceFrequency {
+  monthly
+  bimonthly
+  yearly
+
+  @@map("recurring_invoice_frequency")
+}
+
 enum CalendarItemKind {
   filing
   payment
@@ -359,8 +368,8 @@ model Account {
   createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  defaultTaxCategory TaxCategory?    @relation(fields: [defaultTaxCategoryCode], references: [code])
-  defaultSegment     Segment?        @relation(fields: [defaultSegmentId], references: [id])
+  defaultTaxCategory TaxCategory?       @relation(fields: [defaultTaxCategoryCode], references: [code])
+  defaultSegment     Segment?           @relation(fields: [defaultSegmentId], references: [id])
   subAccounts        SubAccount[]
   journalLines       JournalLine[]
   wallets            Wallet[]
@@ -368,6 +377,7 @@ model Account {
   fixedAssets        FixedAsset[]
   recurringItems     RecurringItem[]
   invoices           Invoice[]
+  recurringInvoices  RecurringInvoice[]
   expenseClaims      ExpenseClaim[]
 
   @@map("account")
@@ -444,14 +454,15 @@ model Segment {
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  accountDefaults Account[]
-  journalLines    JournalLine[]
-  wallets         Wallet[]
-  partnerDefaults Partner[]
-  fixedAssets     FixedAsset[]
-  recurringItems  RecurringItem[]
-  invoices        Invoice[]
-  expenseClaims   ExpenseClaim[]
+  accountDefaults   Account[]
+  journalLines      JournalLine[]
+  wallets           Wallet[]
+  partnerDefaults   Partner[]
+  fixedAssets       FixedAsset[]
+  recurringItems    RecurringItem[]
+  invoices          Invoice[]
+  recurringInvoices RecurringInvoice[]
+  expenseClaims     ExpenseClaim[]
 
   @@map("segment")
 }
@@ -485,14 +496,15 @@ model Partner {
   createdAt                    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  defaultAccount     Account?        @relation(fields: [defaultAccountId], references: [id])
-  defaultSegment     Segment?        @relation(fields: [defaultSegmentId], references: [id])
-  defaultTaxCategory TaxCategory?    @relation(fields: [defaultTaxCategoryCode], references: [code])
+  defaultAccount     Account?           @relation(fields: [defaultAccountId], references: [id])
+  defaultSegment     Segment?           @relation(fields: [defaultSegmentId], references: [id])
+  defaultTaxCategory TaxCategory?       @relation(fields: [defaultTaxCategoryCode], references: [code])
   subAccounts        SubAccount[]
   journalLines       JournalLine[]
   documents          Document[]
   invoices           Invoice[]
   recurringItems     RecurringItem[]
+  recurringInvoices  RecurringInvoice[]
   expenseClaims      ExpenseClaim[]
 
   @@map("partner")
@@ -835,6 +847,7 @@ model Document {
   links         DocumentLink[]
   importBatches ImportBatch[]
   invoicePdfs   Invoice[]
+  receiptPdfs   Receipt[]
   expenseClaims ExpenseClaim[]
 
   /// Readings of this document (20-reader §9)
@@ -917,22 +930,102 @@ model Invoice {
   /// When it was voided or its draft discarded
   voidedAt             DateTime?      @map("voided_at") @db.Timestamptz(6)
   voidReason           String?        @map("void_reason")
+  /// 定期請求 the draft was made from (18 §14.2); set on creation only, with `recurringMonth`
+  recurringInvoiceId   String?        @map("recurring_invoice_id")
+  /// 月のキー (`YYYY-MM`) of the due date the draft was made for. One invoice per recurring invoice
+  /// and month: the partial unique index `invoice_recurring_month_key` (written in the migration)
+  recurringMonth       String?        @map("recurring_month")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  partner        Partner        @relation(fields: [partnerId], references: [id])
-  revenueAccount Account?       @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
-  segment        Segment?       @relation(fields: [segmentId], references: [id])
-  sourceInvoice  Invoice?       @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
-  convertedTo    Invoice[]      @relation("InvoiceConversion")
-  pdfDocument    Document?      @relation(fields: [pdfDocumentId], references: [id])
-  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id])
-  documentLinks  DocumentLink[]
+  partner          Partner           @relation(fields: [partnerId], references: [id])
+  revenueAccount   Account?          @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
+  segment          Segment?          @relation(fields: [segmentId], references: [id])
+  sourceInvoice    Invoice?          @relation("InvoiceConversion", fields: [sourceInvoiceId], references: [id])
+  convertedTo      Invoice[]         @relation("InvoiceConversion")
+  pdfDocument      Document?         @relation(fields: [pdfDocumentId], references: [id])
+  journalEntry     JournalEntry?     @relation(fields: [journalEntryId], references: [id])
+  recurringInvoice RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id], onDelete: Restrict)
+  documentLinks    DocumentLink[]
+  receipts         Receipt[]
 
   @@unique([docType, number])
   @@index([partnerId])
   @@index([status, dueDate])
   @@map("invoice")
+}
+
+/// 定期請求 (18 §14): the template of an invoice and the rule of its due dates. Drafts are made from
+/// it on the due dates, never issued automatically. Never deleted (paused instead); editing it never
+/// changes the invoices already made.
+model RecurringInvoice {
+  id                String                    @id
+  /// Shown in the lists (e.g. 顧問料 架空デザイン)
+  name              String
+  partnerId         String                    @map("partner_id")
+  /// 件名; `{対象月}` is replaced when a draft is made
+  title             String?
+  /// Lines as an invoice stores them, without the date and the amount (18 §3.3)
+  lines             Json
+  pricesIncludeTax  Boolean                   @default(false) @map("prices_include_tax")
+  revenueAccountId  String?                   @map("revenue_account_id")
+  segmentId         String?                   @map("segment_id")
+  note              String?
+  frequency         RecurringInvoiceFrequency
+  /// 発行日の規則: 1–31; 31 is 末日 and a day the month does not have is its last day
+  issueDay          Int                       @map("issue_day")
+  /// 対象月: −1 前月分 / 0 当月分 / 1 翌月分 of the due date's month
+  targetMonthOffset Int                       @default(0) @map("target_month_offset")
+  /// 支払期限: 何か月後 (0–3) of the issue date …
+  dueMonths         Int                       @default(1) @map("due_months")
+  /// … on this day (1–31; 31 is 末日)
+  dueDay            Int                       @default(31) @map("due_day")
+  startDate         DateTime                  @map("start_date") @db.Date
+  /// Inclusive; null = no end
+  endDate           DateTime?                 @map("end_date") @db.Date
+  isActive          Boolean                   @default(true) @map("is_active")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  partner        Partner   @relation(fields: [partnerId], references: [id])
+  revenueAccount Account?  @relation(fields: [revenueAccountId], references: [id], onDelete: Restrict)
+  segment        Segment?  @relation(fields: [segmentId], references: [id])
+  invoices       Invoice[]
+
+  @@index([partnerId])
+  @@map("recurring_invoice")
+}
+
+/// 領収書 (18 §15): issued from a paid invoice with the copies of its recipient, issuer and totals.
+/// After the issue only the void columns and the PDF (once) change (DB trigger); never deleted. One
+/// receipt in force per invoice: the partial unique index `receipt_invoice_in_force_key`.
+model Receipt {
+  id                String    @id
+  invoiceId         String    @map("invoice_id")
+  /// RC-2026-0001: per fiscal year of the issue date, like the invoices' numbers (18 §2)
+  number            String    @unique
+  issueDate         DateTime  @map("issue_date") @db.Date
+  /// 入金日: the last payment date of the invoice
+  receivedOn        DateTime  @map("received_on") @db.Date
+  amount            BigInt
+  /// 但し書き
+  proviso           String
+  recipientSnapshot Json      @map("recipient_snapshot")
+  issuerSnapshot    Json      @map("issuer_snapshot")
+  subtotalByRate    Json      @map("subtotal_by_rate")
+  taxByRate         Json      @map("tax_by_rate")
+  /// The stored copy of the issued PDF (証憑); set once
+  pdfDocumentId     String?   @map("pdf_document_id")
+  issuedAt          DateTime  @default(now()) @map("issued_at") @db.Timestamptz(6)
+  issuedBy          String    @map("issued_by")
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidReason        String?   @map("void_reason")
+
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+  pdfDocument Document? @relation(fields: [pdfDocumentId], references: [id])
+
+  @@index([invoiceId])
+  @@map("receipt")
 }
 
 model FixedAsset {

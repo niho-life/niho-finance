@@ -19,6 +19,7 @@ import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { countInboxDocuments } from "./documents";
 import { listInvoices } from "./invoices";
 import { countPayablesDue } from "./payables";
+import { recurringInvoicesDueTodo } from "./recurring-invoices";
 import { recurringDueTodo } from "./recurring-post";
 import { requireCompanyRow } from "./settings";
 import { countPendingWalletTransactions } from "./statements";
@@ -383,6 +384,8 @@ export const HOME_TODO_SOURCES: readonly HomeTodoSource[] = [
   upcomingDeadlinesTodo,
   // 7 日以内に支払う請求 n 件 (25-payables §8.3)
   payablesDueSoonTodo,
+  // 定期請求の下書きを作る n 件 (18 §14.4): once made, a draft counts in 発行する請求書
+  recurringInvoicesDueTodo,
   draftInvoicesTodo,
   // 定期取引を登録する n 件 (21-cashflow §10.3)
   recurringDueTodo,
