@@ -7,7 +7,7 @@ import {
   parseCalendarDate,
   type CalendarDate,
 } from "@niho-finance/ledger";
-import { PAYROLL_RULE_KEY_PREFIX } from "@niho-finance/payroll";
+import { paymentCategoryOfRuleKey } from "@niho-finance/payroll";
 import type { CalendarItem, CalendarItemKind } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate, todayInJapan } from "./dates";
@@ -471,9 +471,12 @@ export interface CalendarGroup {
   completed: CalendarListItem[];
 }
 
-/** A payment deadline a pay run added (22 §7.1): no fiscal year, a `payroll.` rule key. */
+/**
+ * A payment deadline a pay run added (22 §7.1): no fiscal year, a `payroll.` rule key of a payment.
+ * The 賞与支払届 a bonus run adds (`payroll.bonus_report.*`, §10.4) is a filing: completed here.
+ */
 function isPayrollItem(row: Pick<CalendarItem, "fiscalYearId" | "ruleKey">): boolean {
-  return row.fiscalYearId === null && (row.ruleKey?.startsWith(PAYROLL_RULE_KEY_PREFIX) ?? false);
+  return row.fiscalYearId === null && paymentCategoryOfRuleKey(row.ruleKey ?? "") !== null;
 }
 
 function toListItem(row: CalendarItem): CalendarListItem {

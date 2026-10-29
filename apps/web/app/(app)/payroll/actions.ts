@@ -1,21 +1,26 @@
 "use server";
 
 import {
+  confirmBonusRun,
   confirmPayrollRun,
+  confirmYearEnd,
   createEmployee,
   getPrismaClient,
   markPayrollPaymentDone,
   postPayrollPayment,
+  saveYearEndDeclaration,
   setEmployeeActive,
   SettingsError,
   todayInJapan,
   updateEmployee,
   type EmployeeCreateInput,
   type EmployeeUpdateInput,
+  type PayrollBonusRunInput,
   type PayrollPaymentInput,
   type PayrollRunInput,
+  type YearEndDeclarationFormInput,
 } from "@niho-finance/db";
-import { formatYenInput, parseYenInput } from "@niho-finance/ledger";
+import { displayDate, formatYen, formatYenInput, parseYenInput } from "@niho-finance/ledger";
 import {
   determineStandardRemuneration,
   findKenpoTable,
@@ -29,6 +34,7 @@ import { parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { authorizeAction } from "@/lib/authz";
+import { loadBonusPreview, type BonusPreviewView } from "./_lib/bonus-views";
 import { attemptPayroll } from "./_lib/errors";
 import {
   loadPaymentPreview,
@@ -36,6 +42,7 @@ import {
   type PaymentPreviewView,
   type RunPreviewView,
 } from "./_lib/views";
+import { loadYearEndPreview, type YearEndPreviewView } from "./_lib/year-end-views";
 
 /*
  * Server Actions of /payroll (22-payroll §6). The repository validates every input with its Zod
@@ -66,6 +73,8 @@ export interface SavedEmployee {
   name: string;
   /** Shown after saving (保存は止めない). */
   warnings: string[];
+  /** The 退職 deadlines put on the calendar when the 退職日 was set or changed (§12.3). */
+  leaveFilings: { title: string; dueDate: string; state: string }[];
 }
 
 /** 追加 (`id` = null) or 保存. */
@@ -86,9 +95,14 @@ export async function saveEmployeeAction(
             await by(),
           );
     },
-    ({ employee, warnings }) => ({
+    ({ employee, warnings, leaveFilings }) => ({
       name: employee.name,
       warnings: warnings.map((warning) => warning.message),
+      leaveFilings: leaveFilings.map((filing) => ({
+        title: filing.title,
+        dueDate: displayDate(filing.dueDate),
+        state: filing.state,
+      })),
     }),
   );
 }
@@ -216,5 +230,112 @@ export async function markPayrollPaymentDoneAction(
   return write(
     async () => markPayrollPaymentDone(prisma(), parseId(calendarItemId), await by()),
     (row) => ({ title: row.title }),
+  );
+}
+
+// 賞与 (§10.5) -------------------------------------------------------------------
+
+/** The results, the 2 entries, the deadlines and the warnings of the form's values (no write). */
+export async function previewBonusRunAction(
+  values: unknown,
+): Promise<ActionResult<BonusPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return attemptPayroll(() =>
+    loadBonusPreview(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput),
+  );
+}
+
+export interface ConfirmedBonusRun {
+  id: string;
+  /** 「夏季賞与（2026 年 7 月支給）」 */
+  label: string;
+}
+
+/** 確定: the values with `tableIds` and `expected` of the preview the owner confirmed. */
+export async function confirmBonusRunAction(
+  values: unknown,
+): Promise<ActionResult<ConfirmedBonusRun>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      confirmBonusRun(prisma(), valuesSchema.parse(values) as PayrollBonusRunInput, await by()),
+    (run) => ({ id: run.id, label: `${run.title}（${yearMonthLabel(run.payMonth)}支給）` }),
+  );
+}
+
+// 年末調整 (§11.5) ----------------------------------------------------------------
+
+const yearSchema = z.number().int().min(2000).max(2100);
+
+/** Every step with the form's values (unsaved: nothing is written). */
+export async function previewYearEndAction(
+  year: number,
+  employeeId: string,
+  values: unknown,
+): Promise<ActionResult<YearEndPreviewView>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return attemptPayroll(() =>
+    loadYearEndPreview(
+      prisma(),
+      yearSchema.parse(year),
+      parseId(employeeId),
+      valuesSchema.parse(values) as YearEndDeclarationFormInput,
+    ),
+  );
+}
+
+/** 申告を保存 (audit log `payroll_year_end_declaration.save`). */
+export async function saveYearEndDeclarationAction(
+  year: number,
+  employeeId: string,
+  values: unknown,
+): Promise<ActionResult<null>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      saveYearEndDeclaration(
+        prisma(),
+        {
+          year: yearSchema.parse(year),
+          employeeId: parseId(employeeId),
+          declaration: valuesSchema.parse(values) as YearEndDeclarationFormInput,
+        },
+        await by(),
+      ),
+    () => null,
+  );
+}
+
+export interface ConfirmedYearEnd {
+  /** 「過納 115,270 円（還付）」 */
+  settlement: string;
+  entryNo: number | null;
+}
+
+/** 年末調整を確定: with the 年調年税額 and 過不足 the dialog showed. */
+export async function confirmYearEndAction(
+  year: number,
+  employeeId: string,
+  expected: { annualTax: string; difference: string },
+): Promise<ActionResult<ConfirmedYearEnd>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      confirmYearEnd(prisma(), yearSchema.parse(year), parseId(employeeId), {
+        ...(await by()),
+        expected: z.object({ annualTax: z.string(), difference: z.string() }).parse(expected),
+      }),
+    (record) => ({
+      settlement:
+        record.result.settlement.kind === "none"
+          ? "過不足なし"
+          : `${record.result.settlement.label} ${formatYen(record.result.settlement.amount)} 円`,
+      entryNo: record.settlementEntry?.no ?? null,
+    }),
   );
 }

@@ -3,6 +3,7 @@ import {
   findLinkCandidates,
   getDocumentDetail,
   listPartners,
+  loadDocumentPayableStatus,
   type DocumentDetail,
   type DocumentLinkEntry,
 } from "@niho-finance/db";
@@ -164,6 +165,12 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
   if (!detail) notFound();
   const voided = detail.status === "voided";
   const candidates = voided ? null : await findLinkCandidates(prisma, { documentId: detail.id });
+  // 支払 (25 §5): a received invoice (or one still in the inbox) without a registration in force
+  // can be registered as unpaid; a registered one opens its payable.
+  const payable = await loadDocumentPayableStatus(prisma, detail.id);
+  const payableKind = detail.kind === "invoice_in" || detail.status === "inbox" || detail.unsorted;
+  const canRegisterPayable = Boolean(payable?.canRegister) && payableKind;
+  const hasPayable = (payable?.state ?? null) !== null;
   const partners = (await listPartners(prisma))
     .filter((partner) => partner.isActive || partner.id === detail.partnerId)
     .map((partner) => ({
@@ -227,8 +234,24 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
         meta={meta}
         back={{ href: "/documents", label: "証憑" }}
         actions={
-          voided ? undefined : (
+          voided ? (
+            hasPayable ? (
+              <ButtonLink href={`/payables/${detail.id}`} size="sm">
+                支払を開く
+              </ButtonLink>
+            ) : undefined
+          ) : (
             <>
+              {hasPayable ? (
+                <ButtonLink href={`/payables/${detail.id}`} size="sm">
+                  支払を開く
+                </ButtonLink>
+              ) : null}
+              {canRegisterPayable ? (
+                <ButtonLink href={`/payables/new?document=${detail.id}`} size="sm">
+                  未払として登録
+                </ButtonLink>
+              ) : null}
               <ButtonLink href={newEntryHref(detail)} size="sm">
                 この証憑から取引を登録
               </ButtonLink>

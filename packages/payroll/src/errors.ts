@@ -12,6 +12,8 @@ export const PAYROLL_INPUT_ERROR_CODES = [
   "UNKNOWN_STANDARD_REMUNERATION",
   "TABLE_NOT_EFFECTIVE",
   "INVALID_ADJUSTMENT",
+  "INVALID_YEAR",
+  "INVALID_DECLARATION",
 ] as const;
 export type PayrollInputErrorCode = (typeof PAYROLL_INPUT_ERROR_CODES)[number];
 

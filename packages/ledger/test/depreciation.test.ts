@@ -616,6 +616,14 @@ describe("償却方法の提案と検査 (§5.1, §5.4)", () => {
       "LUMP_SUM_LIMIT:method",
     ]);
     expect(codes({ ...base, method: "lump_sum_3y", cost: 0n })).toEqual(["INVALID_COST:cost"]);
+    // 即時・一括 may keep a life for 償却資産申告 (16 §14.2): optional, but within the table.
+    expect(codes({ ...base, method: "immediate", cost: 150_000n, usefulLifeYears: 4 })).toEqual([]);
+    expect(codes({ ...base, method: "immediate", cost: 150_000n, usefulLifeYears: 1 })).toEqual([
+      "INVALID_USEFUL_LIFE:usefulLifeYears",
+    ]);
+    expect(codes({ ...base, method: "lump_sum_3y", cost: 150_000n, usefulLifeYears: 51 })).toEqual([
+      "INVALID_USEFUL_LIFE:usefulLifeYears",
+    ]);
 
     const [lifeProblem] = checkDepreciationChoice({
       ...base,

@@ -1,0 +1,168 @@
+{
+  "kind": "year-end",
+  "id": "year-end-2026",
+  "title": "令和８年分 年末調整のしかた",
+  "effectiveFrom": "2026-01-01",
+  "effectiveTo": "2026-12-31",
+  "legalBasis": "所得税法第28条（給与所得控除）・別表第五、第74条〜第86条（所得控除。第84条の2 特定親族特別控除を含む）・第190条（年末調整）、租税特別措置法第29条の4（給与所得控除の最低控除額の特例）・第41条の3の11（所得金額調整控除）・第41条の16の2（基礎控除の特例）（令和8年度税制改正後）",
+  "source": {
+    "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/nencho_all.pdf",
+    "fetchedAt": "2026-10-29",
+    "sha256": "337bd78fdc3f6dc74e9fe7b3a5998e95fc690b144742d0f0b32044dbbca65498",
+    "note": "国税庁「令和８年分 年末調整のしかた」の PDF から、2〜4 ページの改正（基礎控除・給与所得控除の最低保障・所得要件・23 歳未満の扶養親族がいる場合の生命保険料控除）と 35〜40 ページの計算の規則、別表第五（年末調整等のための給与所得控除後の給与等の金額の表）、配偶者控除等・特定親族特別控除の表、保険料控除の計算式、速算表を区間と率で写した。57 ページの設例を test/year-end.test.ts で検算する（22-payroll §11.3・§11.6）。"
+  },
+  "year": 2026,
+  "eligibility": { "incomeLimit": 20000000, "taxableIncomeLimit": 18050000 },
+  "salaryIncome": [
+    { "from": 0, "to": 741000, "kind": "zero" },
+    {
+      "from": 741000,
+      "to": 2191000,
+      "kind": "rate",
+      "step": null,
+      "ratePercent": "100",
+      "deduction": 740000
+    },
+    { "from": 2191000, "to": 2193000, "kind": "fixed", "amount": 1451000 },
+    { "from": 2193000, "to": 2196000, "kind": "fixed", "amount": 1453000 },
+    { "from": 2196000, "to": 2200000, "kind": "fixed", "amount": 1456000 },
+    {
+      "from": 2200000,
+      "to": 3600000,
+      "kind": "rate",
+      "step": 4000,
+      "ratePercent": "70",
+      "deduction": 80000
+    },
+    {
+      "from": 3600000,
+      "to": 6600000,
+      "kind": "rate",
+      "step": 4000,
+      "ratePercent": "80",
+      "deduction": 440000
+    },
+    {
+      "from": 6600000,
+      "to": 8500000,
+      "kind": "rate",
+      "step": null,
+      "ratePercent": "90",
+      "deduction": 1100000
+    },
+    {
+      "from": 8500000,
+      "to": null,
+      "kind": "rate",
+      "step": null,
+      "ratePercent": "100",
+      "deduction": 1950000
+    }
+  ],
+  "incomeAdjustment": { "threshold": 8500000, "incomeCap": 10000000, "ratePercent": "10" },
+  "basicDeduction": [
+    { "upTo": 4890000, "amount": 1040000 },
+    { "upTo": 6550000, "amount": 670000 },
+    { "upTo": 23500000, "amount": 620000 },
+    { "upTo": 24000000, "amount": 480000 },
+    { "upTo": 24500000, "amount": 320000 },
+    { "upTo": 25000000, "amount": 160000 }
+  ],
+  "spouse": {
+    "earnerIncomeLimits": [9000000, 9500000, 10000000],
+    "deductionIncomeLimit": 620000,
+    "general": [380000, 260000, 130000],
+    "elderly": [480000, 320000, 160000],
+    "special": [
+      { "upTo": 950000, "amounts": [380000, 260000, 130000] },
+      { "upTo": 1000000, "amounts": [360000, 240000, 120000] },
+      { "upTo": 1050000, "amounts": [310000, 210000, 110000] },
+      { "upTo": 1100000, "amounts": [260000, 180000, 90000] },
+      { "upTo": 1150000, "amounts": [210000, 140000, 70000] },
+      { "upTo": 1200000, "amounts": [160000, 110000, 60000] },
+      { "upTo": 1250000, "amounts": [110000, 80000, 40000] },
+      { "upTo": 1300000, "amounts": [60000, 40000, 20000] },
+      { "upTo": 1330000, "amounts": [30000, 20000, 10000] }
+    ]
+  },
+  "specificRelative": {
+    "incomeOver": 620000,
+    "brackets": [
+      { "upTo": 850000, "amount": 630000 },
+      { "upTo": 900000, "amount": 610000 },
+      { "upTo": 950000, "amount": 510000 },
+      { "upTo": 1000000, "amount": 410000 },
+      { "upTo": 1050000, "amount": 310000 },
+      { "upTo": 1100000, "amount": 210000 },
+      { "upTo": 1150000, "amount": 110000 },
+      { "upTo": 1200000, "amount": 60000 },
+      { "upTo": 1230000, "amount": 30000 }
+    ]
+  },
+  "dependents": {
+    "incomeLimit": 620000,
+    "general": 380000,
+    "specific": 630000,
+    "elderly": 480000,
+    "elderlyCohabiting": 580000
+  },
+  "disability": { "general": 270000, "special": 400000, "specialCohabiting": 750000 },
+  "personal": {
+    "widow": 270000,
+    "singleParent": 350000,
+    "workingStudent": 270000,
+    "widowIncomeLimit": 5000000,
+    "singleParentIncomeLimit": 5000000,
+    "workingStudentIncomeLimit": 890000
+  },
+  "lifeInsurance": {
+    "newFormula": [
+      { "upTo": 20000, "ratePercent": "100", "add": 0 },
+      { "upTo": 40000, "ratePercent": "50", "add": 10000 },
+      { "upTo": 80000, "ratePercent": "25", "add": 20000 },
+      { "upTo": null, "ratePercent": "0", "add": 40000 }
+    ],
+    "newUnder23Formula": [
+      { "upTo": 30000, "ratePercent": "100", "add": 0 },
+      { "upTo": 60000, "ratePercent": "50", "add": 15000 },
+      { "upTo": 120000, "ratePercent": "25", "add": 30000 },
+      { "upTo": null, "ratePercent": "0", "add": 60000 }
+    ],
+    "oldFormula": [
+      { "upTo": 25000, "ratePercent": "100", "add": 0 },
+      { "upTo": 50000, "ratePercent": "50", "add": 12500 },
+      { "upTo": 100000, "ratePercent": "25", "add": 25000 },
+      { "upTo": null, "ratePercent": "0", "add": 50000 }
+    ],
+    "generalLimit": 40000,
+    "generalUnder23Limit": 60000,
+    "pensionLimit": 40000,
+    "totalLimit": 120000
+  },
+  "earthquake": {
+    "earthquakeLimit": 50000,
+    "oldLongTermFormula": [
+      { "upTo": 10000, "ratePercent": "100", "add": 0 },
+      { "upTo": 20000, "ratePercent": "50", "add": 5000 },
+      { "upTo": null, "ratePercent": "0", "add": 15000 }
+    ],
+    "totalLimit": 50000
+  },
+  "taxableIncomeUnit": 1000,
+  "taxBrackets": [
+    { "upTo": 1950000, "ratePercent": "5", "deduction": 0 },
+    { "upTo": 3300000, "ratePercent": "10", "deduction": 97500 },
+    { "upTo": 6950000, "ratePercent": "20", "deduction": 427500 },
+    { "upTo": 9000000, "ratePercent": "23", "deduction": 636000 },
+    { "upTo": 18000000, "ratePercent": "33", "deduction": 1536000 },
+    { "upTo": 18050000, "ratePercent": "40", "deduction": 2796000 }
+  ],
+  "surtax": { "ratePercent": "102.1", "unit": 100 },
+  "birthDates": {
+    "specificFrom": "2004-01-02",
+    "specificTo": "2008-01-01",
+    "elderlyTo": "1957-01-01",
+    "age16To": "2011-01-01",
+    "under23From": "2004-01-02"
+  }
+}

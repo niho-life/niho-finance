@@ -1,24 +1,38 @@
-import {
-  isCalendarDate,
-  lastDayOfMonth,
-  type CalendarDate,
-  type Money,
-  type Side,
-} from "@niho-finance/ledger";
+import { lastDayOfMonth, type CalendarDate, type Money, type Side } from "@niho-finance/ledger";
 import { PayrollSnapshotError } from "./errors";
 import { parseYearMonth, shiftYearMonth, yearMonthParts, type YearMonth } from "./month";
 import type {
   PayrollAdjustments,
   PayrollCoverage,
+  PayrollExtraPremium,
   PayrollInput,
   PayrollResult,
   PayrollTables,
   WorkerKind,
 } from "./payroll";
-import { ratio, type Rational } from "./rational";
 import { findTableById } from "./registry";
-import { aggregateSocialInsurance, type SocialInsuranceAggregate } from "./social-insurance";
-import type { TableRef } from "./tables";
+import {
+  bool,
+  child,
+  fail,
+  money,
+  nonNegativeMoney,
+  readCoverage,
+  readEmploymentInsurance,
+  readSocialInsurance,
+  readTableRef,
+  readTaxColumn,
+  record,
+  text,
+  toSnapshotJson,
+  type SnapshotJson,
+} from "./snapshot";
+import {
+  aggregateSocialInsurance,
+  type SocialInsuranceAggregate,
+  type SocialInsuranceCoverage,
+} from "./social-insurance";
+import type { KenpoTable, PensionTable } from "./tables";
 import type { TaxColumn } from "./withholding";
 
 /**
@@ -217,6 +231,12 @@ export function paymentCategoryOfRuleKey(ruleKey: string): PayrollPaymentCategor
 
 /** What a confirmed run owes, by category (22-payroll §7.2). */
 export interface PayrollRunSummary extends PayrollRunSettings {
+  /**
+   * `bonus` for a 賞与 run (22-payroll §10.4: its premium month is its pay month, no 住民税);
+   * `year_end` for the settlement of a 年末調整 (§11.4: `incomeTax` is the 過不足, + 不足 / − 過納,
+   * added to the 源泉所得税 of the last pay run's month). Left out for a monthly run.
+   */
+  kind?: "monthly" | "bonus" | "year_end";
   headcount: number;
   grossPay: Money;
   totalDeductions: Money;
@@ -230,6 +250,47 @@ export interface PayrollRunSummary extends PayrollRunSettings {
   socialInsuranceEmployer: Money;
   /** 雇用保険の本人分の合計 (預り金〔雇用保険料〕, paid through 年度更新; no deadline here). */
   employmentInsuranceEmployee: Money;
+  /**
+   * 社会保険料 by premium month, when a run deducts more than one (退職者の最後の給与, 22-payroll
+   * §12.3): the run's own premium month first. `socialInsuranceEmployee` / `…Employer` are the sums.
+   * Left out: everything is of `premiumMonth`.
+   */
+  premiumShares?: PremiumShare[];
+}
+
+/** The 社会保険料 of one premium month in a run (its deadline's share). */
+export interface PremiumShare {
+  premiumMonth: YearMonth;
+  /** 健保・厚年の本人分 (the run's adjustments go to its own premium month). */
+  employee: Money;
+  /** 会社負担 + 拠出金 of that month's premiums in the run. */
+  employer: Money;
+}
+
+/** The premium months a run pays 社会保険料 for, with their shares (one unless §12.3). */
+export function premiumSharesOf(run: PayrollRunSummary): PremiumShare[] {
+  return (
+    run.premiumShares ?? [
+      {
+        premiumMonth: run.premiumMonth,
+        employee: run.socialInsuranceEmployee,
+        employer: run.socialInsuranceEmployer,
+      },
+    ]
+  );
+}
+
+/** The second premium months of the items (§12.3), each with the premiums deducted for it. */
+function extraPremiumsByMonth(
+  items: readonly { result: PayrollResult }[],
+): Map<YearMonth, PayrollExtraPremium[]> {
+  const byMonth = new Map<YearMonth, PayrollExtraPremium[]>();
+  for (const { result } of items) {
+    const extra = result.extraPremium;
+    if (!extra) continue;
+    byMonth.set(extra.premiumMonth, [...(byMonth.get(extra.premiumMonth) ?? []), extra]);
+  }
+  return byMonth;
 }
 
 export function summarizePayrollRun(
@@ -251,6 +312,18 @@ export function summarizePayrollRun(
     socialInsuranceEmployee += result.socialInsuranceEmployeeTotal;
     employmentInsuranceEmployee += result.employmentInsurance?.employee ?? 0n;
   }
+  const ownEmployer = aggregateSocialInsurance(
+    run.items.map(({ result }) => result.socialInsurance),
+  ).employerTotal;
+  const extras = [...extraPremiumsByMonth(run.items)].sort(([a], [b]) => (a < b ? -1 : 1));
+  const extraShares = extras.map(([premiumMonth, premiums]): PremiumShare => ({
+    premiumMonth,
+    employee: premiums.reduce((total, extra) => total + extra.socialInsurance.employeeTotal, 0n),
+    employer: aggregateSocialInsurance(premiums.map((extra) => extra.socialInsurance))
+      .employerTotal,
+  }));
+  const extraEmployee = extraShares.reduce((total, share) => total + share.employee, 0n);
+  const extraEmployer = extraShares.reduce((total, share) => total + share.employer, 0n);
   return {
     payMonth: run.payMonth,
     premiumMonth: run.premiumMonth,
@@ -263,10 +336,20 @@ export function summarizePayrollRun(
     incomeTax,
     residentTax,
     socialInsuranceEmployee,
-    socialInsuranceEmployer: aggregateSocialInsurance(
-      run.items.map(({ result }) => result.socialInsurance),
-    ).employerTotal,
+    socialInsuranceEmployer: ownEmployer + extraEmployer,
     employmentInsuranceEmployee,
+    ...(extraShares.length > 0
+      ? {
+          premiumShares: [
+            {
+              premiumMonth: run.premiumMonth,
+              employee: socialInsuranceEmployee - extraEmployee,
+              employer: ownEmployer,
+            },
+            ...extraShares,
+          ],
+        }
+      : {}),
   };
 }
 
@@ -298,55 +381,205 @@ function isNonZero(amount: PaymentAmount): boolean {
   return amount.total !== 0n || amount.withheld !== 0n || amount.employer !== 0n;
 }
 
-/** The deadlines one run adds to, with that run's own amounts; categories of 0 円 are left out. */
-export function runPaymentSlots(
-  run: PayrollRunSummary,
-): { slot: PayrollPaymentSlot; amount: PaymentAmount }[] {
-  return PAYROLL_PAYMENT_CATEGORIES.map((category) => ({
-    slot: paymentSlotFor(category, run),
-    amount: runAmount(category, run),
-  })).filter(({ amount }) => isNonZero(amount));
+function shareAmount(share: PremiumShare): PaymentAmount {
+  return {
+    total: share.employee + share.employer,
+    withheld: share.employee,
+    employer: share.employer,
+  };
 }
 
 /**
- * The scheduled amount of the payment `ruleKey` (22-payroll §7.2): the sum over the confirmed runs
- * that pay into it. 0 for a rule key no run pays into (or one not made by pay runs).
+ * The deadlines one run adds to, with that run's own amounts; categories of 0 円 are left out. A run
+ * deducting two premium months (§12.3) adds to the 社会保険料 deadline of each.
+ */
+export function runPaymentSlots(
+  run: PayrollRunSummary,
+): { slot: PayrollPaymentSlot; amount: PaymentAmount }[] {
+  return PAYROLL_PAYMENT_CATEGORIES.flatMap((category) =>
+    category === "social_insurance" && run.premiumShares
+      ? run.premiumShares.map((share) => ({
+          slot: socialInsuranceSlot(share.premiumMonth),
+          amount: shareAmount(share),
+        }))
+      : [{ slot: paymentSlotFor(category, run), amount: runAmount(category, run) }],
+  ).filter(({ amount }) => isNonZero(amount));
+}
+
+/** What the runs paying into one deadline add up to, and which runs they are. */
+export interface ScheduleAmount extends PaymentAmount {
+  /** The pay months of the monthly runs that pay into it. */
+  payMonths: YearMonth[];
+  /** The pay months of the bonus runs that pay into it (22-payroll §10.4). */
+  bonusMonths: YearMonth[];
+  /** The pay months of the 年末調整 settlements in it (§11.4: the last pay run's month). */
+  yearEndMonths: YearMonth[];
+}
+
+/**
+ * The derived amount of the payment `ruleKey` (22-payroll §7.2): the sum over the confirmed runs
+ * that pay into it (a 年末調整's refund makes a 源泉所得税 sum smaller, even negative: see
+ * `scheduledPayments` for the carry-over). 0 for a rule key no run pays into (or one not made by
+ * pay runs).
  */
 export function scheduleAmount(
   ruleKey: string,
   runs: readonly PayrollRunSummary[],
-): PaymentAmount & { payMonths: YearMonth[] } {
+): ScheduleAmount {
   const category = paymentCategoryOfRuleKey(ruleKey);
-  const amount = { total: 0n, withheld: 0n, employer: 0n, payMonths: [] as YearMonth[] };
+  const amount: ScheduleAmount = {
+    total: 0n,
+    withheld: 0n,
+    employer: 0n,
+    payMonths: [],
+    bonusMonths: [],
+    yearEndMonths: [],
+  };
   if (!category) return amount;
   for (const run of runs) {
-    if (paymentSlotFor(category, run).ruleKey !== ruleKey) continue;
-    const own = runAmount(category, run);
+    let own: PaymentAmount;
+    if (category === "social_insurance") {
+      const share = premiumSharesOf(run).find(
+        (candidate) => socialInsuranceSlot(candidate.premiumMonth).ruleKey === ruleKey,
+      );
+      if (!share) continue;
+      // The second premium month of a final pay (§12.3) counts only with an amount.
+      if (share.premiumMonth !== run.premiumMonth && !isNonZero(shareAmount(share))) continue;
+      own = shareAmount(share);
+    } else {
+      if (paymentSlotFor(category, run).ruleKey !== ruleKey) continue;
+      own = runAmount(category, run);
+    }
+    // A bonus run or a settlement pays only into the deadlines it has an amount for.
+    if (run.kind !== undefined && run.kind !== "monthly" && !isNonZero(own)) continue;
     amount.total += own.total;
     amount.withheld += own.withheld;
     amount.employer += own.employer;
-    amount.payMonths.push(run.payMonth);
+    (run.kind === "bonus"
+      ? amount.bonusMonths
+      : run.kind === "year_end"
+        ? amount.yearEndMonths
+        : amount.payMonths
+    ).push(run.payMonth);
   }
   amount.payMonths.sort();
+  amount.bonusMonths.sort();
+  amount.yearEndMonths.sort();
   return amount;
 }
 
-export interface PayrollScheduleEntry extends PayrollPaymentSlot, PaymentAmount {
-  /** The pay months that pay into it. */
-  payMonths: YearMonth[];
+/**
+ * The settlement of a confirmed 年末調整 (22-payroll §11.4) in the shape of a run's summary, so that
+ * the schedule adds it: `difference` (年調年税額 − 徴収済み税額; + 不足, − 過納) goes to the 源泉所得税
+ * deadline of the last pay run's month (its half year with 納期の特例).
+ */
+export function summarizeYearEndSettlement(settlement: {
+  payMonth: YearMonth;
+  withholdingSpecialDue: boolean;
+  difference: Money;
+}): PayrollRunSummary {
+  return {
+    kind: "year_end",
+    payMonth: settlement.payMonth,
+    premiumMonth: settlement.payMonth,
+    withholdingSpecialDue: settlement.withholdingSpecialDue,
+    residentTaxSpecialDue: false,
+    headcount: 1,
+    grossPay: 0n,
+    totalDeductions: 0n,
+    netPay: 0n,
+    incomeTax: settlement.difference,
+    residentTax: 0n,
+    socialInsuranceEmployee: 0n,
+    socialInsuranceEmployer: 0n,
+    employmentInsuranceEmployee: 0n,
+  };
 }
 
+/** A deadline as the calendar holds it: what the carry-over needs to order them. */
+export interface PayrollScheduleSlotRef {
+  ruleKey: string;
+  dueDate: CalendarDate;
+}
+
+/** The scheduled amount of a deadline after the carry-over of refunds (§11.4). */
+export interface ScheduledPayment extends ScheduleAmount {
+  /** What the runs add up to before the carry-over (源泉所得税 may be negative after a refund). */
+  derived: Money;
+  /** 源泉所得税: the refund (過納) of earlier deadlines taken off this one (充当). */
+  refundApplied: Money;
+  /** 源泉所得税: the refund still left after this deadline, carried to the next ones. */
+  refundCarried: Money;
+}
+
+const byDueDate = (a: PayrollScheduleSlotRef, b: PayrollScheduleSlotRef) =>
+  (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0) ||
+  (a.ruleKey < b.ruleKey ? -1 : a.ruleKey > b.ruleKey ? 1 : 0);
+
 /**
- * Every deadline the runs pay into (a run's 0 円 categories make none), with the derived amounts,
- * by due date and then 源泉所得税 → 住民税 → 社会保険料.
+ * The scheduled amounts of the deadlines `slots` (22-payroll §7.2・§11.4). 住民税 and 社会保険料 are
+ * their derived sums. 源泉所得税 deadlines are taken in due-date order: a deadline whose sum would
+ * be negative (a 年末調整's refund larger than what was withheld for it) is 0 — 「納付なし」 — and the
+ * rest of the refund is taken off the next 源泉所得税 deadlines (翌月以降の源泉所得税から充当), as
+ * far as they go; `refundCarried` of the last one is what is still to be applied. The sum of the
+ * amounts minus that last carry is always the sum of what the runs withheld.
+ */
+export function scheduledPayments(
+  slots: readonly PayrollScheduleSlotRef[],
+  runs: readonly PayrollRunSummary[],
+): Map<string, ScheduledPayment> {
+  const result = new Map<string, ScheduledPayment>();
+  for (const slot of slots) {
+    const amount = scheduleAmount(slot.ruleKey, runs);
+    result.set(slot.ruleKey, {
+      ...amount,
+      derived: amount.total,
+      refundApplied: 0n,
+      refundCarried: 0n,
+    });
+  }
+  const withholding = [...new Map(slots.map((slot) => [slot.ruleKey, slot])).values()]
+    .filter((slot) => paymentCategoryOfRuleKey(slot.ruleKey) === "withholding")
+    .sort(byDueDate);
+  let carry = 0n;
+  for (const slot of withholding) {
+    const payment = result.get(slot.ruleKey);
+    if (!payment) continue;
+    const net = payment.derived - carry;
+    if (net >= 0n) {
+      payment.refundApplied = carry;
+      payment.refundCarried = 0n;
+      payment.total = net;
+      carry = 0n;
+    } else {
+      payment.refundApplied = payment.derived > 0n ? payment.derived : 0n;
+      payment.refundCarried = -net;
+      payment.total = 0n;
+      carry = -net;
+    }
+    payment.withheld = payment.total;
+  }
+  return result;
+}
+
+export interface PayrollScheduleEntry extends PayrollPaymentSlot, ScheduledPayment {}
+
+/**
+ * Every deadline the runs pay into (a run's 0 円 categories make none), with the scheduled amounts
+ * (after the carry-over of refunds), by due date and then 源泉所得税 → 住民税 → 社会保険料.
  */
 export function payrollSchedule(runs: readonly PayrollRunSummary[]): PayrollScheduleEntry[] {
   const slots = new Map<string, PayrollPaymentSlot>();
   for (const run of runs) {
     for (const { slot } of runPaymentSlots(run)) slots.set(slot.ruleKey, slot);
   }
+  const amounts = scheduledPayments([...slots.values()], runs);
   return [...slots.values()]
-    .map((slot) => ({ ...slot, ...scheduleAmount(slot.ruleKey, runs) }))
+    .map((slot): PayrollScheduleEntry => {
+      const amount = amounts.get(slot.ruleKey);
+      if (!amount) throw new Error(`payrollSchedule: no amount for ${slot.ruleKey}`);
+      return { ...slot, ...amount };
+    })
     .sort(
       (a, b) =>
         (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0) ||
@@ -454,10 +687,15 @@ export interface BuildPayrollEntriesInput {
 export interface PayrollEntries {
   /** 1 本目「給与 2026 年 12 月支給」 (本人分). */
   pay: PayrollEntryPlan;
-  /** 2 本目「法定福利費 2026 年 11 月分」 (会社負担), `null` when it is 0. */
+  /**
+   * 2 本目「法定福利費 2026 年 11 月分」 (会社負担), `null` when it is 0. With a final pay deducting the
+   * leaving month too (§12.3) it covers both months: 「法定福利費 2026 年 10 月分・11 月分」.
+   */
   employer: PayrollEntryPlan | null;
   /** The office's premiums of the premium month (納入告知額 and the employer share). */
   socialInsurance: SocialInsuranceAggregate;
+  /** The leavers' second premium months (§12.3) deducted in this run, each aggregated. */
+  extraSocialInsurance: { premiumMonth: YearMonth; aggregate: SocialInsuranceAggregate }[];
 }
 
 /**
@@ -505,17 +743,36 @@ export function buildPayrollEntries(input: BuildPayrollEntriesInput): PayrollEnt
   const aggregate = aggregateSocialInsurance(
     input.items.map(({ result }) => result.socialInsurance),
   );
+  const extras = [...extraPremiumsByMonth(input.items)]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([premiumMonth, premiums]) => ({
+      premiumMonth,
+      aggregate: aggregateSocialInsurance(premiums.map((extra) => extra.socialInsurance)),
+    }));
+  const employerTotal = extras.reduce(
+    (total, extra) => total + extra.aggregate.employerTotal,
+    aggregate.employerTotal,
+  );
   const employer: PayrollEntryLine[] = [];
-  place(employer, "debit", account(PAYROLL_ACCOUNT_CODES.welfare), aggregate.employerTotal);
-  place(employer, "credit", sub("employerSocialInsurance"), aggregate.employerTotal);
+  place(employer, "debit", account(PAYROLL_ACCOUNT_CODES.welfare), employerTotal);
+  place(employer, "credit", sub("employerSocialInsurance"), employerTotal);
+  const months = [
+    yearMonthLabel(input.premiumMonth),
+    ...extras.map((extra) => {
+      const own = yearMonthParts(input.premiumMonth);
+      const { year, month } = yearMonthParts(extra.premiumMonth);
+      return year === own.year ? `${month} 月` : yearMonthLabel(extra.premiumMonth);
+    }),
+  ];
 
   return {
     pay: { description: `給与 ${yearMonthLabel(input.payMonth)}支給`, lines: pay },
     employer:
       employer.length > 0
-        ? { description: `法定福利費 ${yearMonthLabel(input.premiumMonth)}分`, lines: employer }
+        ? { description: `法定福利費 ${months.join("分・")}分`, lines: employer }
         : null,
     socialInsurance: aggregate,
+    extraSocialInsurance: extras,
   };
 }
 
@@ -584,6 +841,8 @@ export interface PayrollRunItemInput {
   coverage: PayrollCoverage;
   taxColumn: TaxColumn;
   adjustments: PayrollAdjustments;
+  /** 退職者の最後の給与で併せて控除する退職月 (§12.3); left out otherwise. */
+  extraPremium?: { premiumMonth: YearMonth; coverage: SocialInsuranceCoverage };
 }
 
 /** One person of a confirmed run: what was entered and what was calculated. */
@@ -607,19 +866,53 @@ export interface PayrollTableIds {
   employment: string | null;
 }
 
-/** The full `calculatePayroll` input of a stored item (tables pinned separately). */
+/**
+ * The full `calculatePayroll` input of a stored item (tables pinned separately; the second premium
+ * month's tables with `extraTables`, see `pinnedExtraPremiumTables`).
+ */
 export function payrollInputOf(
   run: { paymentDate: CalendarDate; premiumMonth: YearMonth },
   item: Pick<PayrollRunItem, "kind" | "input">,
   tables?: Partial<PayrollTables>,
+  extraTables?: { kenpo?: KenpoTable; pension?: PensionTable },
 ): PayrollInput {
+  const { extraPremium, ...input } = item.input;
   return {
     paymentDate: run.paymentDate,
     premiumMonth: run.premiumMonth,
     worker: item.kind,
-    ...item.input,
+    ...input,
     ...(tables ? { tables } : {}),
+    ...(extraPremium
+      ? { extraPremium: { ...extraPremium, ...(extraTables ? { tables: extraTables } : {}) } }
+      : {}),
   };
+}
+
+/**
+ * The registered tables a stored second premium month (§12.3) used, to pin its recalculation.
+ * Throws `PayrollSnapshotError` for an id that is not registered or of another kind.
+ */
+export function pinnedExtraPremiumTables(
+  result: Pick<PayrollResult, "extraPremium">,
+): { kenpo: KenpoTable; pension: PensionTable } | undefined {
+  const extra = result.extraPremium;
+  if (!extra) return undefined;
+  const kenpo = findTableById(extra.tables.kenpo.id);
+  const pension = findTableById(extra.tables.pension.id);
+  if (kenpo?.kind !== "kyokai-kenpo") {
+    throw new PayrollSnapshotError(
+      "extraPremium.tables.kenpo",
+      `"${extra.tables.kenpo.id}" is not a registered kyokai-kenpo table`,
+    );
+  }
+  if (pension?.kind !== "pension") {
+    throw new PayrollSnapshotError(
+      "extraPremium.tables.pension",
+      `"${extra.tables.pension.id}" is not a registered pension table`,
+    );
+  }
+  return { kenpo, pension };
 }
 
 /** The table ids of a run's results; every result of one run uses the same versions. */
@@ -675,29 +968,7 @@ export function pinnedTables(ids: PayrollTableIds): Partial<PayrollTables> {
   };
 }
 
-/** A JSON value of a snapshot (amounts as strings). */
-export type SnapshotJson =
-  string | number | boolean | null | SnapshotJson[] | { [key: string]: SnapshotJson };
-
-function toSnapshotJson(value: unknown, path: string): SnapshotJson {
-  if (typeof value === "bigint") return value.toString();
-  if (typeof value === "string" || typeof value === "boolean" || value === null) return value;
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) throw new PayrollSnapshotError(path, "is not a whole number");
-    return value;
-  }
-  if (Array.isArray(value))
-    return value.map((item, index) => toSnapshotJson(item, `${path}[${index}]`));
-  if (typeof value === "object") {
-    const record: { [key: string]: SnapshotJson } = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (item === undefined) continue;
-      record[key] = toSnapshotJson(item, path === "" ? key : `${path}.${key}`);
-    }
-    return record;
-  }
-  throw new PayrollSnapshotError(path, `cannot be stored (${typeof value})`);
-}
+export type { SnapshotJson } from "./snapshot";
 
 /** `PayrollRun.items`: every amount (and rational) as a decimal string, no floating point. */
 export function serializePayrollRunItems(items: readonly PayrollRunItem[]): SnapshotJson {
@@ -710,88 +981,6 @@ export function serializePayrollTableIds(ids: PayrollTableIds): SnapshotJson {
 
 // Strict reader: exact keys, exact types, normalized rationals, consistent totals.
 
-type JsonRecord = Record<string, unknown>;
-
-function fail(path: string, problem: string): never {
-  throw new PayrollSnapshotError(path, problem);
-}
-
-function child(path: string, key: string | number): string {
-  if (typeof key === "number") return `${path}[${key}]`;
-  return path === "" ? key : `${path}.${key}`;
-}
-
-function record(
-  value: unknown,
-  path: string,
-  keys: readonly string[],
-  optional: readonly string[] = [],
-): JsonRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    fail(path, "is not an object");
-  }
-  const data = value as JsonRecord;
-  for (const key of Object.keys(data)) {
-    if (!keys.includes(key) && !optional.includes(key)) fail(child(path, key), "is not expected");
-  }
-  for (const key of keys) if (!(key in data)) fail(child(path, key), "is missing");
-  return data;
-}
-
-const WHOLE_YEN = /^-?(0|[1-9]\d*)$/;
-
-function money(value: unknown, path: string): Money {
-  if (typeof value !== "string" || !WHOLE_YEN.test(value) || value === "-0") {
-    fail(path, "is not a whole number string");
-  }
-  return BigInt(value);
-}
-
-function nonNegativeMoney(value: unknown, path: string): Money {
-  const amount = money(value, path);
-  if (amount < 0n) fail(path, "is negative");
-  return amount;
-}
-
-function rational(value: unknown, path: string): Rational {
-  const data = record(value, path, ["num", "den"]);
-  const num = money(data.num, child(path, "num"));
-  const den = money(data.den, child(path, "den"));
-  if (den <= 0n) fail(child(path, "den"), "is not positive");
-  const normalized = ratio(num, den);
-  if (normalized.num !== num || normalized.den !== den) fail(path, "is not normalized");
-  return normalized;
-}
-
-function bool(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") fail(path, "is not a boolean");
-  return value;
-}
-
-function text(value: unknown, path: string): string {
-  if (typeof value !== "string" || value === "") fail(path, "is not a non-empty string");
-  return value;
-}
-
-function count(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    fail(path, "is not a whole number of 0 or more");
-  }
-  return value;
-}
-
-function tableRef(value: unknown, path: string): TableRef {
-  const data = record(value, path, ["id", "title", "source"]);
-  const source = record(data.source, child(path, "source"), ["url", "fetchedAt"]);
-  const fetchedAt = text(source.fetchedAt, child(child(path, "source"), "fetchedAt"));
-  if (!isCalendarDate(fetchedAt)) fail(child(child(path, "source"), "fetchedAt"), "is not a date");
-  return {
-    id: text(data.id, child(path, "id")),
-    title: text(data.title, child(path, "title")),
-    source: { url: text(source.url, child(child(path, "source"), "url")), fetchedAt },
-  };
-}
-
 function adjustmentsOf(value: unknown, path: string): PayrollAdjustments {
   const data = record(value, path, ["incomeTax", "socialInsurance"]);
   return {
@@ -800,39 +989,41 @@ function adjustmentsOf(value: unknown, path: string): PayrollAdjustments {
   };
 }
 
-function taxColumnOf(value: unknown, path: string): TaxColumn {
-  const column =
-    typeof value === "object" && value !== null ? (value as JsonRecord).column : undefined;
-  if (column === "kou") {
-    const data = record(value, path, ["column", "dependents"]);
-    return { column: "kou", dependents: count(data.dependents, child(path, "dependents")) };
+function socialCoverageOf(value: unknown, path: string): SocialInsuranceCoverage {
+  const coverage = record(value, path, ["health", "care", "pension"]);
+  return {
+    health: bool(coverage.health, child(path, "health")),
+    care: bool(coverage.care, child(path, "care")),
+    pension: bool(coverage.pension, child(path, "pension")),
+  };
+}
+
+function yearMonthText(value: unknown, path: string): YearMonth {
+  const textValue = text(value, path);
+  try {
+    return parseYearMonth(textValue);
+  } catch {
+    return fail(path, "is not a month (YYYY-MM)");
   }
-  if (column === "otsu") {
-    const data = record(value, path, ["column"], ["secondaryDependents"]);
-    return data.secondaryDependents === undefined
-      ? { column: "otsu" }
-      : {
-          column: "otsu",
-          secondaryDependents: count(data.secondaryDependents, child(path, "secondaryDependents")),
-        };
-  }
-  return fail(child(path, "column"), "is neither kou nor otsu");
 }
 
 function itemInputOf(value: unknown, path: string): PayrollRunItemInput {
-  const data = record(value, path, [
-    "taxablePay",
-    "nonTaxablePay",
-    "residentTax",
-    "standardRemuneration",
-    "coverage",
-    "taxColumn",
-    "adjustments",
-  ]);
+  const data = record(
+    value,
+    path,
+    [
+      "taxablePay",
+      "nonTaxablePay",
+      "residentTax",
+      "standardRemuneration",
+      "coverage",
+      "taxColumn",
+      "adjustments",
+    ],
+    ["extraPremium"],
+  );
   const smrPath = child(path, "standardRemuneration");
   const smr = record(data.standardRemuneration, smrPath, ["health", "pension"]);
-  const coveragePath = child(path, "coverage");
-  const coverage = record(data.coverage, coveragePath, ["health", "care", "pension", "employment"]);
   return {
     taxablePay: nonNegativeMoney(data.taxablePay, child(path, "taxablePay")),
     nonTaxablePay: nonNegativeMoney(data.nonTaxablePay, child(path, "nonTaxablePay")),
@@ -841,81 +1032,70 @@ function itemInputOf(value: unknown, path: string): PayrollRunItemInput {
       health: nonNegativeMoney(smr.health, child(smrPath, "health")),
       pension: nonNegativeMoney(smr.pension, child(smrPath, "pension")),
     },
-    coverage: {
-      health: bool(coverage.health, child(coveragePath, "health")),
-      care: bool(coverage.care, child(coveragePath, "care")),
-      pension: bool(coverage.pension, child(coveragePath, "pension")),
-      employment: bool(coverage.employment, child(coveragePath, "employment")),
-    },
-    taxColumn: taxColumnOf(data.taxColumn, child(path, "taxColumn")),
+    coverage: readCoverage(data.coverage, child(path, "coverage")),
+    taxColumn: readTaxColumn(data.taxColumn, child(path, "taxColumn")),
     adjustments: adjustmentsOf(data.adjustments, child(path, "adjustments")),
+    ...(data.extraPremium === undefined
+      ? {}
+      : { extraPremium: extraPremiumInputOf(data.extraPremium, child(path, "extraPremium")) }),
+  };
+}
+
+function extraPremiumInputOf(
+  value: unknown,
+  path: string,
+): NonNullable<PayrollRunItemInput["extraPremium"]> {
+  const data = record(value, path, ["premiumMonth", "coverage"]);
+  return {
+    premiumMonth: yearMonthText(data.premiumMonth, child(path, "premiumMonth")),
+    coverage: socialCoverageOf(data.coverage, child(path, "coverage")),
+  };
+}
+
+function extraPremiumResultOf(value: unknown, path: string): PayrollExtraPremium {
+  const data = record(value, path, ["premiumMonth", "socialInsurance", "tables"]);
+  const tablesPath = child(path, "tables");
+  const tables = record(data.tables, tablesPath, ["kenpo", "pension"]);
+  return {
+    premiumMonth: yearMonthText(data.premiumMonth, child(path, "premiumMonth")),
+    socialInsurance: readSocialInsurance(data.socialInsurance, child(path, "socialInsurance")),
+    tables: {
+      kenpo: readTableRef(tables.kenpo, child(tablesPath, "kenpo")),
+      pension: readTableRef(tables.pension, child(tablesPath, "pension")),
+    },
   };
 }
 
 function resultOf(value: unknown, path: string): PayrollResult {
-  const data = record(value, path, [
-    "grossPay",
-    "socialInsurance",
-    "employmentInsurance",
-    "withholdingBase",
-    "incomeTax",
-    "residentTax",
-    "adjustments",
-    "incomeTaxTotal",
-    "socialInsuranceEmployeeTotal",
-    "totalDeductions",
-    "netPay",
-    "tables",
-  ]);
-  const siPath = child(path, "socialInsurance");
-  const si = record(data.socialInsurance, siPath, [
-    "health",
-    "pension",
-    "childContribution",
-    "employeeTotal",
-  ]);
-  const healthPath = child(siPath, "health");
-  const health = record(si.health, healthPath, ["full", "employee", "employer", "breakdown"]);
-  const breakdownPath = child(healthPath, "breakdown");
-  const breakdown = record(health.breakdown, breakdownPath, ["health", "care", "childSupport"]);
-  const pensionPath = child(siPath, "pension");
-  const pension = record(si.pension, pensionPath, ["full", "employee", "employer"]);
-  const eiPath = child(path, "employmentInsurance");
-  const ei =
-    data.employmentInsurance === null
-      ? null
-      : record(data.employmentInsurance, eiPath, ["base", "employee", "employer"]);
+  const data = record(
+    value,
+    path,
+    [
+      "grossPay",
+      "socialInsurance",
+      "employmentInsurance",
+      "withholdingBase",
+      "incomeTax",
+      "residentTax",
+      "adjustments",
+      "incomeTaxTotal",
+      "socialInsuranceEmployeeTotal",
+      "totalDeductions",
+      "netPay",
+      "tables",
+    ],
+    ["extraPremium"],
+  );
   const tablesPath = child(path, "tables");
   const tables = record(data.tables, tablesPath, ["withholding", "kenpo", "pension", "employment"]);
 
   const result: PayrollResult = {
     grossPay: nonNegativeMoney(data.grossPay, child(path, "grossPay")),
-    socialInsurance: {
-      health: {
-        full: rational(health.full, child(healthPath, "full")),
-        employee: nonNegativeMoney(health.employee, child(healthPath, "employee")),
-        employer: rational(health.employer, child(healthPath, "employer")),
-        breakdown: {
-          health: rational(breakdown.health, child(breakdownPath, "health")),
-          care: rational(breakdown.care, child(breakdownPath, "care")),
-          childSupport: rational(breakdown.childSupport, child(breakdownPath, "childSupport")),
-        },
-      },
-      pension: {
-        full: rational(pension.full, child(pensionPath, "full")),
-        employee: nonNegativeMoney(pension.employee, child(pensionPath, "employee")),
-        employer: rational(pension.employer, child(pensionPath, "employer")),
-      },
-      childContribution: rational(si.childContribution, child(siPath, "childContribution")),
-      employeeTotal: nonNegativeMoney(si.employeeTotal, child(siPath, "employeeTotal")),
-    },
-    employmentInsurance: ei
-      ? {
-          base: nonNegativeMoney(ei.base, child(eiPath, "base")),
-          employee: nonNegativeMoney(ei.employee, child(eiPath, "employee")),
-          employer: rational(ei.employer, child(eiPath, "employer")),
-        }
-      : null,
+    socialInsurance: readSocialInsurance(data.socialInsurance, child(path, "socialInsurance")),
+    employmentInsurance: readEmploymentInsurance(
+      data.employmentInsurance,
+      child(path, "employmentInsurance"),
+    ),
     withholdingBase: money(data.withholdingBase, child(path, "withholdingBase")),
     incomeTax: nonNegativeMoney(data.incomeTax, child(path, "incomeTax")),
     residentTax: nonNegativeMoney(data.residentTax, child(path, "residentTax")),
@@ -928,14 +1108,17 @@ function resultOf(value: unknown, path: string): PayrollResult {
     totalDeductions: money(data.totalDeductions, child(path, "totalDeductions")),
     netPay: money(data.netPay, child(path, "netPay")),
     tables: {
-      withholding: tableRef(tables.withholding, child(tablesPath, "withholding")),
-      kenpo: tableRef(tables.kenpo, child(tablesPath, "kenpo")),
-      pension: tableRef(tables.pension, child(tablesPath, "pension")),
+      withholding: readTableRef(tables.withholding, child(tablesPath, "withholding")),
+      kenpo: readTableRef(tables.kenpo, child(tablesPath, "kenpo")),
+      pension: readTableRef(tables.pension, child(tablesPath, "pension")),
       employment:
         tables.employment === null
           ? null
-          : tableRef(tables.employment, child(tablesPath, "employment")),
+          : readTableRef(tables.employment, child(tablesPath, "employment")),
     },
+    ...(data.extraPremium === undefined
+      ? {}
+      : { extraPremium: extraPremiumResultOf(data.extraPremium, child(path, "extraPremium")) }),
   };
   // The totals the entries are made from must add up (22-payroll §8.5).
   if (result.grossPay - result.totalDeductions !== result.netPay) {
@@ -945,12 +1128,14 @@ function resultOf(value: unknown, path: string): PayrollResult {
     fail(child(path, "incomeTaxTotal"), "is not incomeTax + adjustments.incomeTax");
   }
   if (
-    result.socialInsurance.employeeTotal + result.adjustments.socialInsurance !==
+    result.socialInsurance.employeeTotal +
+      (result.extraPremium?.socialInsurance.employeeTotal ?? 0n) +
+      result.adjustments.socialInsurance !==
     result.socialInsuranceEmployeeTotal
   ) {
     fail(
       child(path, "socialInsuranceEmployeeTotal"),
-      "is not socialInsurance.employeeTotal + adjustments.socialInsurance",
+      "is not socialInsurance.employeeTotal (+ extraPremium) + adjustments.socialInsurance",
     );
   }
   return result;
