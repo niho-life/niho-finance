@@ -27,6 +27,7 @@ import {
   isAcceptedDocumentMime,
   isAccountGroupOf,
   isCalendarDate,
+  isRecurringMonth,
   isSalesTaxCategoryCode,
   isTaxCategoryCode,
   isValidRuleRegex,
@@ -35,6 +36,7 @@ import {
   parseQuantity,
   parseYenInput,
   PARTNER_KINDS,
+  paymentTermsProblem,
   RULE_MODES,
   RULE_REGEX_MAX_LENGTH,
   ACCRUAL_TYPES,
@@ -45,6 +47,8 @@ import {
   type DocumentMime,
   type EntryCounterpart,
   type Money,
+  type PaymentTerms,
+  type RecurringMonth,
   type RuleAction,
   type RuleMatch,
   type RuleSign,
@@ -971,6 +975,122 @@ export const invoicesFilterSchema = z.object({
   page: filterPage,
 });
 export type InvoicesFilter = z.output<typeof invoicesFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 支払 (25-payables §3, §4, §6, §7)
+// ---------------------------------------------------------------------------
+
+/**
+ * 未払として登録 (25 §4.1, §7.1). One expense line: the amount is tax-inclusive. Empty 支払期日 →
+ * the default of the partner's payment terms; empty セグメント → the partner's, else the account's
+ * default, else 共通; empty 摘要 → 「請求書 <取引先>」.
+ */
+export const payableRegisterSchema = z.object({
+  documentId: idField("証憑"),
+  partnerId: idField("取引先"),
+  invoiceDate: requiredDate("請求書の日付"),
+  dueDate: optionalDate("支払期日"),
+  amount: positiveYen("金額"),
+  accountId: idField("科目"),
+  taxCategoryCode: taxCategoryCodeField("税区分"),
+  segmentId: optionalIdField("セグメント"),
+  description: optionalText("摘要", 200),
+  /** 支払元の予定 */
+  walletId: optionalIdField("支払元の予定"),
+});
+export type PayableRegisterInput = z.input<typeof payableRegisterSchema>;
+
+/** 期日・支払元を変える (25 §4.3). A missing key is left as it is; empty clears it. */
+export const payableUpdateSchema = z.object({
+  dueDate: optionalDate("支払期日").optional(),
+  walletId: optionalIdField("支払元の予定").optional(),
+});
+export type PayableUpdateInput = z.input<typeof payableUpdateSchema>;
+
+/**
+ * 支払の登録 (25 §4.2). With a statement line (`walletTransactionId`, a pending outflow of the chosen
+ * wallet) the date, the wallet and the amount are the line's.
+ */
+export const payablePaymentSchema = z.object({
+  paidOn: requiredDate("支払日"),
+  walletId: idField("口座"),
+  amount: positiveYen("出金額"),
+  walletTransactionId: optionalIdField("明細"),
+});
+export type PayablePaymentInput = z.input<typeof payablePaymentSchema>;
+
+/** 支払の取消 (25 §4.3): the payment's entry and the reason. */
+export const cancelPayablePaymentSchema = z.object({
+  entryId: idField("支払"),
+  reason: requiredText("理由", 500),
+});
+export type CancelPayablePaymentInput = z.input<typeof cancelPayablePaymentSchema>;
+
+/** 登録の取消 (25 §4.3). */
+export const cancelPayableSchema = z.object({ reason: requiredText("理由", 500) });
+export type CancelPayableInput = z.input<typeof cancelPayableSchema>;
+
+const PAYMENT_TERM_FIELDS = ["closingDay", "dueMonths", "dueDay"] as const;
+
+/**
+ * 支払条件 of a partner (25 §3): 締め日・何か月後・支払日 (31 = 末日), all three or none (none clears
+ * them). Parsed into `terms` (`null` = no terms).
+ */
+export const partnerPaymentTermsSchema = z
+  .object({
+    partnerId: idField("取引先"),
+    closingDay: optionalIntegerInRange("締め日", 1, 31),
+    dueMonths: optionalIntegerInRange("何か月後", 0, 3),
+    dueDay: optionalIntegerInRange("支払日", 1, 31),
+  })
+  .superRefine((value, ctx) => {
+    const missing = PAYMENT_TERM_FIELDS.filter((field) => value[field] === null);
+    if (missing.length === PAYMENT_TERM_FIELDS.length) return;
+    const [first] = missing;
+    if (first) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "締め日・何か月後・支払日の 3 つを入力してください（支払条件をなくすときは 3 つとも空にします）",
+        path: [first],
+      });
+      return;
+    }
+    const problem = paymentTermsProblem({
+      closingDay: value.closingDay ?? 0,
+      dueMonths: value.dueMonths ?? 0,
+      dueDay: value.dueDay ?? 0,
+    });
+    if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["dueDay"] });
+  })
+  .transform((value): { partnerId: string; terms: PaymentTerms | null } => ({
+    partnerId: value.partnerId,
+    terms:
+      value.closingDay === null || value.dueMonths === null || value.dueDay === null
+        ? null
+        : { closingDay: value.closingDay, dueMonths: value.dueMonths, dueDay: value.dueDay },
+  }));
+export type PartnerPaymentTermsInput = z.input<typeof partnerPaymentTermsSchema>;
+
+/** 状態 of the list: 未払 (default: 未払・一部支払) / 支払済み / すべて (取消 too; never void documents). */
+export const PAYABLE_STATUS_FILTERS = ["open", "paid", "all"] as const;
+export type PayableStatusFilter = (typeof PAYABLE_STATUS_FILTERS)[number];
+
+/** 並び: 期日順 (default) / 取引先別. */
+export const PAYABLE_VIEWS = ["due", "partner"] as const;
+export type PayableView = (typeof PAYABLE_VIEWS)[number];
+
+/** `/payables?status&partner&view&q&page` (25 §6). */
+export const payablesFilterSchema = z.object({
+  status: lenient<PayableStatusFilter>(z.enum(PAYABLE_STATUS_FILTERS), "open"),
+  partner: filterId,
+  view: lenient<PayableView>(z.enum(PAYABLE_VIEWS), "due"),
+  /** 取引先名・ファイル名・メモ, partial match. */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  page: filterPage,
+});
+export type PayablesFilter = z.output<typeof payablesFilterSchema>;
+
 // Imports (取込, 12-imports)
 // ---------------------------------------------------------------------------
 
@@ -1971,8 +2091,18 @@ export const fixedAssetUpdateSchema = z.object({
   cost: positiveYen("取得価額").optional(),
   method: fixedAssetFields.method.optional(),
   usefulLifeYears: fixedAssetFields.usefulLifeYears.optional(),
+  /** 償却資産申告の資産の種類 (§14.2): 1–6, empty = from the account. Changes at any time. */
+  propertyTaxAssetType: optionalIntegerInRange("資産の種類", 1, 6).optional(),
+  /** 申告の対象外の理由 (§14.1): empty = by the rules. Changes at any time. */
+  propertyTaxExcludedReason: optionalText("申告の対象外の理由", 200).optional(),
 });
 export type FixedAssetUpdateInput = z.input<typeof fixedAssetUpdateSchema>;
+
+/** 償却資産申告の申告先 (§14.4): 本店所在地の市町村; empty clears it. */
+export const propertyTaxMunicipalitySchema = z.object({
+  municipality: optionalText("申告先", 100),
+});
+export type PropertyTaxMunicipalityInput = z.input<typeof propertyTaxMunicipalitySchema>;
 
 /** 登録の取消 (§5.2). */
 export const fixedAssetVoidSchema = z.object({ reason: requiredText("理由", 500) });
@@ -2309,6 +2439,11 @@ const recurringFields = {
   endDate: optionalDate("終了日"),
   walletId: idField("口座"),
   accountId: idField("科目"),
+  /**
+   * 振替 (21 §10.1): the other wallet, chosen in the 科目 select's 「口座（振替）」 group; the
+   * repository keeps `accountId` on that wallet's account. `null` for 収入 / 支出.
+   */
+  transferWalletId: optionalIdField("相手の口座"),
   partnerId: optionalIdField("取引先"),
   /** Defaults to the wallet's default segment when left out on create. */
   segmentId: optionalIdField("セグメント"),
@@ -2316,7 +2451,14 @@ const recurringFields = {
   note: optionalText("メモ", 500),
 };
 
-export const recurringItemCreateSchema = z.object(recurringFields);
+/** A 振替 takes its account from the other wallet; anything else needs 科目. */
+export const recurringItemCreateSchema = z
+  .object({ ...recurringFields, accountId: optionalIdField("科目") })
+  .superRefine((value, ctx) => {
+    if (value.transferWalletId === null && value.accountId === null) {
+      ctx.addIssue({ code: "custom", path: ["accountId"], message: "科目を選んでください" });
+    }
+  });
 export type RecurringItemCreateInput = z.input<typeof recurringItemCreateSchema>;
 
 /** A partial update: a missing key leaves the column as is (無効にする / 有効にする included). */
@@ -2331,6 +2473,8 @@ export const recurringItemUpdateSchema = z.object({
   endDate: recurringFields.endDate.optional(),
   walletId: recurringFields.walletId.optional(),
   accountId: recurringFields.accountId.optional(),
+  /** `null` turns a 振替 back into 収入 / 支出; a new 科目 alone does the same. */
+  transferWalletId: recurringFields.transferWalletId.optional(),
   partnerId: recurringFields.partnerId.optional(),
   segmentId: recurringFields.segmentId.optional(),
   taxCategoryCode: recurringFields.taxCategoryCode.optional(),
@@ -2338,6 +2482,18 @@ export const recurringItemUpdateSchema = z.object({
   isActive: booleanField("状態").optional(),
 });
 export type RecurringItemUpdateInput = z.input<typeof recurringItemUpdateSchema>;
+
+/** 登録 of one occurrence (21 §10.5): the item, the month (`YYYY-MM`) and the positive amount. */
+export const recurringPostSchema = z.object({
+  recurringItemId: idField("定期取引"),
+  month: fromText("月", (text): Conversion<RecurringMonth> => {
+    if (!isRecurringMonth(text)) return problem("月は 2026-12 の形にしてください");
+    return ok(text);
+  }),
+  /** 1〜999,999,999,999 円; the entry's type gives the sign. */
+  amount: recurringAmountField("金額"),
+});
+export type RecurringPostInput = z.input<typeof recurringPostSchema>;
 
 // ---------------------------------------------------------------------------
 // 賞与 (22-payroll §10)

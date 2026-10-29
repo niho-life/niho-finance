@@ -202,6 +202,8 @@ export function FixedAssetForm({
   // A method the account does not allow (定率法 after switching to ソフトウェア) is chosen again.
   const method: DepreciationMethod | "" = picked && allowed.includes(picked) ? picked : "";
   const lifeBased = isLifeBased(method);
+  // 即時償却 may keep a life for 償却資産申告 (16 §14.2); the depreciation does not use it.
+  const lifeAllowed = lifeBased || method === "immediate";
 
   const problems =
     method && cost !== null && cost > 0n && accountCode && isCalendarDate(acquisitionDate)
@@ -211,7 +213,9 @@ export function FixedAssetForm({
           acquisitionDate,
           accountCode,
           usefulLifeYears:
-            draft.usefulLifeYears.trim() === "" ? null : Number(draft.usefulLifeYears),
+            !lifeAllowed || draft.usefulLifeYears.trim() === ""
+              ? null
+              : Number(draft.usefulLifeYears),
         })
       : [];
   const notes =
@@ -253,7 +257,7 @@ export function FixedAssetForm({
     const common = {
       name: draft.name,
       method,
-      usefulLifeYears: lifeBased ? draft.usefulLifeYears : "",
+      usefulLifeYears: lifeAllowed ? draft.usefulLifeYears : "",
       segmentId: draft.segmentId,
       note: draft.note,
     };
@@ -519,6 +523,8 @@ export function FixedAssetForm({
               <Warn>{lifeProblem}</Warn>
             ) : lifeBased ? (
               "2〜50 年"
+            ) : method === "immediate" ? (
+              "中小企業者の特例の資産は、償却資産申告に使うので入れます（償却の計算には使いません）"
             ) : (
               "定額法・定率法のときに入れます"
             )
@@ -531,8 +537,8 @@ export function FixedAssetForm({
             min={2}
             max={50}
             step={1}
-            value={lifeBased ? draft.usefulLifeYears : ""}
-            disabled={!lifeBased}
+            value={lifeAllowed ? draft.usefulLifeYears : ""}
+            disabled={!lifeAllowed}
             onChange={(event) => change({ usefulLifeYears: event.currentTarget.value })}
           />
         </FormField>

@@ -73,6 +73,13 @@ service_env_vars() {
   )
   if [[ "$service" == web ]]; then
     vars+=("NIHO_FINANCE_IAP_AUDIENCE=$(iap_audience)")
+    # 受け渡しパッケージ (14-reports §16.4): a large package is a Cloud Tasks task to the jobs
+    # service, with the scheduler's OIDC identity (audience = the jobs service's URL).
+    vars+=(
+      "NIHO_FINANCE_TASKS_QUEUE=projects/$GCP_PROJECT/locations/$GCP_REGION/queues/$TASKS_QUEUE"
+      "NIHO_FINANCE_JOB_URL=$(service_url "$JOBS_SERVICE")"
+      "NIHO_FINANCE_JOB_SERVICE_ACCOUNT=$SCHEDULER_SA_EMAIL"
+    )
   else
     # The scheduler's OIDC token (12-imports §5): its audience is the jobs service's URL.
     vars+=(

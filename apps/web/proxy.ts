@@ -64,6 +64,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Not the build's files, the health check or the jobs (S4 authenticates those).
-  matcher: ["/((?!_next/|api/health|api/jobs/|favicon\\.ico).*)"],
+  // Not the build's files, the health check or the jobs (S4 authenticates those). Nor the home-screen
+  // app's static files (10 §1.1: sw.js, the manifest, 接続がない画面, the icons): they hold nothing
+  // of the books and IAP decides who reaches them; here 閲覧 would get 403 and every one a DB lookup.
+  matcher: [
+    "/((?!_next/|api/health|api/jobs/|favicon\\.ico|sw\\.js$|app\\.webmanifest$|offline\\.html$|icons/).*)",
+  ],
 };

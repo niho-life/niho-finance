@@ -1,5 +1,5 @@
 import type { Money } from "@niho-finance/ledger";
-import { buildMonthlyTrend, type StatementRow } from "@niho-finance/reports";
+import { buildMonthlyTrend, type MonthlyRow, type ReportPeriod } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -15,7 +15,16 @@ import { loadReports, parseReportParams, reportHref, resolvePeriodOrNull } from 
 
 export const metadata: Metadata = { title: "月次推移" };
 
-function AmountCells({ values, className = "" }: { values: readonly Money[]; className?: string }) {
+/** The amounts of a row; with 前年同月 (§15.6) a muted second line under each (「—」 before the books). */
+function AmountCells({
+  values,
+  prior,
+  className = "",
+}: {
+  values: readonly Money[];
+  prior?: readonly (Money | null)[] | undefined;
+  className?: string;
+}) {
   return values.map((value, i) => (
     <Td
       key={i}
@@ -23,8 +32,37 @@ function AmountCells({ values, className = "" }: { values: readonly Money[]; cla
       className={`${i === values.length - 1 ? "font-bold" : ""} ${className}`}
     >
       {formatAmount(value)}
+      {prior ? (
+        <span className="block text-[11px] leading-tight font-normal text-muted">
+          <span className="sr-only">前年 </span>
+          {prior[i] === null || prior[i] === undefined ? "—" : formatAmount(prior[i])}
+        </span>
+      ) : null}
     </Td>
   ));
+}
+
+/** 前年同月 on / off (`compare=prior`): a toggle inside the condition form, from the 2nd year. */
+function PriorToggle({ period, on }: { period: ReportPeriod; on: boolean }) {
+  return (
+    <Link
+      href={reportHref("monthly", period, { compare: on ? null : "prior" })}
+      aria-label={on ? "前年同月を隠す" : "前年同月を並べる"}
+      className={`inline-flex min-h-8 items-center gap-1.5 rounded-[10px] border px-2.5 text-[13px] font-semibold whitespace-nowrap ${
+        on ? "border-text text-text" : "border-border text-muted hover:text-text"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-flex size-3.5 items-center justify-center rounded-[4px] border text-[10px] leading-none ${
+          on ? "border-text bg-text text-white" : "border-border-2"
+        }`}
+      >
+        {on ? "✓" : ""}
+      </span>
+      前年同月
+    </Link>
+  );
 }
 
 /**
@@ -37,13 +75,14 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
   const period = resolvePeriodOrNull(source, params.query, today);
   if (!period) return <NoFiscalYear />;
 
-  const report = buildMonthlyTrend(source, period);
+  const report = buildMonthlyTrend(source, period, { compareWithPriorYear: params.comparePrior });
+  const compare = report.comparing ? "prior" : null;
   const count = report.columns.length + 1;
   const columns = `minmax(10rem,1.4fr) repeat(${count}, minmax(6.25rem,1fr))`;
   const minWidth = 160 + count * 100 + count * 12 + 28;
 
   const rows: ReactNode[] = [];
-  const accountRow = (row: StatementRow<Money[]>) => (
+  const accountRow = (row: MonthlyRow) => (
     <WideRow key={row.key} columns={columns}>
       <span role="rowheader" className={`min-w-0 truncate ${stickyCell({ indent: 2 })}`}>
         {row.accountId ? (
@@ -58,7 +97,7 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
           row.label
         )}
       </span>
-      <AmountCells values={row.value} />
+      <AmountCells values={row.value} prior={row.prior} />
     </WideRow>
   );
   for (let i = 0; i < report.rows.length; i += 1) {
@@ -79,7 +118,7 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
           label={row.label}
           labelIsToggle
           toggleLabel={`${row.label}の科目`}
-          cells={<AmountCells values={row.value} className="text-muted" />}
+          cells={<AmountCells values={row.value} prior={row.prior} className="text-muted" />}
           defaultOpen
         >
           {children}
@@ -100,13 +139,23 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
         <span role="rowheader" className={`min-w-0 ${stickyCell()}`}>
           {row.label}
         </span>
-        <AmountCells values={row.value} />
+        <AmountCells values={row.value} prior={row.prior} />
       </WideRow>,
     );
   }
 
   return (
-    <ReportsFrame tab="monthly" source={source} period={period} exportable={!report.empty}>
+    <ReportsFrame
+      tab="monthly"
+      source={source}
+      period={period}
+      hidden={{ compare }}
+      controls={
+        report.hasPriorYear ? <PriorToggle period={period} on={report.comparing} /> : undefined
+      }
+      exportParams={{ compare }}
+      exportable={!report.empty}
+    >
       {report.empty ? (
         <NoEntries />
       ) : (
@@ -114,6 +163,7 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
           <Note>
             {period.segmentId ? `${segmentName(source.segments, period.segmentId)} · ` : ""}
             金額の単位は円です。各月の当期純利益は、その月の損益計算書と一致します。
+            {report.comparing ? "下の小さな数字は前年同月です（帳簿が始まる前の月は「—」）。" : ""}
           </Note>
           <WideTable label="月次推移" minWidth={minWidth}>
             <WideHead columns={columns}>

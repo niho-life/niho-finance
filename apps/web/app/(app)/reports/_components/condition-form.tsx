@@ -27,6 +27,7 @@ export function ConditionForm({
   hidden = {},
   linkParams = {},
   controls,
+  segmentSwitch,
 }: {
   tab: ReportTab;
   source: ReportSource;
@@ -37,11 +38,13 @@ export function ConditionForm({
   linkParams?: ExtraParams;
   /** Tab controls inside the form (仕訳帳's state). */
   controls?: ReactNode;
+  /** Overrides whether the tab shows the segment switch (集計 hides it on the segment axis). */
+  segmentSwitch?: boolean;
 }) {
   const years = [...source.fiscalYears].sort((a, b) => a.no - b.no);
   const segments = source.segments.filter((segment) => segment.isActive).sort(compareSegments);
   const labels = segmentLabels(segments);
-  const showSegment = SEGMENT_TABS.has(tab);
+  const showSegment = segmentSwitch ?? SEGMENT_TABS.has(tab);
   const custom = period.preset === "custom";
   const keep = Object.entries(hidden).filter(
     (entry): entry is [string, string | number] =>

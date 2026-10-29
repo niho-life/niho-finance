@@ -1,6 +1,8 @@
 import {
+  countDueRecurringOccurrences,
   listAccountOptions,
   listPartners,
+  listRecurringEntries,
   listRecurringItems,
   listSegments,
   listTaxCategoryOptions,
@@ -9,6 +11,7 @@ import {
 } from "@niho-finance/db";
 import { formatYenInput, type Money } from "@niho-finance/ledger";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { formatAmount } from "@/lib/format";
@@ -29,6 +32,10 @@ export default async function RecurringPage() {
   const partners = await listPartners(prisma);
   const segments = await listSegments(prisma);
   const taxOptions = await listTaxCategoryOptions(prisma);
+  // 予定日の登録 n 件 (21 §10.4) and each item's 登録した取引 for its sheet (§10.8).
+  const dueCount = await countDueRecurringOccurrences(prisma, today);
+  const entriesById = new Map<string, Awaited<ReturnType<typeof listRecurringEntries>>>();
+  for (const item of items) entriesById.set(item.id, await listRecurringEntries(prisma, item.id));
 
   // 毎月 入金 · 出金: active monthly items that have not ended and move 現預金 (§3.2).
   let deposits: Money = 0n;
@@ -54,6 +61,16 @@ export default async function RecurringPage() {
     walletName: item.walletName,
     accountId: item.accountId,
     accountLabel: `${item.accountCode} ${item.accountName}`,
+    transferWalletId: item.transferWalletId,
+    transferWalletName: item.transferWalletName,
+    entries: (entriesById.get(item.id) ?? []).map((entry) => ({
+      id: entry.id,
+      no: entry.no,
+      entryDate: entry.entryDate,
+      amount: formatAmount(entry.amount),
+      voided: entry.voided,
+      replacedByNo: entry.replacedByNo,
+    })),
     partnerId: item.partnerId,
     segmentId: item.segmentId,
     taxCategoryCode: item.taxCategoryCode,
@@ -66,8 +83,19 @@ export default async function RecurringPage() {
     <>
       <PageHeader title="定期取引" back={{ href: "/settings", label: "設定" }} />
       <p className="mb-3 text-[13px] text-muted">
-        毎月・毎年決まって起きる入出金です。資金繰りの予測に使い、仕訳は登録しません
+        毎月・毎年決まって起きる入出金です。資金繰りの予測に使い、予定日が来たら 1
+        クリックで取引として登録できます（自動では登録しません）
       </p>
+      {dueCount > 0 ? (
+        <p className="mb-2 text-[13px]">
+          <Link
+            href="/settings/recurring/due"
+            className="font-bold text-primary underline-offset-4 hover:underline"
+          >
+            予定日の登録 {dueCount} 件
+          </Link>
+        </p>
+      ) : null}
       <p className="num mb-2 text-[12px] text-muted">
         毎月 入金 {formatAmount(deposits)} 円 · 出金 {formatAmount(withdrawals)} 円
       </p>

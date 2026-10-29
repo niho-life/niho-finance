@@ -193,8 +193,10 @@ export function primaryPlan(row: ClientStatementRow, draft: RowDraft): PrimaryPl
   if (amountOf(row) === 0n || draft.mode === "ignore") return { kind: "ignore" };
   if (draft.mode === "transfer") {
     if (draft.counterpart) return { kind: "transfer", counterpart: draft.counterpart };
-    // A rule's 振替 without a candidate posts to the wallet alone (15 §8); otherwise the dialog.
-    const fromRule = !draft.edited && row.suggestion?.sources.transfer === "rule";
+    // A rule's 振替 without a candidate posts to the wallet alone (15 §8), so does a recurring
+    // item's (its other wallet is set, 21-cashflow §10.6); otherwise the dialog.
+    const decided = row.suggestion?.sources.transfer;
+    const fromRule = !draft.edited && (decided === "rule" || decided === "recurring");
     if (draft.transferToWalletId && fromRule) {
       return { kind: "transfer", counterpart: `wallet:${draft.transferToWalletId}` };
     }
