@@ -68,10 +68,17 @@ function searchValuesOf(
 /** まとめて読み取る reads at most this many documents at a time (cost and waiting, 20-reader §10.2). */
 const BULK_READ_LIMIT = 20;
 
-const EMPTY_TITLES: Readonly<Record<DocumentTab, string>> = {
-  inbox: "受信箱は空です。すべてのタブで検索できます",
-  all: "証憑がありません。領収書や請求書を保存するか、スマホで撮影します",
-  voided: "無効にした証憑はありません",
+/** The empty tab: what is missing and what to do next (05-ui-ux §3.1). */
+const EMPTY_STATES: Readonly<Record<DocumentTab, { title: string; description: string }>> = {
+  inbox: { title: "受信箱は空です", description: "保存した証憑は「すべて」のタブで検索できます" },
+  all: {
+    title: "証憑がありません",
+    description: "領収書や請求書を保存するか、スマホで撮影します",
+  },
+  voided: {
+    title: "無効にした証憑はありません",
+    description: "証憑の詳細で無効にすると、ここに並びます",
+  },
 };
 
 function chipClass(active: boolean): string {
@@ -184,7 +191,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/docume
               className={chipClass(active)}
             >
               {DOCUMENT_TAB_LABELS[item]}
-              <span className="num font-bold text-muted-2">
+              <span className="num font-bold text-muted">
                 {counts[item].toLocaleString("ja-JP")}
               </span>
             </Link>
@@ -211,7 +218,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/docume
             }
           />
         ) : (
-          <EmptyState title={EMPTY_TITLES[tab]} />
+          <EmptyState title={EMPTY_STATES[tab].title} description={EMPTY_STATES[tab].description} />
         )
       ) : (
         <>

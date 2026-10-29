@@ -629,7 +629,7 @@ function AddRecurringRow({ options }: { options: Options }) {
         ) : null}
       </select>
       <Button type="submit" size="sm" variant="primary" disabled={pending}>
-        追加
+        {pending ? "追加中…" : "追加"}
       </Button>
       <FormError error={error} className="col-span-full" />
     </form>

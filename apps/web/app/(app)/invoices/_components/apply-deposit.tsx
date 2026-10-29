@@ -1,6 +1,6 @@
 "use client";
 
-import { formatYen, invoiceNumberLabel, SUGGESTED_FEE_LIMIT } from "@niho-finance/ledger";
+import { invoiceNumberLabel, SUGGESTED_FEE_LIMIT } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
+import { formatYenDisplay } from "@/lib/format";
 import { recordInvoicePaymentAction } from "../actions";
 
 /** The deposit being applied (amounts as decimal text: bigint stays on the server). */
@@ -94,15 +95,15 @@ export function ApplyDepositButton({
           <dt className="text-muted">取引先</dt>
           <dd className="min-w-0 break-words">{invoice.partnerName}</dd>
           <dt className="text-muted">入金額</dt>
-          <dd className="num">{formatYen(amount)} 円</dd>
+          <dd className="num">{formatYenDisplay(amount)} 円</dd>
           <dt className="text-muted">残高</dt>
-          <dd className="num">{formatYen(balance)} 円</dd>
+          <dd className="num">{formatYenDisplay(balance)} 円</dd>
         </dl>
         {difference > 0n ? (
           <div className="mt-3">
             <Checkbox
               id={`${id}-fee`}
-              label={`差額 ${formatYen(difference)} 円を振込手数料にする`}
+              label={`差額 ${formatYenDisplay(difference)} 円を振込手数料にする`}
               checked={feeChecked}
               onChange={(event) => setFeeChecked(event.currentTarget.checked)}
             />
@@ -114,8 +115,8 @@ export function ApplyDepositButton({
           </div>
         ) : null}
         <p className="mt-3 text-[13px]">
-          充当額 <span className="num font-bold">{formatYen(amount + fee)} 円</span>
-          。登録後の残高 <span className="num font-bold">{formatYen(after)} 円</span>
+          充当額 <span className="num font-bold">{formatYenDisplay(amount + fee)} 円</span>
+          。登録後の残高 <span className="num font-bold">{formatYenDisplay(after)} 円</span>
         </p>
       </ConfirmDialog>
     </>

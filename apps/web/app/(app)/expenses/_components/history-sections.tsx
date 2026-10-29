@@ -1,12 +1,12 @@
 "use client";
 
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { cancelExpensePaymentAction } from "../actions";
 import { ReasonButton } from "./reason-dialog";
 import type { PaymentView, VoidedClaimView } from "./views";
@@ -53,7 +53,7 @@ function PaymentRow({ payment }: { payment: PaymentView }) {
         {payment.count}
       </Td>
       <Td align="right" className="font-bold">
-        {formatYen(BigInt(payment.total))}
+        {formatYenDisplay(BigInt(payment.total))}
       </Td>
       <Td sm="hide" className="truncate text-[13px]">
         {payment.walletName}
@@ -79,7 +79,7 @@ function PaymentRow({ payment }: { payment: PaymentView }) {
           >
             <p>
               {payment.claimantName} への{" "}
-              <span className="num font-bold">{formatYen(BigInt(payment.total))}</span> 円（
+              <span className="num font-bold">{formatYenDisplay(BigInt(payment.total))}</span> 円（
               {payment.count} 件）の支払の仕訳 {entryNo(payment.entry.no)}{" "}
               {payment.entry.voided
                 ? "は取消済みです。支払だけを取り消します。"
@@ -157,7 +157,7 @@ export function VoidedClaims({ claims }: { claims: readonly VoidedClaimView[] })
                   {claim.reversalNo !== null ? ` · 反対仕訳 ${entryNo(claim.reversalNo)}` : ""}
                 </span>
               </Td>
-              <Td align="right">{formatYen(BigInt(claim.amount))}</Td>
+              <Td align="right">{formatYenDisplay(BigInt(claim.amount))}</Td>
               <Td sm="hide" className="truncate text-[13px]">
                 {claim.voidReason ?? ""}
               </Td>

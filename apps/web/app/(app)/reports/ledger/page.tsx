@@ -13,7 +13,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Td } from "@/components/ui/table";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { AutoSubmitSelect } from "../_components/auto-submit-select";
 import { NoFiscalYear } from "../_components/empty";
 import { FilterChips } from "../_components/filter-chips";
@@ -135,7 +135,7 @@ function LedgerTable({ report }: { report: GeneralLedgerReport }) {
         {blank}
         {blank}
         {blank}
-        <Td align="right">{formatAmount(report.opening)}</Td>
+        <Td align="right">{formatAmountDisplay(report.opening)}</Td>
       </WideRow>
       {report.rows.map((row, i) => {
         const voided = row.status === "voided";
@@ -159,9 +159,9 @@ function LedgerTable({ report }: { report: GeneralLedgerReport }) {
               ) : null}
             </Td>
             <Td className="truncate text-[13px]">{row.counterpart}</Td>
-            <Td align="right">{row.debit === 0n ? "" : formatAmount(row.debit)}</Td>
-            <Td align="right">{row.credit === 0n ? "" : formatAmount(row.credit)}</Td>
-            <Td align="right">{formatAmount(row.balance)}</Td>
+            <Td align="right">{row.debit === 0n ? "" : formatAmountDisplay(row.debit)}</Td>
+            <Td align="right">{row.credit === 0n ? "" : formatAmountDisplay(row.credit)}</Td>
+            <Td align="right">{formatAmountDisplay(row.balance)}</Td>
           </WideRow>
         );
       })}
@@ -170,8 +170,8 @@ function LedgerTable({ report }: { report: GeneralLedgerReport }) {
         {blank}
         <Td>合計</Td>
         {blank}
-        <Td align="right">{formatAmount(report.debitTotal)}</Td>
-        <Td align="right">{formatAmount(report.creditTotal)}</Td>
+        <Td align="right">{formatAmountDisplay(report.debitTotal)}</Td>
+        <Td align="right">{formatAmountDisplay(report.creditTotal)}</Td>
         {blank}
       </WideRow>
       <WideRow columns={COLUMNS} className="font-bold">
@@ -181,7 +181,7 @@ function LedgerTable({ report }: { report: GeneralLedgerReport }) {
         {blank}
         {blank}
         {blank}
-        <Td align="right">{formatAmount(report.closing)}</Td>
+        <Td align="right">{formatAmountDisplay(report.closing)}</Td>
       </WideRow>
     </WideTable>
   );

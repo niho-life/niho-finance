@@ -1,6 +1,6 @@
 import type { JournalEntryDetail } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
+import { formatYenDisplay } from "@/lib/format";
 
 const COLUMNS = {
   columns:
@@ -29,7 +29,7 @@ export function EntryLinesTable({ detail }: { detail: JournalEntryDetail }) {
       {detail.lines.map((line) => {
         const tax =
           line.taxAmount > 0n
-            ? `${line.taxCategoryName} · ${formatYen(line.taxAmount)}`
+            ? `${line.taxCategoryName} · ${formatYenDisplay(line.taxAmount)}`
             : line.taxCategoryName;
         const tags = line.memoTags.map((tag) => tag.name).join("・");
         const extras = [
@@ -55,12 +55,12 @@ export function EntryLinesTable({ detail }: { detail: JournalEntryDetail }) {
               ) : null}
             </Td>
             <Td align="right" className="font-bold">
-              {formatYen(line.amount)}
+              {formatYenDisplay(line.amount)}
             </Td>
             <Td sm="hide" className="text-[13px]">
               {line.taxCategoryName}
               {line.taxAmount > 0n ? (
-                <span className="num ml-1.5 text-muted">{formatYen(line.taxAmount)}</span>
+                <span className="num ml-1.5 text-muted">{formatYenDisplay(line.taxAmount)}</span>
               ) : null}
             </Td>
             <Td sm="hide" className="truncate text-[13px]">
@@ -84,10 +84,10 @@ export function EntryLinesTable({ detail }: { detail: JournalEntryDetail }) {
         <Td>
           合計
           <span className="num ml-3 text-[12px] font-normal text-muted">
-            借方 {formatYen(detail.debitTotal)} / 貸方 {formatYen(detail.creditTotal)}
+            借方 {formatYenDisplay(detail.debitTotal)} / 貸方 {formatYenDisplay(detail.creditTotal)}
           </span>
         </Td>
-        <Td align="right">{formatYen(detail.debitTotal)}</Td>
+        <Td align="right">{formatYenDisplay(detail.debitTotal)}</Td>
       </TableRow>
     </Table>
   );

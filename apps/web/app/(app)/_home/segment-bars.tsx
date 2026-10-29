@@ -1,5 +1,5 @@
 import type { Money } from "@niho-finance/ledger";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 
 export interface SegmentBar {
   key: string;
@@ -43,7 +43,7 @@ export function SegmentBars({ bars, label }: { bars: readonly SegmentBar[]; labe
               />
             </span>
             <span className="num text-right sm:col-start-3 sm:row-start-1">
-              {formatAmount(bar.value)}
+              {formatAmountDisplay(bar.value)}
             </span>
           </li>
         );

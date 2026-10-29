@@ -15,7 +15,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Td } from "@/components/ui/table";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { AutoSubmitSelect } from "../_components/auto-submit-select";
 import { COMPACT_CONTROL } from "../_components/condition-form";
 import { NoFiscalYear } from "../_components/empty";
@@ -216,8 +216,8 @@ export default async function BreakdownPage({ searchParams }: PageProps<"/report
           </Note>
           {report.hasOverlap ? (
             <Note>
-              複数のタグがついた行は、それぞれのタグに数えています（重なり {formatAmount(overlap)}{" "}
-              円）。
+              複数のタグがついた行は、それぞれのタグに数えています（重なり{" "}
+              {formatAmountDisplay(overlap)} 円）。
             </Note>
           ) : null}
           <WideTable label={report.title} minWidth={minWidth}>
@@ -272,7 +272,7 @@ export default async function BreakdownPage({ searchParams }: PageProps<"/report
                   </span>
                   {row.values.map((value, i) => (
                     <Td key={i} align="right" className={i === last ? "font-bold" : ""}>
-                      {formatAmount(value)}
+                      {formatAmountDisplay(value)}
                     </Td>
                   ))}
                   <Td align="right" className="text-[13px] text-muted">

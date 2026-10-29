@@ -4,11 +4,11 @@ import {
   listDocumentLinks,
   searchDocuments,
 } from "@niho-finance/db";
-import { DOCUMENT_KIND_LABELS, formatYen } from "@niho-finance/ledger";
+import { DOCUMENT_KIND_LABELS } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { statusText } from "./documents-table";
 import { EntryDocumentsActions } from "./entry-documents-actions";
 import type { InboxDocument } from "./inbox-picker";
@@ -45,7 +45,7 @@ export async function EntryDocuments({ entryId }: { entryId: string }) {
         title: documentTitle(row),
         kind: DOCUMENT_KIND_LABELS[row.kind],
         date: row.txnDate ? formatDate(row.txnDate) : null,
-        amount: row.amount === null ? null : formatYen(row.amount),
+        amount: row.amount === null ? null : formatYenDisplay(row.amount),
         partner: row.partnerName,
         sameAmount: same,
       }));
@@ -89,7 +89,7 @@ export async function EntryDocuments({ entryId }: { entryId: string }) {
                   {document.txnDate ? formatDate(document.txnDate) : "—"}
                 </Td>
                 <Td align="right" className="font-bold">
-                  {document.amount === null ? "—" : formatYen(document.amount)}
+                  {document.amount === null ? "—" : formatYenDisplay(document.amount)}
                 </Td>
                 <Td sm="hide" className="text-[12px] text-muted">
                   <span className="line-clamp-2">{statusText(document)}</span>

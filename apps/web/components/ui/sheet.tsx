@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
+import { useModalDialog } from "./modal-dialog";
 
 export interface SheetProps {
   open: boolean;
@@ -14,18 +15,15 @@ export interface SheetProps {
 
 /**
  * Edit panel from the right (native modal `<dialog>`): 400px on PC, the whole screen on phones.
- * The content is rendered only while open, so it always starts from the latest props.
+ * The content is rendered only while open, so it always starts from the latest props. It opens on
+ * its first field (or the control marked `data-autofocus`), closes with Esc and gives the focus
+ * back to the button that opened it (05-ui-ux §3.1).
  */
 export function Sheet({ open, onClose, title, description, children, footer }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  useModalDialog(ref, open);
 
   return (
     <dialog
@@ -57,6 +55,7 @@ export function Sheet({ open, onClose, title, description, children, footer }: S
               type="button"
               onClick={onClose}
               aria-label="閉じる"
+              data-dialog-close
               className="-mr-2 inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-black/5 hover:text-text"
             >
               <svg

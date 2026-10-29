@@ -14,7 +14,7 @@ function Side({ lines }: { lines: OpeningPreviewView["entries"][number]["debit"]
         <span key={index} className="block truncate">
           {line.account}
           {line.sub ? (
-            <span className="block truncate text-[11px] text-muted-2">{line.sub}</span>
+            <span className="block truncate text-[11px] text-muted">{line.sub}</span>
           ) : null}
         </span>
       ))}
@@ -39,9 +39,7 @@ export function OpeningEntriesTable({ preview }: { preview: OpeningPreviewView }
             {formatDate(entry.date)}
           </Td>
           <Td>
-            <span className="mr-2 text-[11px] text-muted-2 md:hidden">
-              {formatDate(entry.date)}
-            </span>
+            <span className="mr-2 text-[11px] text-muted md:hidden">{formatDate(entry.date)}</span>
             {entry.description}
           </Td>
           <Td sm="hide">

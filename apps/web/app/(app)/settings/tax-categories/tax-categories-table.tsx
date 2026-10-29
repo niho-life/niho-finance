@@ -45,7 +45,7 @@ function RuleRow({ rule }: { rule: TaxRateRuleSettings }) {
         <span className="num">
           {formatDate(rule.effectiveFrom)} – {rule.effectiveTo ? formatDate(rule.effectiveTo) : ""}
         </span>
-        {rule.note ? <span className="block text-[11px] text-muted-2">{rule.note}</span> : null}
+        {rule.note ? <span className="block text-[11px] text-muted">{rule.note}</span> : null}
         {status.state === "error" || status.state === "saving" ? (
           <span className="block">
             <SaveStatus asCell={false} status={status} />
@@ -174,7 +174,7 @@ function RulesSheet({ category, onClose }: { category: TaxCategorySettings; onCl
         ) : null}
         <div className="flex justify-end">
           <Button type="submit" variant="primary" disabled={add.pending}>
-            追加
+            {add.pending ? "追加中…" : "追加"}
           </Button>
         </div>
       </form>

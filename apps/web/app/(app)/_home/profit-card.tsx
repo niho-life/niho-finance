@@ -1,5 +1,5 @@
 import type { Money } from "@niho-finance/ledger";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { HomeCard } from "./card";
 import { SegmentBars, type SegmentBar } from "./segment-bars";
 
@@ -51,7 +51,7 @@ export function ProfitCard({
             <dd
               className={`num text-[18px] leading-snug font-extrabold sm:mt-0.5 sm:text-[22px] ${item.className}`}
             >
-              {formatAmount(item.value)}
+              {formatAmountDisplay(item.value)}
               <span className="ml-0.5 text-[11px] font-semibold text-muted">円</span>
             </dd>
           </div>

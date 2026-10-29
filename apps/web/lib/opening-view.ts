@@ -1,5 +1,5 @@
 import type { OpeningPreview } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
+import { formatYenDisplay } from "@/lib/format";
 
 /** One row of the opening entries table (Step 5): an entry with its debit and credit side. */
 export interface OpeningEntryView {
@@ -33,10 +33,10 @@ export function toOpeningPreviewView(preview: OpeningPreview): OpeningPreviewVie
         description: entry.description,
         debit: side(debit),
         credit: side(entry.lines.filter((line) => line.side === "credit")),
-        amount: formatYen(amount),
+        amount: formatYenDisplay(amount),
       };
     }),
-    debitTotal: formatYen(preview.debitTotal),
-    creditTotal: formatYen(preview.creditTotal),
+    debitTotal: formatYenDisplay(preview.debitTotal),
+    creditTotal: formatYenDisplay(preview.creditTotal),
   };
 }

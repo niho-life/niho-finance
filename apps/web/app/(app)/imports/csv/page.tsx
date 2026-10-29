@@ -41,7 +41,8 @@ export default async function CsvImportPage({ searchParams }: PageProps<"/import
         />
       ) : (
         <EmptyState
-          title="CSV を取り込める口座がありません。設定 › 口座 で銀行・カードを登録する"
+          title="CSV を取り込める口座がありません"
+          description="設定 › 口座 で銀行・カードを登録します"
           action={
             <ButtonLink href="/settings/wallets" size="sm">
               口座を登録

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { gridStyle, Table, TableGroup, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import type { TrialBalanceLine } from "../_lib/trial-balance-view";
 import { DisclosureRows } from "./disclosure-rows";
 
@@ -27,12 +27,16 @@ function Amount({
 }) {
   return (
     <Td align="right" sm={sm} className={className}>
-      {value === null ? "" : formatAmount(value)}
+      {value === null ? "" : formatAmountDisplay(value)}
     </Td>
   );
 }
 
-/** 期首 · 期間 (over the 借方・貸方 columns) · 残高: subtotals and totals (§3). */
+/**
+ * 期首 · 期間 (over the 借方・貸方 columns) · 残高: subtotals and totals (§3). The word 「期間」 sits at
+ * the left of the two columns and the amount at the right, so that it never reads as part of the
+ * number (05-ui-ux §3.1).
+ */
 function NetCells({ line }: { line: TrialBalanceLine }) {
   return (
     <>
@@ -45,10 +49,10 @@ function NetCells({ line }: { line: TrialBalanceLine }) {
         style={{ gridColumn: "span 2" }}
       >
         {line.period === null ? null : (
-          <>
-            <span className="mr-2 text-[11px] font-semibold text-muted-2">期間</span>
-            {formatAmount(line.period)}
-          </>
+          <span className="flex min-w-0 items-baseline justify-between gap-3">
+            <span className="text-[11px] font-semibold text-muted">期間</span>
+            <span>{formatAmountDisplay(line.period)}</span>
+          </span>
         )}
       </span>
       <Amount value={line.balance} />

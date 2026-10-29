@@ -2,7 +2,7 @@ import { buildJournal, type JournalEntryRow } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Td } from "@/components/ui/table";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { AutoSubmitSelect } from "../_components/auto-submit-select";
 import { COMPACT_CONTROL } from "../_components/condition-form";
 import { NoEntries, NoFiscalYear } from "../_components/empty";
@@ -58,12 +58,12 @@ function EntryRows({ entry }: { entry: JournalEntryRow }) {
               <span className="text-muted"> / {line.subAccountName}</span>
             ) : null}
           </Td>
-          <Td align="right">{line.side === "debit" ? formatAmount(line.amount) : ""}</Td>
-          <Td align="right">{line.side === "credit" ? formatAmount(line.amount) : ""}</Td>
+          <Td align="right">{line.side === "debit" ? formatAmountDisplay(line.amount) : ""}</Td>
+          <Td align="right">{line.side === "credit" ? formatAmountDisplay(line.amount) : ""}</Td>
           <Td className="truncate text-[13px]">
             {line.taxName}
             {line.taxAmount !== 0n ? (
-              <span className="num text-muted">（{formatAmount(line.taxAmount)}）</span>
+              <span className="num text-muted">（{formatAmountDisplay(line.taxAmount)}）</span>
             ) : null}
           </Td>
           <Td className="truncate text-[13px]">{line.segmentName ?? ""}</Td>
@@ -142,11 +142,11 @@ export default async function JournalPage({ searchParams }: PageProps<"/reports/
           <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
             <div className="flex gap-2">
               <dt className="text-muted">借方合計</dt>
-              <dd className="num font-bold">{formatAmount(report.debitTotal)} 円</dd>
+              <dd className="num font-bold">{formatAmountDisplay(report.debitTotal)} 円</dd>
             </div>
             <div className="flex gap-2">
               <dt className="text-muted">貸方合計</dt>
-              <dd className="num font-bold">{formatAmount(report.creditTotal)} 円</dd>
+              <dd className="num font-bold">{formatAmountDisplay(report.creditTotal)} 円</dd>
             </div>
             <div className="flex gap-2">
               <dt className="text-muted">仕訳</dt>

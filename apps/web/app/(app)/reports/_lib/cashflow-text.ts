@@ -1,3 +1,4 @@
+import type { Money } from "@niho-finance/ledger";
 import type { CashflowForecast, CashflowNote, CashflowPoint } from "@niho-finance/reports";
 import { formatAmount, formatDate, formatPeriod } from "@/lib/format";
 
@@ -14,9 +15,15 @@ export function cashflowPeriodLabel(forecast: Pick<CashflowForecast, "start" | "
   return `${formatPeriod(forecast.start, forecast.end)}（90 日）`;
 }
 
-/** 「2026/12/27 に残高が 0 円を割ります（-120,000 円）」 (§4). */
-export function negativeWarning(point: CashflowPoint): string {
-  return `${formatDate(point.date)} に残高が 0 円を割ります（${formatAmount(point.balance)} 円）`;
+/**
+ * 「2026/12/27 に残高が 0 円を割ります（-120,000 円）」 (§4). Screens pass `formatYenDisplay` for
+ * 「−120,000」; the PDF keeps the default.
+ */
+export function negativeWarning(
+  point: CashflowPoint,
+  format: (value: Money) => string = formatAmount,
+): string {
+  return `${formatDate(point.date)} に残高が 0 円を割ります（${format(point.balance)} 円）`;
 }
 
 /** The accessible name of the line (§4). */

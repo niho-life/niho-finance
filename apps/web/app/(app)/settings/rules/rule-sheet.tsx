@@ -2,7 +2,6 @@
 
 import {
   ACCOUNT_KIND_LABELS,
-  formatYen,
   RULE_MODE_LABELS,
   RULE_MODES,
   type AccountKind,
@@ -17,6 +16,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
+import { formatYenDisplay } from "@/lib/format";
 import { FormAlerts, TaxCategoryOptions } from "../../entries/_components/form-kit";
 import { accountChoices, taxFits, type Account } from "../../statements/_components/model";
 import {
@@ -460,6 +460,13 @@ export function RuleSheet({
               </label>
             ))}
           </div>
+          {registers ? (
+            <p className="text-[12px] text-muted">
+              {values.mode === "register"
+                ? "一致した明細を、この科目と税区分で登録します"
+                : "一致した明細のチップを埋めるだけです（登録は明細の画面で）"}
+            </p>
+          ) : null}
           {fieldError("mode") ? (
             <p role="alert" className="text-[12px] font-bold text-danger">
               {fieldError("mode")}
@@ -467,11 +474,6 @@ export function RuleSheet({
           ) : null}
           {registers ? (
             <>
-              <p className="text-[12px] text-muted-2">
-                {values.mode === "register"
-                  ? "一致した明細を、この科目と税区分で登録します"
-                  : "一致した明細のチップを埋めるだけです（登録は明細の画面で）"}
-              </p>
               <FormField
                 label="科目"
                 htmlFor={`${id}-accountId`}
@@ -619,7 +621,7 @@ export function RuleSheet({
             <div className="flex items-center justify-between gap-3">
               <span className="text-[14px]">
                 取込時に自動で登録
-                <span className="block text-[12px] text-muted-2">
+                <span className="block text-[12px] text-muted">
                   一致した明細は未処理に出ず、処理済みの「ルールで自動登録」に入ります
                 </span>
               </span>
@@ -647,15 +649,15 @@ export function RuleSheet({
           </FormField>
           <p aria-live="polite" className="text-[13px]">
             {totals === null ? (
-              <span className="text-muted-2">いま一致する未処理を数えています…</span>
+              <span className="text-muted">いま一致する未処理を数えています…</span>
             ) : (
               <>
                 いま一致する未処理{" "}
                 <span className="num font-bold">{totals.count.toLocaleString("ja-JP")}</span> 件
                 {totals.count > 0 ? (
                   <span className="num text-muted">
-                    （入金 {formatYen(BigInt(totals.inflow))} 円 / 出金{" "}
-                    {formatYen(BigInt(totals.outflow))} 円）
+                    （入金 {formatYenDisplay(BigInt(totals.inflow))} 円 / 出金{" "}
+                    {formatYenDisplay(BigInt(totals.outflow))} 円）
                   </span>
                 ) : null}
               </>
@@ -678,7 +680,8 @@ export function RuleSheet({
         </p>
         {totals && totals.count > 0 ? (
           <p className="num mt-2 text-muted">
-            入金 {formatYen(BigInt(totals.inflow))} 円 / 出金 {formatYen(BigInt(totals.outflow))} 円
+            入金 {formatYenDisplay(BigInt(totals.inflow))} 円 / 出金{" "}
+            {formatYenDisplay(BigInt(totals.outflow))} 円
           </p>
         ) : null}
         <p className="mt-2 text-[13px] text-muted">

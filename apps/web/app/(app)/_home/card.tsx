@@ -36,7 +36,7 @@ export function HomeCard({
             title
           )}
         </h2>
-        {aside ? <span className="text-[12px] text-muted-2">{aside}</span> : null}
+        {aside ? <span className="text-[12px] text-muted">{aside}</span> : null}
       </div>
       {children}
     </section>

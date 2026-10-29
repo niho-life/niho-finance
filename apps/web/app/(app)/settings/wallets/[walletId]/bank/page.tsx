@@ -23,7 +23,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { isBankReturnCode, type BankReturnCode } from "@/lib/bank/oauth-routes";
 import { db } from "@/lib/data";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatDateTime } from "@/lib/format";
 import { BankAccountChoice, BankLinkActions, ConnectBankControl } from "./bank-forms";
 import { BankOutcomeBanner, type BankOutcome } from "./feedback";
 import type { BankAccountOption } from "./types";
@@ -196,7 +196,7 @@ function StatusTable({
           <Item label="銀行の残高（円）">
             {link.balance !== null ? (
               <>
-                <span className="num font-bold">{formatAmount(link.balance)}</span>
+                <span className="num font-bold">{formatAmountDisplay(link.balance)}</span>
                 {link.balanceDate ? (
                   <span className="num ml-2 text-[13px] text-muted">
                     {formatDate(link.balanceDate)} 時点
@@ -378,10 +378,11 @@ export default async function BankLinkPage({
       {!wallet.isActive ? (
         <div className="mb-8">
           <EmptyState
-            title="この口座は無効です。設定 › 口座 で有効にすると接続・同期できます"
+            title="この口座は無効です"
+            description="設定 › 口座 で有効にすると、接続・同期できます"
             action={
               <ButtonLink href="/settings/wallets" size="sm">
-                口座の設定
+                口座の設定を開く
               </ButtonLink>
             }
           />

@@ -20,7 +20,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db, loadSetupProgress, loadShell, requireSetupReady } from "@/lib/data";
-import { formatAmount, formatDate, formatMonth, formatPeriod } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatMonth, formatPeriod } from "@/lib/format";
 import { HomeCard } from "./_home/card";
 import { CashflowCard } from "./_home/cashflow-card";
 import { profitFigures, segmentBars } from "./_home/figures";
@@ -108,7 +108,7 @@ export default async function HomePage() {
           }
         >
           <p className="num text-[32px] leading-tight font-extrabold tracking-tight">
-            {formatAmount(cash?.total ?? 0n)}
+            {formatAmountDisplay(cash?.total ?? 0n)}
             <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
           </p>
           <p className="mt-1.5 text-[12px] text-muted">{formatDate(asOf)} 時点 · 仕訳から導出</p>

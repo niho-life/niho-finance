@@ -283,7 +283,7 @@ export function AccrualSheet({
               aria-describedby={`${id}-reverse-help`}
               onChange={(event) => setDraft({ ...draft, reverse: event.currentTarget.checked })}
             />
-            <p id={`${id}-reverse-help`} className="text-[12px] text-muted-2">
+            <p id={`${id}-reverse-help`} className="text-[12px] text-muted">
               {reversalAvailable
                 ? `貸借を入れ替えた仕訳を翌期の開始日${nextStartDate ? `（${nextStartDate}）` : ""}付で一緒に登録します`
                 : reversalBlockedReason}

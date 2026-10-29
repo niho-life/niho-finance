@@ -2,7 +2,6 @@
 
 import type { EntryFormOptions } from "@niho-finance/db";
 import {
-  formatYen,
   getTaxCategory,
   isCalendarDate,
   isReservedAccount,
@@ -19,7 +18,7 @@ import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo, walletLabel } from "@/lib/format";
+import { entryNo, formatYenDisplay, walletLabel } from "@/lib/format";
 import { linkDocumentAction } from "../../documents/actions";
 import { postSimpleEntryAction } from "../actions";
 import {
@@ -288,9 +287,9 @@ export function SimpleEntryForm({
     }
     const separate =
       split.taxLineAmount > 0n
-        ? `（税抜経理: ${text.taxLine} ${formatYen(split.taxLineAmount)} 円の行を足します）`
+        ? `（税抜経理: ${text.taxLine} ${formatYenDisplay(split.taxLineAmount)} 円の行を足します）`
         : "";
-    return { warn: false, text: `うち消費税 ${formatYen(split.taxAmount)} 円${separate}` };
+    return { warn: false, text: `うち消費税 ${formatYenDisplay(split.taxAmount)} 円${separate}` };
   })();
 
   /** 登録 (Enter) opens the new entry; 続けて登録 stays on the form. */

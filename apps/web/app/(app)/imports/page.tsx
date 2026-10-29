@@ -54,7 +54,7 @@ function lastImport(wallet: ImportableWallet): { at: Date; text: string; failed:
 
 function LastImport({ wallet }: { wallet: ImportableWallet }) {
   const last = lastImport(wallet);
-  if (!last) return <span className="text-muted-2">—</span>;
+  if (!last) return <span className="text-muted">—</span>;
   return (
     <>
       <span className="num text-muted">{formatDateTime(last.at)}</span>{" "}
@@ -107,7 +107,7 @@ function WalletsTable({ wallets }: { wallets: readonly ImportableWallet[] }) {
         <TableRow key={wallet.id} {...WALLET_COLUMNS}>
           <Td className="font-bold break-words">
             {wallet.name}
-            <span className="ml-2 text-[11px] font-normal text-muted-2 md:hidden">
+            <span className="ml-2 text-[11px] font-normal text-muted md:hidden">
               {WALLET_KIND_LABELS[wallet.kind]}
             </span>
           </Td>
@@ -252,7 +252,8 @@ export default async function ImportsPage() {
           <WalletsTable wallets={wallets} />
         ) : (
           <EmptyState
-            title="取り込める口座がありません。設定 › 口座 で銀行・カード・Stripe を登録する"
+            title="取り込める口座がありません"
+            description="設定 › 口座 で銀行・カード・Stripe を登録します"
             action={
               <ButtonLink href="/settings/wallets" size="sm">
                 口座を登録
@@ -268,7 +269,10 @@ export default async function ImportsPage() {
         {batches.length > 0 ? (
           <HistoryTable batches={batches} />
         ) : (
-          <EmptyState title="まだ取込がありません。口座の「CSV を取り込む」から始める" />
+          <EmptyState
+            title="まだ取込がありません"
+            description="上の口座の「CSV を取り込む」から始めます"
+          />
         )}
       </section>
     </>

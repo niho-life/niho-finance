@@ -31,7 +31,7 @@ export function wideGrid(columns: string) {
 }
 
 export const WIDE_HEAD_CLASS =
-  "min-h-9 bg-surface-2 text-[11px] font-bold tracking-[0.03em] text-muted-2";
+  "min-h-9 bg-surface-2 text-[11px] font-bold tracking-[0.03em] text-muted";
 
 const STICKY_INDENT = ["pl-3.5", "pl-7", "pl-10"] as const;
 

@@ -16,9 +16,35 @@ export function formatMonth(date: CalendarDate): string {
   return `${year}年${month}月`;
 }
 
-/** 3-digit grouping; `—` for no amount. The unit belongs to the column header. */
+/**
+ * 3-digit grouping with an ASCII `-`; `—` for no amount. For text that leaves the screen or is
+ * read by machines (PDF, `aria-label`, the sentences shared with the PDF); on screens use
+ * `formatAmountDisplay`.
+ */
 export function formatAmount(value: Money | null | undefined): string {
   return value === null || value === undefined ? "—" : formatYen(value);
+}
+
+/** U+2212 MINUS SIGN: how a negative amount is shown on screens (05-ui-ux §3.1). */
+const MINUS_SIGN = "\u2212";
+
+/** A number's text for a screen: a leading ASCII `-` becomes 「−」 (U+2212), e.g. chart labels. */
+export function withDisplayMinus(text: string): string {
+  return text.startsWith("-") ? `${MINUS_SIGN}${text.slice(1)}` : text;
+}
+
+/**
+ * An amount shown on a screen: 3-digit grouping, a negative with 「−」 (U+2212) instead of the
+ * ASCII `-` (05-ui-ux §3.1). The unit belongs to the column header. Input values
+ * (`formatYenInput`), CSV, exports, PDF and `aria-*` keep `formatYen`.
+ */
+export function formatYenDisplay(value: Money): string {
+  return withDisplayMinus(formatYen(value));
+}
+
+/** `formatYenDisplay`, or `—` for no amount. */
+export function formatAmountDisplay(value: Money | null | undefined): string {
+  return value === null || value === undefined ? "—" : formatYenDisplay(value);
 }
 
 const JAPAN_DATE_TIME = new Intl.DateTimeFormat("en-CA", {

@@ -9,7 +9,6 @@ import {
   computeInvoiceTotals,
   defaultDueDate,
   displayDate,
-  formatYen,
   INVOICE_DOC_TYPE_LABELS,
   INVOICE_DUE_DATE_LABELS,
   invoiceChecklist,
@@ -31,6 +30,7 @@ import { FormField, Input, Select, Textarea } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
+import { formatYenDisplay } from "@/lib/format";
 import { createInvoiceDraftAction, updateInvoiceDraftAction } from "../actions";
 import { InvoiceChecklistView } from "./invoice-checklist";
 
@@ -493,7 +493,7 @@ export function InvoiceForm({
         </div>
         <div
           aria-hidden="true"
-          className="hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted-2 lg:grid lg:grid-cols-[132px_minmax(0,1fr)_76px_68px_120px_156px_104px_40px] lg:gap-x-2.5"
+          className="hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted lg:grid lg:grid-cols-[132px_minmax(0,1fr)_76px_68px_120px_156px_104px_40px] lg:gap-x-2.5"
         >
           <span>日付</span>
           <span>品名</span>
@@ -615,7 +615,7 @@ export function InvoiceForm({
                     {row} 行目の金額（円）
                   </span>
                   <span className="num min-h-10 content-center text-right text-[14px] font-bold">
-                    {amount === null ? "—" : formatYen(amount)}
+                    {amount === null ? "—" : formatYenDisplay(amount)}
                   </span>
                 </div>
                 <div className="flex items-start justify-end">
@@ -678,17 +678,23 @@ export function InvoiceForm({
                   {rate.taxable ? ` 対象${draft.pricesIncludeTax ? "（税込）" : ""}` : ""}
                 </span>
                 <span className="num">
-                  {formatYen(draft.pricesIncludeTax ? rate.amountInclusive : rate.amountExclusive)}{" "}
+                  {formatYenDisplay(
+                    draft.pricesIncludeTax ? rate.amountInclusive : rate.amountExclusive,
+                  )}{" "}
                   円
                   {rate.taxable ? (
-                    <span className="ml-3 text-muted">消費税 {formatYen(rate.taxAmount)} 円</span>
+                    <span className="ml-3 text-muted">
+                      消費税 {formatYenDisplay(rate.taxAmount)} 円
+                    </span>
                   ) : null}
                 </span>
               </div>
             ))}
             <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2">
               <span className="font-bold">合計</span>
-              <span className="num text-[20px] font-extrabold">{formatYen(totals.total)} 円</span>
+              <span className="num text-[20px] font-extrabold">
+                {formatYenDisplay(totals.total)} 円
+              </span>
             </div>
           </>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { displayDate, formatYen, isCalendarDate, type CalendarDate } from "@niho-finance/ledger";
+import { displayDate, isCalendarDate, type CalendarDate } from "@niho-finance/ledger";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, useTransition } from "react";
@@ -10,7 +10,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import {
   loadExpenseCandidatesAction,
   payExpenseClaimsAction,
@@ -108,7 +108,7 @@ function PaySheet({
       }
       onClose();
       toast(
-        `${group.claimantName} に ${formatYen(BigInt(result.data.amount))} 円を支払いました（仕訳 ${entryNo(result.data.entryNo)}）`,
+        `${group.claimantName} に ${formatYenDisplay(BigInt(result.data.amount))} 円を支払いました（仕訳 ${entryNo(result.data.entryNo)}）`,
       );
       router.refresh();
     });
@@ -168,7 +168,9 @@ function PaySheet({
                         {displayDate(claim.spentOn)}
                       </span>
                       <span>{claim.description}</span>
-                      <span className="num font-bold">{formatYen(BigInt(claim.amount))} 円</span>
+                      <span className="num font-bold">
+                        {formatYenDisplay(BigInt(claim.amount))} 円
+                      </span>
                       {claim.entry.voided ? (
                         <span className="text-[12px] text-danger">
                           計上の仕訳 {entryNo(claim.entry.no)} は取消済み
@@ -211,7 +213,7 @@ function PaySheet({
         {shownCandidates.length > 0 ? (
           <fieldset className="flex flex-col gap-1">
             <legend className="mb-1 text-[12px] font-bold text-muted">明細から選ぶ</legend>
-            <p className="text-[12px] text-muted-2">
+            <p className="text-[12px] text-muted">
               未処理の出金で、金額が合計と同じ明細です。選ぶと支払日は明細の日付になります
             </p>
             <ul className="flex flex-col">
@@ -230,7 +232,9 @@ function PaySheet({
                         <span className="num text-[13px] text-muted">
                           {displayDate(item.txnDate)}
                         </span>
-                        <span className="num font-bold">−{formatYen(BigInt(item.amount))}</span>
+                        <span className="num font-bold">
+                          −{formatYenDisplay(BigInt(item.amount))}
+                        </span>
                       </span>
                       <span className="truncate text-[13px]">{item.description}</span>
                     </span>
@@ -277,7 +281,7 @@ function PaySheet({
         {chosen.length > 0 && wallet ? (
           <p aria-live="polite" className="text-[14px]">
             <span className="num font-bold">{chosen.length}</span> 件・
-            <span className="num font-bold">{formatYen(total)}</span> 円を {wallet.name}{" "}
+            <span className="num font-bold">{formatYenDisplay(total)}</span> 円を {wallet.name}{" "}
             から支払います
           </p>
         ) : null}
@@ -310,10 +314,10 @@ function ClaimRow({ claim }: { claim: ClaimView }) {
         {claim.account}
       </Td>
       <Td align="right" className="font-bold">
-        {formatYen(BigInt(claim.amount))}
+        {formatYenDisplay(BigInt(claim.amount))}
       </Td>
       <Td sm="hide" className="text-[13px]">
-        {claim.hasDocument ? <span>あり</span> : <span className="text-muted-2">なし</span>}
+        {claim.hasDocument ? <span>あり</span> : <span className="text-muted">なし</span>}
       </Td>
       <Td sm="full" className="flex items-center justify-end gap-1">
         <Link
@@ -338,8 +342,8 @@ function ClaimRow({ claim }: { claim: ClaimView }) {
         >
           <p>
             「{claim.description}」
-            <span className="num font-bold">{formatYen(BigInt(claim.amount))}</span> 円の計上の仕訳{" "}
-            {entryNo(claim.entry.no)}{" "}
+            <span className="num font-bold">{formatYenDisplay(BigInt(claim.amount))}</span>{" "}
+            円の計上の仕訳 {entryNo(claim.entry.no)}{" "}
             {claim.entry.voided
               ? "は取消済みです。立替精算を取消済みにします。"
               : "を反対仕訳で取り消します。締めた月なら、反対仕訳の日付は開いている最初の日になります。"}
@@ -369,7 +373,7 @@ export function UnpaidSection({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="text-[14px] font-extrabold">{item.claimantName}</h3>
             <span className="num text-[13px] text-muted">
-              {item.count} 件・{formatYen(BigInt(item.total))} 円
+              {item.count} 件・{formatYenDisplay(BigInt(item.total))} 円
             </span>
             <span className="ml-auto">
               <Button variant="primary" size="sm" onClick={() => setPaying(item.claimantId)}>

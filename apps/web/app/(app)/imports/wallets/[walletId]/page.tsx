@@ -146,10 +146,11 @@ export default async function WalletImportSettingsPage({
       <>
         <PageHeader title="取込の設定" meta={meta} back={back} />
         <EmptyState
-          title="この口座は無効です。設定 › 口座 で有効にすると取り込めます"
+          title="この口座は無効です"
+          description="設定 › 口座 で有効にすると、取り込めます"
           action={
             <ButtonLink href="/settings/wallets" size="sm">
-              口座の設定
+              口座の設定を開く
             </ButtonLink>
           }
         />

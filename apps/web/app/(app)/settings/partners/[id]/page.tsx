@@ -14,7 +14,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db, requireSetupReady } from "@/lib/data";
-import { formatAmount, formatDate, formatPeriod } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatPeriod } from "@/lib/format";
 import { segmentName } from "../../../reports/_lib/format";
 import { reportHref } from "../../../reports/_lib/query";
 
@@ -46,10 +46,10 @@ function balancePeriod(fiscalYear: ReportFiscalYear, today: CalendarDate): Repor
 function Amount({ value, href }: { value: Money; href?: string | null }) {
   return href ? (
     <Link href={href} className="underline-offset-4 hover:underline" prefetch={false}>
-      {formatAmount(value)}
+      {formatAmountDisplay(value)}
     </Link>
   ) : (
-    formatAmount(value)
+    formatAmountDisplay(value)
   );
 }
 
@@ -89,7 +89,7 @@ export default async function PartnerDetailPage({ params }: PageProps<"/settings
   const balanceRows = (label: string, value: PartnerBalances) => [
     <TableRow key={label} {...COLUMNS} className="font-bold">
       <Td>{label}</Td>
-      <Td align="right">{formatAmount(value.total)}</Td>
+      <Td align="right">{formatAmountDisplay(value.total)}</Td>
     </TableRow>,
     ...value.rows.map((row) => (
       <TableRow key={`${label}:${row.account.id}`} {...COLUMNS}>

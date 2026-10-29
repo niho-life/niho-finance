@@ -358,7 +358,7 @@ export default async function StatementsPage({ searchParams }: PageProps<"/closi
                       <span className="num">{formatStatementAmount(schedules.sga.total)}</span> 円
                       <span
                         className={`ml-2 text-[12px] ${
-                          schedules.sga.matchesIncomeStatement ? "text-muted-2" : "text-warn"
+                          schedules.sga.matchesIncomeStatement ? "text-muted" : "text-warn"
                         }`}
                       >
                         {schedules.sga.matchesIncomeStatement

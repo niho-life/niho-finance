@@ -70,7 +70,7 @@ function EtaxCodeCell({
   code: AccountCodeCell | undefined;
   commit: (field: string, value: string) => Promise<CommitOutcome>;
 }) {
-  if (!code) return <span className="px-[7px] text-muted-2">—</span>;
+  if (!code) return <span className="px-[7px] text-muted">—</span>;
   return (
     <>
       <TextCell
@@ -82,7 +82,7 @@ function EtaxCodeCell({
         className="num"
       />
       <span
-        className="block truncate px-[7px] text-[11px] text-muted-2"
+        className="block truncate px-[7px] text-[11px] text-muted"
         title={`${code.displayCode} ${code.tableLabel} · ${code.originLabel}`}
       >
         <span className="num">{code.displayCode}</span> {code.tableLabel} · {code.originLabel}
@@ -125,9 +125,7 @@ function AccountRow({
         {account.code}
       </Td>
       <Td>
-        <span className="num block px-[7px] text-[11px] text-muted-2 md:hidden">
-          {account.code}
-        </span>
+        <span className="num block px-[7px] text-[11px] text-muted md:hidden">{account.code}</span>
         <TextCell
           label={`${account.code} の名前`}
           value={account.name}
@@ -162,7 +160,7 @@ function AccountRow({
             onCommit={(value) => commit("isCashLike", value)}
           />
         ) : (
-          <span className="text-muted-2">—</span>
+          <span className="text-muted">—</span>
         )}
       </Td>
       <Td>
@@ -203,7 +201,7 @@ function SubAccountRow({ subAccount }: { subAccount: SubAccountSettings }) {
         {subAccount.walletName ? (
           <span className="block px-[7px]">
             {subAccount.name}
-            <span className="block text-[11px] text-muted-2">
+            <span className="block text-[11px] text-muted">
               口座「{subAccount.walletName}」の補助科目（名前と状態は口座で変えます）
             </span>
           </span>
@@ -359,7 +357,7 @@ function AccountSheet({
             />
           </label>
           <Button type="submit" disabled={add.pending}>
-            追加
+            {add.pending ? "追加中…" : "追加"}
           </Button>
           <FormError error={add.error} className="w-full" />
         </form>
@@ -440,7 +438,7 @@ function AddAccountRow() {
         ))}
       </select>
       <Button type="submit" size="sm" variant="primary" disabled={pending}>
-        追加
+        {pending ? "追加中…" : "追加"}
       </Button>
       <FormError error={error} className="col-span-full" />
     </form>

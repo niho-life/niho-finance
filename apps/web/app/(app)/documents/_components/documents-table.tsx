@@ -2,13 +2,12 @@ import type { DocumentLinkCounts, DocumentListRow, ReadingState } from "@niho-fi
 import {
   DOCUMENT_KIND_LABELS,
   DOCUMENT_STATUS_LABELS,
-  formatYen,
   type DocumentStatus,
 } from "@niho-finance/ledger";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { documentTitle } from "./list-query";
 
 const COLUMNS = {
@@ -79,7 +78,7 @@ export function DocumentsTable({
         const voided = row.status === "voided";
         const date = orUnsorted(row.txnDate ? formatDate(row.txnDate) : null);
         const partner = orUnsorted(row.partnerName);
-        const amount = orUnsorted(row.amount === null ? null : formatYen(row.amount));
+        const amount = orUnsorted(row.amount === null ? null : formatYenDisplay(row.amount));
         const readingState = readingStates?.get(row.id);
         const reading = readingState === undefined ? null : READING_STATE_LABELS[readingState];
         const phoneStatus = [voided ? statusText(row) : null, reading].filter(Boolean).join(" · ");

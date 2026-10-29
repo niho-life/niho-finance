@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { AutoSubmitSelect } from "@/components/ui/auto-submit-select";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JsonPair } from "@/components/ui/json-pair";
 import { PageHeader } from "@/components/ui/page-header";
@@ -81,13 +81,20 @@ export default async function AuditLogPage({ searchParams }: PageProps<"/setting
         <EmptyState
           title="監査ログがありません"
           description={narrowed ? "対象か期間を変えてください" : "書き込みがあると、ここに残ります"}
+          action={
+            narrowed ? (
+              <ButtonLink href="/settings/audit-log" size="sm">
+                絞り込みを外す
+              </ButtonLink>
+            ) : undefined
+          }
         />
       ) : (
         <>
           <ul className="overflow-hidden rounded-card border border-border">
             <li
               aria-hidden="true"
-              className={`${GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted-2 md:grid`}
+              className={`${GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted md:grid`}
             >
               <span>日時</span>
               <span>操作</span>

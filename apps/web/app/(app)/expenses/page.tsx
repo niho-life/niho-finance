@@ -4,7 +4,6 @@ import {
   loadExpenseOverview,
   todayInJapan,
 } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -12,7 +11,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { walletLabel } from "@/lib/format";
+import { formatYenDisplay, walletLabel } from "@/lib/format";
 import { PaymentsTable, VoidedClaims } from "./_components/history-sections";
 import { UnpaidSection } from "./_components/unpaid-section";
 import { toGroupView, toPaymentView, toVoidedView } from "./_components/views";
@@ -58,7 +57,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
         title="立替精算"
         meta={
           <span className="num">
-            未払 {unpaid.count} 件・{formatYen(unpaid.total)} 円
+            未払 {unpaid.count} 件・{formatYenDisplay(unpaid.total)} 円
           </span>
         }
         actions={
@@ -72,7 +71,12 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
           {unpaid.groups.length === 0 ? (
             <EmptyState
               title="未払の立替精算はありません"
-              description="立替を出す と、計上の仕訳が登録されます。"
+              description="立替を出すと、計上の仕訳が登録されてここに並びます"
+              action={
+                <ButtonLink href="/expenses/new" size="sm">
+                  立替を出す
+                </ButtonLink>
+              }
             />
           ) : (
             <UnpaidSection

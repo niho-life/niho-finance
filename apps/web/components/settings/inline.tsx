@@ -79,7 +79,7 @@ export function useRowSave(save: SaveRow) {
  */
 export function SaveStatus({ status, asCell = true }: { status: SaveState; asCell?: boolean }) {
   let content = "";
-  let tone = "text-muted-2";
+  let tone = "text-muted";
   if (status.state === "saving") content = "保存中…";
   if (status.state === "saved") {
     content = "保存済み";

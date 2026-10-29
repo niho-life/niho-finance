@@ -5,7 +5,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { DUE_COLUMNS } from "./due-columns";
 import { DueRows, type DueRow } from "./due-rows";
 
@@ -72,14 +72,14 @@ export default async function RecurringDuePage() {
                     <Td className="num text-[13px] text-muted">{formatDate(row.date)}</Td>
                     <Td>
                       <span className="block break-words">{row.name}</span>
-                      <span className="block text-[12px] text-muted-2 md:hidden">
+                      <span className="block text-[12px] text-muted md:hidden">
                         {row.walletName}
                       </span>
                     </Td>
                     <Td sm="hide" className="text-[13px] break-words">
                       {row.walletName}
                     </Td>
-                    <Td align="right">{formatAmount(row.amount)}</Td>
+                    <Td align="right">{formatAmountDisplay(row.amount)}</Td>
                     <Td className="text-right">
                       <ButtonLink
                         href={`/statements?wallet=${encodeURIComponent(row.walletId)}`}

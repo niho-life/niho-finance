@@ -20,7 +20,7 @@ export function Pager({
   const link =
     "inline-flex min-h-9 items-center rounded-lg border border-border-2 px-3 text-[13px] font-bold hover:bg-surface-2";
   const disabled =
-    "inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-[13px] font-bold text-muted-2";
+    "inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-[13px] font-bold aria-disabled:text-muted-2";
   return (
     <nav
       aria-label="ページ"

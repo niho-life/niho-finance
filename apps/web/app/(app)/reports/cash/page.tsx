@@ -3,7 +3,7 @@ import { WALLET_KIND_LABELS } from "@niho-finance/ledger";
 import { buildCashReport } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { WalletCards } from "../../_home/wallet-cards";
 import { CashChart } from "../_components/cash-chart";
 import { NoEntries, NoFiscalYear } from "../_components/empty";
@@ -43,7 +43,7 @@ export default async function CashPage({ searchParams }: PageProps<"/reports/cas
               現預金
             </h2>
             <p className="num mt-1 text-[32px] leading-tight font-extrabold tracking-tight">
-              {formatAmount(report.total)}
+              {formatAmountDisplay(report.total)}
               <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
             </p>
             <p className="mt-1 mb-3 text-[12px] text-muted">
@@ -61,7 +61,7 @@ export default async function CashPage({ searchParams }: PageProps<"/reports/cas
                           ? `${row.accountName} / ${row.subAccountName}`
                           : row.accountName}
                       </span>
-                      <span className="num ml-auto">{formatAmount(row.balance)} 円</span>
+                      <span className="num ml-auto">{formatAmountDisplay(row.balance)} 円</span>
                     </li>
                   ))}
                 </ul>
@@ -96,7 +96,7 @@ export default async function CashPage({ searchParams }: PageProps<"/reports/cas
                     <Td sm="hide" className="text-muted">
                       {WALLET_KIND_LABELS[wallet.kind]}
                     </Td>
-                    <Td align="right">{formatAmount(wallet.balance)}</Td>
+                    <Td align="right">{formatAmountDisplay(wallet.balance)}</Td>
                     <Td align="right" sm="hide" className="text-muted">
                       {wallet.pendingCount > 0 ? `${wallet.pendingCount} 件` : "—"}
                     </Td>

@@ -3,7 +3,6 @@
 import type { EntryFormAccount, EntryFormOptions } from "@niho-finance/db";
 import {
   CORPORATE_SEGMENT_CODE,
-  formatYen,
   getTaxCategory,
   isCalendarDate,
   LedgerValidationError,
@@ -17,7 +16,7 @@ import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { Uploader } from "../../documents/_components/uploader";
 import {
   accountLabel,
@@ -192,9 +191,9 @@ export function ExpenseClaimForm({
       });
       const separate =
         split.taxLineAmount > 0n
-          ? `（税抜経理: 仮払消費税 ${formatYen(split.taxLineAmount)} 円の行を足します）`
+          ? `（税抜経理: 仮払消費税 ${formatYenDisplay(split.taxLineAmount)} 円の行を足します）`
           : "";
-      return { warn: false, text: `うち消費税 ${formatYen(split.taxAmount)} 円${separate}` };
+      return { warn: false, text: `うち消費税 ${formatYenDisplay(split.taxAmount)} 円${separate}` };
     } catch (problem) {
       const message =
         problem instanceof LedgerValidationError ? problem.errors[0]?.message : undefined;

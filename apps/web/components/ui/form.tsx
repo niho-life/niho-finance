@@ -41,11 +41,11 @@ export function FormField({
     <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
       <label htmlFor={htmlFor} className="text-[12px] font-bold text-muted">
         {label}
-        {required ? <span className="ml-1 font-normal text-muted-2">必須</span> : null}
+        {required ? <span className="ml-1 font-normal text-muted">必須</span> : null}
       </label>
       {children}
       {help ? (
-        <p id={`${htmlFor}-help`} className="text-[12px] text-muted-2">
+        <p id={`${htmlFor}-help`} className="text-[12px] text-muted">
           {help}
         </p>
       ) : null}

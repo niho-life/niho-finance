@@ -9,9 +9,10 @@ import {
 } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 import { ForecastChart } from "../_components/forecast-chart";
 import { NoFiscalYear } from "../_components/empty";
 import { SectionHeading } from "../_components/notices";
@@ -58,7 +59,7 @@ function Figures({ forecast }: { forecast: CashflowForecast }) {
           <dt className="text-[12px] text-muted">{item.label}</dt>
           <dd className="sm:mt-0.5">
             <span className="num text-[20px] leading-snug font-extrabold sm:text-[24px]">
-              {formatAmount(item.value)}
+              {formatAmountDisplay(item.value)}
             </span>
             <span className="ml-0.5 text-[11px] font-semibold text-muted">円</span>
             <span className="num ml-1.5 text-[12px] text-muted">{formatDate(item.date)}</span>
@@ -102,7 +103,7 @@ export default async function CashflowPage({ searchParams }: PageProps<"/reports
           </h2>
           {forecast.firstNegative ? (
             <p role="alert" className="text-[14px] font-bold text-danger">
-              {negativeWarning(forecast.firstNegative)}
+              {negativeWarning(forecast.firstNegative, formatYenDisplay)}
             </p>
           ) : null}
           <Figures forecast={forecast} />
@@ -146,11 +147,14 @@ export default async function CashflowPage({ searchParams }: PageProps<"/reports
             <EmptyState
               title="90 日のあいだに予定はありません"
               description={
-                noRecurring ? (
-                  <Link href={RECURRING_SETTINGS_HREF} className="underline underline-offset-4">
-                    {NO_RECURRING_GUIDANCE}
-                  </Link>
-                ) : undefined
+                noRecurring
+                  ? NO_RECURRING_GUIDANCE
+                  : "定期取引の予定日が 90 日のうちに来ると、ここに並びます"
+              }
+              action={
+                <ButtonLink href={RECURRING_SETTINGS_HREF} size="sm">
+                  {noRecurring ? "定期取引を登録" : "定期取引を開く"}
+                </ButtonLink>
               }
             />
           ) : (
@@ -180,10 +184,10 @@ export default async function CashflowPage({ searchParams }: PageProps<"/reports
                       label="入出金"
                       className={event.amount === null ? "text-muted" : ""}
                     >
-                      {event.amount === null ? "金額未定" : formatAmount(event.amount)}
+                      {event.amount === null ? "金額未定" : formatAmountDisplay(event.amount)}
                     </Td>
                     <Td align="right" label="残高" className={below ? "font-bold text-danger" : ""}>
-                      {formatAmount(event.balance)}
+                      {formatAmountDisplay(event.balance)}
                     </Td>
                   </TableRow>
                 );
@@ -204,7 +208,7 @@ export default async function CashflowPage({ searchParams }: PageProps<"/reports
             {forecast.opening.wallets.map((wallet) => (
               <TableRow key={wallet.walletId} {...OPENING_COLUMNS}>
                 <Td className="truncate">{wallet.name}</Td>
-                <Td align="right">{formatAmount(wallet.balance)}</Td>
+                <Td align="right">{formatAmountDisplay(wallet.balance)}</Td>
               </TableRow>
             ))}
             {forecast.opening.unassigned.map((row) => (
@@ -220,12 +224,12 @@ export default async function CashflowPage({ searchParams }: PageProps<"/reports
                     : row.accountName}
                   ）
                 </Td>
-                <Td align="right">{formatAmount(row.balance)}</Td>
+                <Td align="right">{formatAmountDisplay(row.balance)}</Td>
               </TableRow>
             ))}
             <TableRow {...OPENING_COLUMNS} className="font-bold">
               <Td>今日の現預金</Td>
-              <Td align="right">{formatAmount(forecast.opening.total)}</Td>
+              <Td align="right">{formatAmountDisplay(forecast.opening.total)}</Td>
             </TableRow>
           </Table>
         </section>
