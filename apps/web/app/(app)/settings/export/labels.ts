@@ -25,6 +25,8 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   announcement: "決算公告",
   // 受け渡しパッケージ (14-reports §16.5)
   package: "受け渡しパッケージ",
+  // 償却資産申告 (16-year-end §14.4)
+  "depreciable-assets-return": "償却資産申告の元データ",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {

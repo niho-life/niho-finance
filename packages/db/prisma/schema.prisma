@@ -297,6 +297,8 @@ model Company {
   recordsPolicyOperator     String?   @map("records_policy_operator")
   /// 証憑の規程: version of the text that was put in force (POLICY_VERSION of the app)
   recordsPolicyVersion      String?   @map("records_policy_version")
+  /// 償却資産申告の申告先 (本店所在地の市町村)
+  propertyTaxMunicipality   String?   @map("property_tax_municipality")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -915,30 +917,34 @@ model Invoice {
 }
 
 model FixedAsset {
-  id                      String             @id
-  name                    String
-  accountId               String             @map("account_id")
-  acquisitionDate         DateTime           @map("acquisition_date") @db.Date
-  cost                    BigInt
-  method                  DepreciationMethod
-  usefulLifeYears         Int?               @map("useful_life_years")
+  id                        String             @id
+  name                      String
+  accountId                 String             @map("account_id")
+  acquisitionDate           DateTime           @map("acquisition_date") @db.Date
+  cost                      BigInt
+  method                    DepreciationMethod
+  usefulLifeYears           Int?               @map("useful_life_years")
   /// Memorandum value kept on the books (1 yen)
-  residualValue           BigInt             @default(1) @map("residual_value")
+  residualValue             BigInt             @default(1) @map("residual_value")
   /// Depreciation per fiscal year; source of the adjusting entries
-  schedule                Json?
+  schedule                  Json?
   /// Subject to the local depreciable assets tax (償却資産税)
-  isDepreciableAssetTaxed Boolean            @default(false) @map("is_depreciable_asset_taxed")
-  segmentId               String?            @map("segment_id")
-  disposedAt              DateTime?          @map("disposed_at") @db.Date
-  disposalEntryId         String?            @map("disposal_entry_id")
+  isDepreciableAssetTaxed   Boolean            @default(false) @map("is_depreciable_asset_taxed")
+  segmentId                 String?            @map("segment_id")
+  disposedAt                DateTime?          @map("disposed_at") @db.Date
+  disposalEntryId           String?            @map("disposal_entry_id")
   /// The journal entry the asset was bought with (登録の「取得の仕訳から」 or 「仕訳も一緒に登録」)
-  acquisitionEntryId      String?            @map("acquisition_entry_id")
-  note                    String?
+  acquisitionEntryId        String?            @map("acquisition_entry_id")
+  note                      String?
   /// Logical delete of the registration (登録の取消); the acquisition entry stays as it is
-  voidedAt                DateTime?          @map("voided_at") @db.Timestamptz(6)
-  voidReason              String?            @map("void_reason")
-  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  voidedAt                  DateTime?          @map("voided_at") @db.Timestamptz(6)
+  voidReason                String?            @map("void_reason")
+  /// 償却資産申告の資産の種類 (第二十六号様式 1 構築物 … 6 工具、器具及び備品); null = from the account
+  propertyTaxAssetType      Int?               @map("property_tax_asset_type")
+  /// 償却資産申告の対象外の理由 (e.g. a vehicle under 自動車税); null = by the rules
+  propertyTaxExcludedReason String?            @map("property_tax_excluded_reason")
+  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   account          Account       @relation(fields: [accountId], references: [id])
   segment          Segment?      @relation(fields: [segmentId], references: [id])

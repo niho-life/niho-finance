@@ -16,6 +16,8 @@ import {
   isDepreciableAssetTaxed,
   isLocked,
   isSpecialSmallAsset,
+  MAX_USEFUL_LIFE,
+  MIN_USEFUL_LIFE,
   MISC_INCOME_CODE,
   MISC_LOSS_CODE,
   OUTPUT_TAX_ACCOUNT_CODE,
@@ -35,6 +37,15 @@ import {
   type Money,
   type TaxRateRule,
 } from "@niho-finance/ledger";
+import {
+  buildDepreciableAssetsReturn,
+  classifyDepreciableAsset,
+  defaultDepreciableAssetsReturnYear,
+  effectivePropertyTaxAssetType,
+  type DepreciableAssetClassification,
+  type DepreciableAssetsReturn,
+  type PropertyTaxAssetType,
+} from "@niho-finance/reports";
 import type { FixedAsset, Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import {
@@ -54,12 +65,15 @@ import {
   fixedAssetRegisterSchema,
   fixedAssetUpdateSchema,
   fixedAssetVoidSchema,
+  propertyTaxMunicipalitySchema,
   type FixedAssetDisposeInput,
   type FixedAssetRegisterInput,
   type FixedAssetUpdateInput,
   type FixedAssetVoidInput,
+  type PropertyTaxMunicipalityInput,
 } from "./schemas";
-import { runInTransaction, type Tx } from "./transaction";
+import { requireCompanyRow } from "./settings";
+import { lockSettings, runInTransaction, type Tx } from "./transaction";
 
 // ---------------------------------------------------------------------------
 // Fiscal years and what was posted
@@ -470,6 +484,19 @@ export interface FixedAssetDetail extends FixedAssetListRow {
   entries: FixedAssetEntryRow[];
   /** The audit log of the asset (`entity = fixed_asset`), oldest first. */
   history: FixedAssetHistoryRow[];
+  /** 償却資産申告の資産の種類 as stored (1–6), `null` = from the account (16 §14.2). */
+  propertyTaxAssetType: number | null;
+  /** 申告の対象外の理由 as stored, `null` = by the rules (§14.1). */
+  propertyTaxExcludedReason: string | null;
+  /** 償却資産申告: reported or not (with the reason) and the kind used (§14.1–§14.2). */
+  propertyTax: DepreciableAssetClassification & { assetType: PropertyTaxAssetType | null };
+}
+
+/** The locked parameters as words: the life of an 即時・一括 asset stays free (§14.5). */
+function lockedParameters(method: DepreciationMethod): string {
+  return isLifeBased(method)
+    ? "取得価額・取得日・科目・償却方法・耐用年数"
+    : "取得価額・取得日・科目・償却方法";
 }
 
 /** Why the parameters cannot change and the registration cannot be voided, or `null`. */
@@ -478,14 +505,13 @@ function parameterLock(
   liveDepreciation: number,
 ): { edit: string | null } {
   if (asset.voidedAt) return { edit: "登録を取り消した固定資産です" };
+  const what = lockedParameters(asset.method);
   if (disposalInForce(asset)) {
-    return {
-      edit: "除却・売却済みのため、取得価額・取得日・科目・償却方法・耐用年数は変えられません",
-    };
+    return { edit: `除却・売却済みのため、${what}は変えられません` };
   }
   if (liveDepreciation > 0) {
     return {
-      edit: "償却の仕訳があるため、取得価額・取得日・科目・償却方法・耐用年数は変えられません。償却の仕訳を取り消すと変えられます",
+      edit: `償却の仕訳があるため、${what}は変えられません。償却の仕訳を取り消すと変えられます`,
     };
   }
   return { edit: null };
@@ -558,6 +584,12 @@ export async function getFixedAssetDetail(
       after: item.after,
       reason: item.reason,
     })),
+    propertyTaxAssetType: asset.propertyTaxAssetType,
+    propertyTaxExcludedReason: asset.propertyTaxExcludedReason,
+    propertyTax: {
+      ...classifyDepreciableAsset({ ...asset, accountCode: asset.account.code }),
+      assetType: effectivePropertyTaxAssetType({ ...asset, accountCode: asset.account.code }),
+    },
   };
 }
 
@@ -780,17 +812,23 @@ async function assertSpecialCap(
   }
 }
 
-/** Life is kept only for 定額・定率; the 1 yen memorandum value only for them too. */
+function isLifeBased(method: DepreciationMethod): boolean {
+  return method === "straight_line" || method === "declining_balance";
+}
+
+/**
+ * The 1 yen memorandum value is kept only for 定額・定率. The life is required for them; 即時・一括 may
+ * keep one for 償却資産申告 (16 §14.2), which the depreciation never reads.
+ */
 function derivedColumns(asset: {
   method: DepreciationMethod;
   cost: Money;
   usefulLifeYears: number | null;
   accountCode: string;
 }) {
-  const lifeBased = asset.method === "straight_line" || asset.method === "declining_balance";
   return {
-    usefulLifeYears: lifeBased ? asset.usefulLifeYears : null,
-    residualValue: lifeBased ? 1n : 0n,
+    usefulLifeYears: asset.usefulLifeYears,
+    residualValue: isLifeBased(asset.method) ? 1n : 0n,
     isDepreciableAssetTaxed: isDepreciableAssetTaxed(asset),
   };
 }
@@ -812,6 +850,8 @@ function assetSnapshot(asset: FixedAsset) {
     disposalEntryId: asset.disposalEntryId,
     voidedAt: asset.voidedAt,
     voidReason: asset.voidReason,
+    propertyTaxAssetType: asset.propertyTaxAssetType,
+    propertyTaxExcludedReason: asset.propertyTaxExcludedReason,
   };
 }
 
@@ -1012,7 +1052,9 @@ export async function registerFixedAsset(
 
 /**
  * 編集 (§5.2): 名称・セグメント・メモ at any time; 取得価額・取得日・科目・償却方法・耐用年数 only while
- * the asset has no depreciation or disposal in force. Audit: `fixed_asset.update` (before / after).
+ * the asset has no depreciation or disposal in force. 償却資産申告 (§14.5): 資産の種類 and 申告の対象外の
+ * 理由 at any time, and so is the life of an 即時・一括 asset (the depreciation does not read it).
+ * Audit: `fixed_asset.update` (before / after).
  */
 export async function updateFixedAsset(
   db: Db,
@@ -1049,16 +1091,29 @@ export async function updateFixedAsset(
       next.acquisitionDate !== oldDate ||
       next.cost !== current.cost ||
       next.method !== current.method ||
-      (next.method === "straight_line" || next.method === "declining_balance"
-        ? next.usefulLifeYears !== current.usefulLifeYears
-        : false);
+      (isLifeBased(next.method) ? next.usefulLifeYears !== current.usefulLifeYears : false);
+    // Only the life of an 即時・一括 asset: kept for 償却資産申告, whatever was posted (§14.5).
+    const lifeOnly =
+      !parametersChanged &&
+      !isLifeBased(next.method) &&
+      next.usefulLifeYears !== current.usefulLifeYears;
+    if (
+      lifeOnly &&
+      next.usefulLifeYears !== null &&
+      (next.usefulLifeYears < MIN_USEFUL_LIFE || next.usefulLifeYears > MAX_USEFUL_LIFE)
+    ) {
+      throw new SettingsError(
+        `耐用年数は ${MIN_USEFUL_LIFE}〜${MAX_USEFUL_LIFE} 年で入力してください`,
+        { field: "usefulLifeYears" },
+      );
+    }
 
     let derived = {};
     if (parametersChanged) {
       await assertParametersChangeable(
         tx,
         current,
-        "取得価額・取得日・科目・償却方法・耐用年数は変えられません",
+        `${lockedParameters(current.method)}は変えられません`,
       );
       const account = await requireDepreciableAccount(tx, next.accountId);
       const year = await lockYearContaining(tx, next.acquisitionDate, "acquisitionDate");
@@ -1091,6 +1146,13 @@ export async function updateFixedAsset(
           ? {}
           : { segmentId: data.segmentId ?? (await corporateSegmentId(tx)) }),
         ...(data.note === undefined ? {} : { note: data.note }),
+        ...(lifeOnly ? { usefulLifeYears: next.usefulLifeYears } : {}),
+        ...(data.propertyTaxAssetType === undefined
+          ? {}
+          : { propertyTaxAssetType: data.propertyTaxAssetType }),
+        ...(data.propertyTaxExcludedReason === undefined
+          ? {}
+          : { propertyTaxExcludedReason: data.propertyTaxExcludedReason }),
         ...derived,
       },
     });
@@ -1474,4 +1536,141 @@ export async function loadFixedAssetLedger(
     rows,
     totals,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 償却資産申告の元データ (16 §14)
+// ---------------------------------------------------------------------------
+
+/** The S8 calendar rule whose 1/31 item is the return's deadline (24 §1). */
+const LEGAL_RECORDS_RULE_KEY = "annual.legal-records";
+
+/** The calendar item of 1/31 (法定調書合計表・給与支払報告書・償却資産申告書); completed on `/calendar`. */
+export interface DepreciableAssetsReturnDeadline {
+  id: string;
+  title: string;
+  dueDate: CalendarDate;
+  completedAt: Date | null;
+}
+
+export interface DepreciableAssetsReturnData extends DepreciableAssetsReturn {
+  companyName: string | null;
+  /** 申告先 (本店所在地の市町村), `null` until saved. */
+  municipality: string | null;
+  /** `null` when the calendar has no item for Y-01-31 (no fiscal year holds that day yet). */
+  deadline: DepreciableAssetsReturnDeadline | null;
+  /** The return years to choose from, newest first: next year back to the year after the earliest acquisition. */
+  years: number[];
+}
+
+function returnYears(
+  earliest: CalendarDate | null,
+  today: CalendarDate,
+  requested: number,
+): number[] {
+  const last = Number(today.slice(0, 4)) + 1;
+  const first = earliest
+    ? Math.min(Number(earliest.slice(0, 4)) + 1, last)
+    : defaultDepreciableAssetsReturnYear(today);
+  const years: number[] = [];
+  for (let year = last; year >= first; year -= 1) years.push(year);
+  if (!years.includes(requested)) years.push(requested);
+  return years.sort((a, b) => b - a);
+}
+
+/**
+ * 償却資産申告の元データ of return year `year` (§14): the register's assets (voided registrations
+ * left out, a voided disposal entry puts the asset back in use) through `buildDepreciableAssetsReturn`,
+ * the 申告先 of the company, the deadline from the calendar and the years to choose from.
+ */
+export async function loadDepreciableAssetsReturn(
+  db: Db,
+  options: { year: number; today?: CalendarDate },
+): Promise<DepreciableAssetsReturnData> {
+  const today = options.today ?? todayInJapan();
+  const assessmentDate = `${String(options.year).padStart(4, "0")}-01-01` as CalendarDate;
+  const assets = await db.fixedAsset.findMany({
+    where: { voidedAt: null, acquisitionDate: { lte: toDbDate(assessmentDate) } },
+    include: assetInclude,
+    orderBy: [{ acquisitionDate: "asc" }, { id: "asc" }],
+  });
+  const result = buildDepreciableAssetsReturn(
+    assets.map((asset) => ({
+      id: asset.id,
+      name: asset.name,
+      accountCode: asset.account.code,
+      accountName: asset.account.name,
+      acquisitionDate: fromDbDate(asset.acquisitionDate),
+      cost: asset.cost,
+      method: asset.method,
+      usefulLifeYears: asset.usefulLifeYears,
+      disposedAt: disposalInForce(asset),
+      sold: statusOf(asset) === "sold",
+      voided: asset.voidedAt !== null,
+      propertyTaxAssetType: asset.propertyTaxAssetType,
+      propertyTaxExcludedReason: asset.propertyTaxExcludedReason,
+    })),
+    { year: options.year },
+  );
+  const company = await db.company.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { name: true, propertyTaxMunicipality: true },
+  });
+  const deadline = await db.calendarItem.findFirst({
+    where: {
+      ruleKey: LEGAL_RECORDS_RULE_KEY,
+      dueDate: toDbDate(`${String(options.year).padStart(4, "0")}-01-31` as CalendarDate),
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const earliest = await db.fixedAsset.aggregate({
+    where: { voidedAt: null },
+    _min: { acquisitionDate: true },
+  });
+  return {
+    ...result,
+    companyName: company?.name ?? null,
+    municipality: company?.propertyTaxMunicipality ?? null,
+    deadline: deadline
+      ? {
+          id: deadline.id,
+          title: deadline.title,
+          dueDate: fromDbDate(deadline.dueDate),
+          completedAt: deadline.completedAt,
+        }
+      : null,
+    years: returnYears(fromDbDateOrNull(earliest._min.acquisitionDate), today, options.year),
+  };
+}
+
+/**
+ * 申告先 (§14.4): the municipality of the head office, saved on the company (empty clears it).
+ * Audit: `company.update` with the field before and after; nothing is written when it is unchanged.
+ */
+export async function setPropertyTaxMunicipality(
+  db: Db,
+  input: PropertyTaxMunicipalityInput,
+  options: ActorOptions,
+): Promise<{ municipality: string | null }> {
+  const data = propertyTaxMunicipalitySchema.parse(input);
+  return runInTransaction(db, async (tx) => {
+    await lockSettings(tx, "company");
+    const company = await requireCompanyRow(tx);
+    if (company.propertyTaxMunicipality === data.municipality) {
+      return { municipality: company.propertyTaxMunicipality };
+    }
+    const row = await tx.company.update({
+      where: { id: company.id },
+      data: { propertyTaxMunicipality: data.municipality },
+    });
+    await appendAuditLog(tx, {
+      actor: options.actor,
+      action: "company.update",
+      entity: "company",
+      entityId: row.id,
+      before: { propertyTaxMunicipality: company.propertyTaxMunicipality },
+      after: { propertyTaxMunicipality: row.propertyTaxMunicipality },
+    });
+    return { municipality: row.propertyTaxMunicipality };
+  });
 }

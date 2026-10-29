@@ -1965,8 +1965,18 @@ export const fixedAssetUpdateSchema = z.object({
   cost: positiveYen("取得価額").optional(),
   method: fixedAssetFields.method.optional(),
   usefulLifeYears: fixedAssetFields.usefulLifeYears.optional(),
+  /** 償却資産申告の資産の種類 (§14.2): 1–6, empty = from the account. Changes at any time. */
+  propertyTaxAssetType: optionalIntegerInRange("資産の種類", 1, 6).optional(),
+  /** 申告の対象外の理由 (§14.1): empty = by the rules. Changes at any time. */
+  propertyTaxExcludedReason: optionalText("申告の対象外の理由", 200).optional(),
 });
 export type FixedAssetUpdateInput = z.input<typeof fixedAssetUpdateSchema>;
+
+/** 償却資産申告の申告先 (§14.4): 本店所在地の市町村; empty clears it. */
+export const propertyTaxMunicipalitySchema = z.object({
+  municipality: optionalText("申告先", 100),
+});
+export type PropertyTaxMunicipalityInput = z.input<typeof propertyTaxMunicipalitySchema>;
 
 /** 登録の取消 (§5.2). */
 export const fixedAssetVoidSchema = z.object({ reason: requiredText("理由", 500) });
