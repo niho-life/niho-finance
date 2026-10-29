@@ -722,6 +722,7 @@ export function buildBonusEntries(input: BuildBonusEntriesInput): PayrollEntries
         ? { description: `法定福利費 ${month}分（${input.title}）`, lines: employer }
         : null,
     socialInsurance: aggregate,
+    extraSocialInsurance: [],
   };
 }
 

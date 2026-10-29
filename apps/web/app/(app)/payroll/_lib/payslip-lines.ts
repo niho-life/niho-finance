@@ -42,6 +42,18 @@ export function payslipData(payslip: Payslip): PayslipData {
     deductions: [
       { label: "健康保険（介護・支援金を含む）", amount: formatYen(deductions.health) },
       { label: "厚生年金", amount: formatYen(deductions.pension) },
+      ...(deductions.extraPremium
+        ? [
+            {
+              label: `健康保険（${yearMonthLabel(deductions.extraPremium.premiumMonth)}分・退職月）`,
+              amount: formatYen(deductions.extraPremium.health),
+            },
+            {
+              label: `厚生年金（${yearMonthLabel(deductions.extraPremium.premiumMonth)}分・退職月）`,
+              amount: formatYen(deductions.extraPremium.pension),
+            },
+          ]
+        : []),
       { label: "雇用保険", amount: formatYen(deductions.employmentInsurance) },
       { label: "所得税", amount: formatYen(deductions.incomeTax) },
       { label: "住民税", amount: formatYen(deductions.residentTax) },
@@ -60,7 +72,12 @@ export function payslipData(payslip: Payslip): PayslipData {
         label: "扶養親族等の数",
         value: taxColumnText(reference.taxColumn.column, dependents),
       },
-      { label: "社会保険料の対象月", value: `${yearMonthLabel(reference.premiumMonth)}分` },
+      {
+        label: "社会保険料の対象月",
+        value: deductions.extraPremium
+          ? `${yearMonthLabel(reference.premiumMonth)}分・${yearMonthLabel(deductions.extraPremium.premiumMonth)}分`
+          : `${yearMonthLabel(reference.premiumMonth)}分`,
+      },
       ...(reference.adjustmentNote
         ? [{ label: "調整のメモ", value: reference.adjustmentNote }]
         : []),

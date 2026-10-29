@@ -63,12 +63,20 @@ export default async function NewPayrollRunPage({
     const settings = wallets.find((candidate) => candidate.id === wallet.id);
     return { value: wallet.id, label: settings ? walletLabel(settings) : wallet.name };
   });
-  const employees: RunEmployee[] = draft.employees.map(({ employee, coverage }) => ({
-    id: employee.id,
-    name: employee.name,
-    kind: employee.kind,
-    coverageNotes: coverageNotes(coverage, employee.kind, draft.premiumMonth, employee),
-  }));
+  const employees: RunEmployee[] = draft.employees.map(
+    ({ employee, coverage, extraPremiumMonth }) => ({
+      id: employee.id,
+      name: employee.name,
+      kind: employee.kind,
+      coverageNotes: coverageNotes(
+        coverage,
+        employee.kind,
+        draft.premiumMonth,
+        employee,
+        extraPremiumMonth,
+      ),
+    }),
+  );
   const initialDraft: RunDraft = {
     paymentDate: draft.input.paymentDate,
     premiumTiming: draft.input.premiumTiming,

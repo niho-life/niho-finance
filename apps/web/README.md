@@ -53,7 +53,7 @@ NIHO finance の画面（Next.js App Router・Tailwind 4）。画面の仕様は
 
 - `components/ui/`: Button / ButtonLink、Input・Select（native）・Textarea・Checkbox・FormField（`form.tsx`）、Switch、Table（グリッド。行高 40px、768px 未満は 2 段）、Sheet と ConfirmDialog（native `<dialog>`）、Toast（`useToast()`）、EmptyState、PageHeader、MoneyInput。外部の UI ライブラリは使わず、`window.confirm` / `alert` も使わない。
 - `components/settings/inline.tsx`: 一覧の中の直接編集（TextCell / SelectCell / CheckboxCell と `useRowSave`）。blur・Enter・変更で保存し、行の右端に「保存中 / 保存済み / エラー（理由）」を出す。Escape で保存済みの値に戻す。
-- `components/app-shell/`: 左ナビ（PC）と下タブ（スマホ）。準備中の項目は muted の非リンク。
+- `components/app-shell/`: 左ナビ（PC。768〜1023px は細い列）と下タブ（スマホ）。群と並びの正は `nav-items.ts` で、10 §1 の表と単体テストで照合する。
 - 色と字は `app/globals.css` のトークン（`bg-surface`、`text-muted`、`border-border` など）。
 - `lib/mail/`: メール送信（`sendMail`。件名に `[NIHO finance] ` を前置、本文はプレーンテキスト）。`NIHO_FINANCE_MAIL=log` はログに出すだけ、`smtp` は送る。失敗は throw せず `{ ok: false, error }`。
 - `lib/jobs/run.ts`: ジョブの共通入口（`runJob`）。`NIHO_FINANCE_SERVICE=jobs` 以外は 404、結果は `job.finished` の 1 行のログと 200 / 500（throw しない）。ジョブの書き込みの actor は `system`。
