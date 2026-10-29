@@ -377,6 +377,25 @@ export {
   type SkippableSetupStep,
 } from "./setup";
 export {
+  buildFirstMonthGuide,
+  checkFirstMonthStep,
+  closeFirstMonthGuide,
+  FIRST_MONTH_STEP_KEYS,
+  isFirstMonthStepKey,
+  loadFirstMonthFacts,
+  loadFirstMonthGuide,
+  readSetupGuideState,
+  showFirstMonthGuide,
+  uncheckFirstMonthStep,
+  type FirstMonthCheck,
+  type FirstMonthDeadline,
+  type FirstMonthFacts,
+  type FirstMonthGuide,
+  type FirstMonthStep,
+  type FirstMonthStepKey,
+  type SetupGuideState,
+} from "./first-month";
+export {
   findClosingYear,
   loadCorporateTaxEstimate,
   loadYearEndBalances,

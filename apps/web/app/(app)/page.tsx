@@ -21,6 +21,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db, loadSetupProgress, loadShell, requireSetupReady } from "@/lib/data";
 import { formatAmount, formatDate, formatMonth, formatPeriod } from "@/lib/format";
+import { FirstMonthGuide } from "./_components/first-month-guide";
 import { HomeCard } from "./_home/card";
 import { CashflowCard } from "./_home/cashflow-card";
 import { profitFigures, segmentBars } from "./_home/figures";
@@ -97,6 +98,7 @@ export default async function HomePage() {
         title="ホーム"
         meta={`${formatMonth(asOf)}${shell.fiscalYearNo ? ` · 第${shell.fiscalYearNo}期` : ""}`}
       />
+      <FirstMonthGuide />
       <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <HomeCard
           id="home-cash"

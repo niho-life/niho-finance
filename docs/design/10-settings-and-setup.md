@@ -86,14 +86,14 @@
 | キー | 項目（文の頭） | 済み（自動の判定） | 入口 |
 | --- | --- | --- | --- |
 | `filings` | 税務の届出 | 第 1 期の「設立から」の期限（[24](24-calendar.md)。`ruleKey` が `founding.` で始まる）が 1 件以上あり、すべて完了 | `/calendar` |
-| `import` | 明細の取込 | 取込が 1 回ある（CSV か銀行の API。`ImportBatch`） | `/imports` |
+| `import` | 明細の取込 | CSV の取込か銀行の API の同期が 1 回通った（`ImportBatch` の `source` が csv / api で、同期全体の失敗 `error` がない） | `/imports` |
 | `stripe` | Stripe の接続 | Stripe の口座が 1 つ以上接続済み | `/imports`（Stripe の口座がなければ `/settings/wallets`） |
 | `recurring` | 定期取引の登録（家賃・役員報酬） | 有効な定期取引が 1 件以上 | `/settings/recurring` |
 | `records-policy` | 証憑の規程 | 規程の施行日がある（[13 §5](13-documents.md)） | `/settings/documents-policy` |
 | `partners` | 取引先の登録 | 有効な取引先が 1 件以上 | `/settings/partners` |
 
 - 並びは法定の期限がある届出を先にし、あとは 07 §1 の順。
-- 判定は各レーンの読み出しを使い、結果は保存しない（描画のたびに導出）: `listImportBatches`（`limit: 1`）、`listImportableWallets`（`stripe.connected`）、`countActiveRecurringItems`、`getRecordsPolicy().effectiveOn`、`listPartners`（有効）、`listCalendarItems`（第 1 期の `founding.*`）。
+- 判定は各レーンの読み出しを使い、結果は保存しない（描画のたびに導出）: 取込は `ImportBatch` の件数（取込の履歴 `listImportBatches` は Stripe と失敗した同期も含むため）、`listImportableWallets`（`stripe.connected`）、`countActiveRecurringItems`、`getRecordsPolicy().effectiveOn`、`listPartners`（有効）、`listCalendarItems`（第 1 期の `founding.*`）。
 - 各行: 項目の文・一行の説明・入口のリンク（結果の動詞: 「期限を見る」「取り込む」「接続する」「登録する」「定める」）と「済みにする」（ghost・sm）。手動の「済みにする」は、自動の判定が当てはまらない会社のため（Stripe を使わない、取引先がまだない、届出を出したが期限を完了にしていない など）。お金の動かない、すぐ戻せる操作なので確認ダイアログは出さない。
 - 届出の行の下に、未完了の `founding.*` の期限を近い順に最大 3 件（内容・期限の日付・状態の文〔[24 §1](24-calendar.md) の表〕。各行が `/calendar`）。ほかにあれば「ほか n 件」。期限がまだない（会社を作った日の毎朝の同期の前）ときは「期限は毎朝 9 時の同期で作られます」。期限の完了は期限の画面で行う。
 - 見出しは「はじめの手順」、meta に「6 項目中 n 項目済み」。済んでいない項目だけを並べ、済んだ項目は下の「済み n 件を表示」で開く（無効の行の畳み方と同じ。§2）。開いた中で、手動で済みにした項目には「未了に戻す」（ghost・sm）。自動で済みの項目は戻せない（条件を満たしているため）。
