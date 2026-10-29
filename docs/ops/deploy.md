@@ -50,12 +50,15 @@ Cloud SQL は private IP のみなので、サービスとジョブは Direct VP
 | `NIHO_FINANCE_MAIL_FROM` / `_TO` | ○ | ○ | 送信元と通知の宛先（カンマ区切り） |
 | `NIHO_FINANCE_SMTP_HOST` / `_PORT` / `_USER` | ○ | ○ | 既定 `smtp.gmail.com` / `465` |
 | `NIHO_FINANCE_SMTP_PASSWORD` | Secret | Secret | アプリパスワード |
-| `NIHO_FINANCE_BACKUP_BUCKET` | — | ○ | 日次エクスポートの書き先（ローカルは `NIHO_FINANCE_BACKUP_DIR`） |
+| `NIHO_FINANCE_BACKUP_BUCKET` | ○ | ○ | 日次エクスポートと受け渡しパッケージ（`packages/`）の書き先（ローカルは `NIHO_FINANCE_BACKUP_DIR`）。画面は受け渡しパッケージの署名付き URL を作るのに読む |
 | `NIHO_FINANCE_DOCUMENTS_BUCKET` | ○ | ○ | 証憑（S6 #7 が使う） |
 | `NIHO_FINANCE_APP_URL` | ○ | ○ | メールに載せる画面の URL |
 | `NIHO_FINANCE_GIT_SHA` | ○ | ○ | 配備したコミット（バックアップの manifest とヘルスチェックに載る） |
 | `NIHO_FINANCE_JOB_AUDIENCE` / `_SERVICE_ACCOUNT` | — | ○ | Scheduler の OIDC トークンの `aud`（ジョブ用サービスの URL）と、そのサービスアカウントのメール（12 §5。`scripts/deploy.sh` が入れる） |
 | `NIHO_FINANCE_JOB_TOKEN` | — | ローカルだけ | 手元でジョブを `curl` するときの Bearer（`NIHO_FINANCE_ENV=prod` では無視） |
+| `NIHO_FINANCE_TASKS_QUEUE` | `projects/<プロジェクト>/locations/<リージョン>/queues/niho-finance-manual` | — | 画面がジョブを積む Cloud Tasks のキュー（受け渡しパッケージ、14 §16.4）。ないとき: ローカルは画面がその場でジョブを動かし、本番は証憑のファイルを外して書き出す |
+| `NIHO_FINANCE_JOB_URL` | ジョブ用サービスの URL | — | タスクの宛先（`/api/jobs/handover-package`）と OIDC の audience |
+| `NIHO_FINANCE_JOB_SERVICE_ACCOUNT`（画面） | Scheduler のサービスアカウント | — | タスクに付ける OIDC トークンのサービスアカウント（ジョブ側の `NIHO_FINANCE_JOB_SERVICE_ACCOUNT` と同じ値）。3 つとも `scripts/deploy.sh` が入れる |
 | `NIHO_FINANCE_STRIPE_KEY_<NAME>` | Secret | Secret | Stripe の制限付きキー。Secret `niho-finance-stripe-key-<name>` に版があれば `scripts/deploy.sh` が結ぶ（[secrets.md](secrets.md)） |
 
 ## 3. 初回だけ（資源の作成）
@@ -103,8 +106,10 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 | `backup-export` | 03:00 | `exports/<日付>/<時刻>Z/` に、全テーブルの JSON スナップショット（復元用）・会計期間ごとの試算表・`book/`（S7 の書き出し: 設定と仕訳の JSON、仕訳 CSV、beancount、明細と証憑の索引。会社の登録後）・manifest（全ファイルの SHA-256）を、DB の同じ時点から書く | 同上 |
 | `calendar-notify` | 09:00 | 会計期間から `CalendarItem` を生成（冪等。規則から外れた未完了の項目は消す）し、7 日前・当日・超過の期限をメール。知らせる期限がない日も SMTP のログインまで確かめる（アプリパスワードの失効を期限の前に失敗として知らせる） | 同上 |
 | `mail-check` | 手動だけ | 「送信の確認」を 1 通送る（アプリパスワードを入れた・更新したとき） | 同上 |
+| `handover-package` | 依頼のたび（画面の「作成を依頼」→ Cloud Tasks） | 20 MB を超える受け渡しパッケージ（14 §16.4）を作り、バックアップバケットの `packages/<作成日時>_fy<n>_<依頼 ID>.zip` にストリームで置いて、監査ログ `export.package` に `ready` を残す。依頼ごとに 1 回（作成済みなら何もしない） | 監査ログに `failed`（利用者向けの理由）を残し、`job.finished ok=false` で 500 |
 
 - どのジョブも例外を外に投げず、`{"severity":"ERROR","event":"job.finished","job":"…","ok":false,…}` を 1 行で記録して HTTP 500 を返す。Scheduler は再試行しない（`--max-retry-attempts=0`）。
+- 受け渡しパッケージのタスクは画面のサービス（実行用のサービスアカウント `niho-finance-runner`）がキューに積む。そのために `scripts/gcp-bootstrap.sh access` がキューへの `roles/cloudtasks.enqueuer` と、Scheduler のサービスアカウントへの `roles/iam.serviceAccountUser`（タスクに OIDC を付ける actAs）を付ける。ダウンロードは画面が `packages/` の V4 署名付き URL（10 分）を作って 302 で渡す（署名は既存の `roles/iam.serviceAccountTokenCreator`、読み取りは既存の `roles/storage.objectViewer`）。費用はタスク数件で 0 円。
 - 手で動かす: `scripts/run-job.sh mail-check|backup|calendar|stripe-sync`。ジョブ用サービスは内部からしか受けないので、Cloud Tasks のキュー（`niho-finance-manual`、再試行なし）から Scheduler と同じサービスアカウントの OIDC で呼び、`job.finished` のログを待って結果を出す。Scheduler のジョブは `gcloud scheduler jobs run <name> --location <リージョン>` でも動く。
 
 ## 7. バックアップと復元

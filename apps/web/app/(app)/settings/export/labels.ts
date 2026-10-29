@@ -23,6 +23,8 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   "account-details": "勘定科目内訳の元データ",
   "consumption-tax": "消費税の集計",
   announcement: "決算公告",
+  // 受け渡しパッケージ (14-reports §16.5)
+  package: "受け渡しパッケージ",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {
