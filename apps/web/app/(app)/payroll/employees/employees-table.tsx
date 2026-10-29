@@ -41,6 +41,8 @@ export interface EmployeeRow {
   dependents: number;
   residentTax: string;
   isActive: boolean;
+  /** 退職日; "" = 在職. */
+  leftOn: string;
 }
 
 /** 「報酬月額から求める」: usable when this month's kenpo and pension tables are registered. */
@@ -60,6 +62,16 @@ interface Draft {
   taxColumn: TaxColumn;
   dependents: string;
   residentTax: string;
+  leftOn: string;
+}
+
+/** What saving reported: the warnings and the 退職 deadlines it put on the calendar. */
+interface SavedNotice {
+  name: string;
+  warnings: string[];
+  filings: { title: string; dueDate: string; state: string }[];
+  /** The 退職日 was cleared: the deadlines already made stay. */
+  leftOnCleared: boolean;
 }
 
 const COLUMNS = {
@@ -82,6 +94,7 @@ const FIELDS = new Set([
   "taxColumn",
   "dependents",
   "residentTax",
+  "leftOn",
 ]);
 
 function draftOf(employee: EmployeeRow | null, firstPerson: boolean): Draft {
@@ -100,6 +113,7 @@ function draftOf(employee: EmployeeRow | null, firstPerson: boolean): Draft {
       taxColumn: employee.taxColumn,
       dependents: String(employee.dependents),
       residentTax: employee.residentTax,
+      leftOn: employee.leftOn,
     };
   }
   // The first person of a one-person company is usually the officer.
@@ -118,6 +132,7 @@ function draftOf(employee: EmployeeRow | null, firstPerson: boolean): Draft {
     taxColumn: "kou",
     dependents: "0",
     residentTax: "",
+    leftOn: "",
   };
 }
 
@@ -150,7 +165,7 @@ function EmployeeSheet({
   employee: EmployeeRow | null;
   firstPerson: boolean;
   gradeTool: GradeTool;
-  onSaved: (name: string, warnings: string[]) => void;
+  onSaved: (notice: SavedNotice) => void;
   onClose: () => void;
 }) {
   const id = useId();
@@ -184,7 +199,12 @@ function EmployeeSheet({
           ? `「${result.data.name}」を保存しました`
           : `「${result.data.name}」を追加しました`,
       );
-      onSaved(result.data.name, result.data.warnings);
+      onSaved({
+        name: result.data.name,
+        warnings: result.data.warnings,
+        filings: result.data.leaveFilings,
+        leftOnCleared: employee !== null && employee.leftOn !== "" && draft.leftOn === "",
+      });
     });
   }
 
@@ -511,6 +531,20 @@ function EmployeeSheet({
             {...describedBy(field("resident"), { help: true, error: fieldError("residentTax") })}
           />
         </FormField>
+        <FormField
+          label="退職日"
+          htmlFor={field("left-on")}
+          error={fieldError("leftOn")}
+          help="退職したら入れます。翌日が社会保険の資格喪失日で、その月の分から保険料はかかりません（月末の退職は退職月の分まで）。次の月から支給の計算に出ません。資格喪失届・異動届・源泉徴収票の交付の期限を「期限」に足します"
+        >
+          <Input
+            id={field("left-on")}
+            type="date"
+            value={draft.leftOn}
+            onChange={(event) => change({ leftOn: event.currentTarget.value })}
+            {...describedBy(field("left-on"), { help: true, error: fieldError("leftOn") })}
+          />
+        </FormField>
         {toggleError ? (
           <p role="alert" className="text-[12px] font-bold text-danger">
             {toggleError}
@@ -535,7 +569,7 @@ export function EmployeesTable({
   const [showInactive, setShowInactive] = useState(false);
   /** `"new"`, an employee id, or `null` when the sheet is closed. */
   const [editing, setEditing] = useState<string | null>(startAdding ? "new" : null);
-  const [notice, setNotice] = useState<{ name: string; warnings: string[] } | null>(null);
+  const [notice, setNotice] = useState<SavedNotice | null>(null);
   const shown = employees.filter((employee) => employee.isActive || showInactive);
   const inactiveCount = employees.filter((employee) => !employee.isActive).length;
   const edited = employees.find((employee) => employee.id === editing) ?? null;
@@ -560,12 +594,41 @@ export function EmployeesTable({
           className="mb-3 flex items-start gap-3 rounded-lg bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn"
         >
           <div className="min-w-0 flex-1">
-            <p className="font-bold">「{notice.name}」を保存しました。次の点を確かめてください。</p>
-            <ul className="mt-1 list-disc pl-5">
-              {notice.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
+            {notice.warnings.length > 0 ? (
+              <>
+                <p className="font-bold">
+                  「{notice.name}」を保存しました。次の点を確かめてください。
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  {notice.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {notice.filings.length > 0 ? (
+              <>
+                <p className="mt-1 font-bold">
+                  「{notice.name}」の退職の届出と交付の期限を「期限」に入れました。
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  {notice.filings.map((filing) => (
+                    <li key={filing.title}>
+                      {filing.title}: <span className="num">{filing.dueDate}</span> まで
+                      {filing.state === "completed" ? "（完了済み）" : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1">
+                  源泉徴収票は 給与 › 法定調書 から出します。年末調整の対象からは外れます。
+                </p>
+              </>
+            ) : null}
+            {notice.leftOnCleared ? (
+              <p className="mt-1">
+                退職日を消しました。前に入れた退職の届出の期限は残っています。不要なら「期限」で完了にしてください。
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -619,6 +682,11 @@ export function EmployeesTable({
               </Td>
               <Td sm="hide" className="text-[13px] text-muted">
                 {employee.isActive ? "有効" : "無効"}
+                {employee.leftOn !== "" ? (
+                  <span className="block text-[11px]">
+                    退職 {employee.leftOn.replaceAll("-", "/")}
+                  </span>
+                ) : null}
               </Td>
               <Td>
                 <OpenButton
@@ -647,9 +715,13 @@ export function EmployeesTable({
           employee={edited}
           firstPerson={employees.length === 0}
           gradeTool={gradeTool}
-          onSaved={(name, warnings) => {
+          onSaved={(saved) => {
             setEditing(null);
-            setNotice(warnings.length > 0 ? { name, warnings } : null);
+            setNotice(
+              saved.warnings.length > 0 || saved.filings.length > 0 || saved.leftOnCleared
+                ? saved
+                : null,
+            );
           }}
           onClose={() => setEditing(null)}
         />

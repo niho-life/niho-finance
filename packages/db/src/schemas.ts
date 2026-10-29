@@ -1784,12 +1784,21 @@ const employeeFields = {
   taxColumn: enumField("源泉徴収の区分", EMPLOYEE_TAX_COLUMNS),
   dependents: optionalIntegerInRange("扶養親族等の数", 0, 99),
   residentTax: nonNegativeYen("住民税", { emptyAs: 0n }),
+  /** 退職日 (22-payroll §12.3); empty = 在職. */
+  leftOn: optionalDate("退職日"),
 };
 
 type EmployeeFieldsOutput = z.output<z.ZodObject<typeof employeeFields>>;
 
 /** 役員は雇用保険なし; 社会保険ありなら資格取得日と標準報酬月額 2 つが要る (22-payroll §5.1). */
 function refineEmployee(value: EmployeeFieldsOutput, ctx: z.RefinementCtx): void {
+  if (value.leftOn !== null && value.leftOn <= value.birthDate) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["leftOn"],
+      message: "退職日は生年月日より後の日付にしてください",
+    });
+  }
   if (value.kind === "officer" && value.employmentInsured) {
     ctx.addIssue({
       code: "custom",
@@ -2556,8 +2565,68 @@ const yearEndAmount = (label: string) => nonNegativeYen(label, { emptyAs: 0n });
 /** At most this many 扶養親族 / 特定親族 rows. */
 export const YEAR_END_PEOPLE_MAX = 30;
 
+/** A text of a 法定調書 field: trimmed, "" allowed, at most `max` characters. */
+function slipText(label: string, max: number) {
+  return fromText(label, (text): Conversion<string> => {
+    if (text.length > max) return problem(`${label}は ${max} 文字以内にしてください`);
+    return ok(text);
+  });
+}
+
+/** フリガナ: カタカナ・ひらがな (全角・半角), spaces, ー and ・ only. */
+function furiganaField(label: string, max = 60) {
+  return fromText(label, (text): Conversion<string> => {
+    if (text.length > max) return problem(`${label}は ${max} 文字以内にしてください`);
+    if (
+      !/^[\u3041-\u3096\u309b\u309c\u30a1-\u30fa\u30fc\u30fb\uff65-\uff9f\s\u3000]*$/.test(text)
+    ) {
+      return problem(`${label}はカタカナかひらがなで入れてください`);
+    }
+    return ok(text);
+  });
+}
+
+/**
+ * A relative's name on 法定調書 (22-payroll §12.2): DB only, never a マイナンバー. Optional on every
+ * person of the declaration so that declarations saved before §12 still read.
+ */
+export const yearEndPersonSchema = z.object({
+  name: slipText("氏名", 30),
+  furigana: furiganaField("フリガナ"),
+  nonResident: booleanField("非居住者"),
+});
+
+/** The recipient's fields of 給与支払報告書 (§12.2). */
+export const yearEndRecipientSchema = z.object({
+  furigana: furiganaField("受給者のフリガナ"),
+  address: slipText("住所", 60),
+  municipalityCode: fromText("提出先市町村コード", (text): Conversion<string> => {
+    const digits = toHalfWidthDigits(text);
+    if (digits !== "" && !/^\d{6}$/.test(digits)) {
+      return problem("提出先市町村コードは 6 桁の数字（全国地方公共団体コード）にしてください");
+    }
+    return ok(digits);
+  }),
+  recipientNo: fromText("受給者番号", (text): Conversion<string> => {
+    const value = toHalfWidthDigits(text);
+    if (value.length > 25) return problem("受給者番号は 25 文字以内にしてください");
+    if (!/^[0-9A-Za-z-]*$/.test(value)) {
+      return problem("受給者番号は半角の英数字とハイフンにしてください");
+    }
+    return ok(value);
+  }),
+});
+
+/** 前職の支払者 (源泉徴収票の摘要・統一 CSV の他の支払者). */
+export const yearEndPreviousPayerSchema = z.object({
+  name: slipText("前職の支払者の名称", 30),
+  address: slipText("前職の支払者の住所", 60),
+  leftOn: optionalDate("前職の退職日"),
+});
+
 const yearEndDependentSchema = z
   .object({
+    person: yearEndPersonSchema.optional(),
     category: enumField("扶養親族の区分", DEPENDENT_CATEGORIES),
     disability: enumField("障害の区分", DISABILITY_KINDS),
     /** 一般の扶養親族だけ: 16〜18 歳 (23 歳未満). */
@@ -2572,6 +2641,7 @@ const yearEndSpouseSchema = z.object({
   totalIncome: yearEndAmount("配偶者の合計所得の見積額"),
   elderly: booleanField("老人控除対象配偶者"),
   disability: enumField("配偶者の障害の区分", DISABILITY_KINDS),
+  person: yearEndPersonSchema.optional(),
 });
 
 const yearEndInsuranceSchema = z.object({
@@ -2591,12 +2661,14 @@ const yearEndPreviousEmployerSchema = z.object({
   paid: yearEndAmount("前職の支払金額"),
   socialInsurance: yearEndAmount("前職の社会保険料"),
   withheld: yearEndAmount("前職の源泉徴収税額"),
+  payer: yearEndPreviousPayerSchema.optional(),
 });
 
 /**
- * 年末調整の申告 (22-payroll §11.4): categories, counts and income estimates only — no relative's
- * name. Validates both the form's values and the stored JSON (`PayrollYearEndDeclaration.
- * declarations`, amounts as decimal strings); the output is `YearEndDeclaration` of the payroll core.
+ * 年末調整の申告 (22-payroll §11.4): categories, counts and income estimates, and (§12.2, optional)
+ * the names, フリガナ and addresses of 法定調書 — never a マイナンバー. Validates both the form's values
+ * and the stored JSON (`PayrollYearEndDeclaration.declarations`, amounts as decimal strings); the
+ * output is `YearEndDeclaration` of the payroll core.
  */
 export const yearEndDeclarationSchema = z.object({
   dependents: z
@@ -2610,16 +2682,56 @@ export const yearEndDeclarationSchema = z.object({
   otherIncome: yearEndAmount("給与以外の所得の見積額"),
   spouse: yearEndSpouseSchema.nullish().transform((value) => value ?? null),
   specificRelatives: z
-    .array(z.object({ totalIncome: yearEndAmount("特定親族の合計所得の見積額") }), {
-      error: "特定親族の形式が正しくありません",
-    })
+    .array(
+      z.object({
+        totalIncome: yearEndAmount("特定親族の合計所得の見積額"),
+        person: yearEndPersonSchema.optional(),
+      }),
+      { error: "特定親族の形式が正しくありません" },
+    )
     .max(YEAR_END_PEOPLE_MAX, { error: `特定親族は ${YEAR_END_PEOPLE_MAX} 人までです` }),
   incomeAdjustment: booleanField("所得金額調整控除の要件"),
   insurance: yearEndInsuranceSchema,
   housingLoanCredit: yearEndAmount("住宅借入金等特別控除額"),
   previousEmployer: yearEndPreviousEmployerSchema.nullish().transform((value) => value ?? null),
+  recipient: yearEndRecipientSchema.optional(),
 });
 export type YearEndDeclarationFormInput = z.input<typeof yearEndDeclarationSchema>;
+
+/**
+ * 法定調書の欄を保存 (22-payroll §12.2): the recipient's fields and the names of the saved
+ * declaration's people (by their order there), and 前職の支払者. Saved even after 年末調整 is
+ * confirmed (nothing of the calculation changes).
+ */
+export const yearEndStatementSaveSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  employeeId: idField("従業員"),
+  recipient: yearEndRecipientSchema,
+  spouse: yearEndPersonSchema.nullish().transform((value) => value ?? null),
+  dependents: z
+    .array(yearEndPersonSchema, { error: "扶養親族の形式が正しくありません" })
+    .max(YEAR_END_PEOPLE_MAX),
+  specificRelatives: z
+    .array(yearEndPersonSchema, { error: "特定親族の形式が正しくありません" })
+    .max(YEAR_END_PEOPLE_MAX),
+  previousPayer: yearEndPreviousPayerSchema.nullish().transform((value) => value ?? null),
+});
+export type YearEndStatementSaveInput = z.input<typeof yearEndStatementSaveSchema>;
+
+/** 個人 / 法人 / 未確認 of a partner (報酬の支払調書, §12.2). */
+export const PARTNER_INDIVIDUAL_CHOICES = ["individual", "corporation", "unknown"] as const;
+
+export const partnerIndividualSchema = z
+  .object({
+    id: idField("取引先"),
+    choice: enumField("個人か法人か", PARTNER_INDIVIDUAL_CHOICES),
+  })
+  .transform((value) => ({
+    id: value.id,
+    isIndividual:
+      value.choice === "individual" ? true : value.choice === "corporation" ? false : null,
+  }));
+export type PartnerIndividualInput = z.input<typeof partnerIndividualSchema>;
 
 /** 申告を保存 (§11.5). */
 export const yearEndDeclarationSaveSchema = z.object({

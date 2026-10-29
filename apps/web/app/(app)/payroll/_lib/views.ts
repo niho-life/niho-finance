@@ -12,6 +12,8 @@ import {
 import { displayDate, formatYen, getTaxCategory, type Money } from "@niho-finance/ledger";
 import {
   compareYearMonths,
+  lossMonthOf,
+  premiumDueForMonth,
   yearMonthLabel,
   yearMonthOf,
   type PayrollCoverage,
@@ -83,12 +85,18 @@ export function coverageNotes(
   coverage: PayrollCoverage,
   kind: WorkerKind,
   premiumMonth: YearMonth,
-  employee: Pick<EmployeeRecord, "socialInsured" | "insuredFrom"> | null,
+  employee: Pick<EmployeeRecord, "socialInsured" | "insuredFrom" | "leftOn"> | null,
+  /** 退職者の最後の給与で併せて控除する退職月 (22-payroll §12.3). */
+  extraPremiumMonth: YearMonth | null = null,
 ): string[] {
   const notes: string[] = [];
   const insuredFrom = employee?.socialInsured ? employee.insuredFrom : null;
   if (employee && !employee.socialInsured) {
     notes.push("社会保険なし");
+  } else if (employee?.leftOn && !premiumDueForMonth(employee.leftOn, premiumMonth)) {
+    notes.push(
+      `社会保険なし（${displayDate(employee.leftOn)} 退職・${yearMonthLabel(lossMonthOf(employee.leftOn))}に資格喪失）`,
+    );
   } else if (insuredFrom && compareYearMonths(yearMonthOf(insuredFrom), premiumMonth) > 0) {
     notes.push(
       `社会保険は ${yearMonthLabel(yearMonthOf(insuredFrom))}分から（資格取得日 ${displayDate(insuredFrom)}）`,
@@ -103,6 +111,9 @@ export function coverageNotes(
     notes.push(
       coverage.pension ? "厚生年金" : employee ? "厚生年金なし（70 歳以上）" : "厚生年金なし",
     );
+  }
+  if (extraPremiumMonth) {
+    notes.push(`退職月の ${yearMonthLabel(extraPremiumMonth)}分の社会保険料も控除（最後の給与）`);
   }
   if (kind === "employee") notes.push(coverage.employment ? "雇用保険" : "雇用保険なし");
   return notes;
@@ -150,6 +161,9 @@ export function toItemResultView(item: PayrollRunItem, notes: string[]): RunItem
     socialInsuranceDetail: [
       `健保 ${formatYen(health)}`,
       `厚年 ${formatYen(pension)}`,
+      result.extraPremium
+        ? `${yearMonthLabel(result.extraPremium.premiumMonth)}分（退職月） ${formatYen(result.extraPremium.socialInsurance.employeeTotal)}`
+        : null,
       socialAdjustment !== 0n ? `調整 ${adjustmentText(socialAdjustment)}` : null,
     ]
       .filter(Boolean)
@@ -231,6 +245,7 @@ export async function loadRunPreview(
           item.kind,
           preview.premiumMonth,
           employees.get(item.employeeId) ?? null,
+          item.input.extraPremium?.premiumMonth ?? null,
         ),
       ),
     ),

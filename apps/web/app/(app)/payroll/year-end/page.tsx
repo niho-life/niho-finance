@@ -121,7 +121,14 @@ export default async function YearEndListPage({
             )}
             <p className="text-[13px] text-muted">
               使う表: {overview.table.title}（{displayDate(overview.table.source.fetchedAt)}{" "}
-              に取得）
+              に取得）。確定した後の源泉徴収票・給与支払報告書は{" "}
+              <Link
+                href={`/payroll/statements?year=${year}`}
+                className="font-bold underline underline-offset-4"
+              >
+                給与 › 法定調書
+              </Link>{" "}
+              で出します。年の中途で退職した人は年末調整の対象外です。
             </p>
 
             {overview.rows.length === 0 ? (

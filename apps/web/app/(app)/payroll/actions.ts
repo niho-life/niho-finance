@@ -20,7 +20,7 @@ import {
   type PayrollRunInput,
   type YearEndDeclarationFormInput,
 } from "@niho-finance/db";
-import { formatYen, formatYenInput, parseYenInput } from "@niho-finance/ledger";
+import { displayDate, formatYen, formatYenInput, parseYenInput } from "@niho-finance/ledger";
 import {
   determineStandardRemuneration,
   findKenpoTable,
@@ -73,6 +73,8 @@ export interface SavedEmployee {
   name: string;
   /** Shown after saving (保存は止めない). */
   warnings: string[];
+  /** The 退職 deadlines put on the calendar when the 退職日 was set or changed (§12.3). */
+  leaveFilings: { title: string; dueDate: string; state: string }[];
 }
 
 /** 追加 (`id` = null) or 保存. */
@@ -93,9 +95,14 @@ export async function saveEmployeeAction(
             await by(),
           );
     },
-    ({ employee, warnings }) => ({
+    ({ employee, warnings, leaveFilings }) => ({
       name: employee.name,
       warnings: warnings.map((warning) => warning.message),
+      leaveFilings: leaveFilings.map((filing) => ({
+        title: filing.title,
+        dueDate: displayDate(filing.dueDate),
+        state: filing.state,
+      })),
     }),
   );
 }

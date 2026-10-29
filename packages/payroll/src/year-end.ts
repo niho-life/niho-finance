@@ -1,4 +1,4 @@
-import { formatYen, type Money } from "@niho-finance/ledger";
+import { formatYen, type CalendarDate, type Money } from "@niho-finance/ledger";
 import { PayrollInputError, type PayrollInputIssue } from "./errors";
 import { add, ceilToYen, floorToYen, mul, ratio } from "./rational";
 import { findYearEndTable } from "./registry";
@@ -10,7 +10,9 @@ import { tableRef, type TableRef, type YearEndFormulaBracket, type YearEndTable 
  * withholding and the declarations (扶養控除等・基礎控除・配偶者控除等・特定親族・所得金額調整控除・
  * 保険料控除・住宅借入金等特別控除・前職分), step by step as in 「年末調整のしかた」 35〜40 ページ, and the
  * settlement entry. Pure: every number comes from the year's table (`data/<年>/year-end.json`).
- * The declarations hold categories, counts and income estimates only, never a relative's name.
+ * The calculation reads categories, counts and income estimates only. The names, フリガナ and
+ * addresses the statutory reports need (§12.2: `person`, `recipient`, `previousEmployer.payer`)
+ * ride along in the same declaration (DB only) and never change a number.
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -60,7 +62,30 @@ export const WIDOW_STATUS_LABELS: Readonly<Record<WidowStatus, string>> = {
   single_parent: "ひとり親",
 };
 
+/** A relative as 法定調書 names them (§12.2). Kept in the database only; never a マイナンバー. */
+export interface YearEndPerson {
+  name: string;
+  /** フリガナ as typed (全角カナ・ひらがな・半角カナ); the CSV converts it to 半角カナ. */
+  furigana: string;
+  /** 非居住者 (国外に住む親族). */
+  nonResident: boolean;
+}
+
+/** The recipient's fields of 給与支払報告書 (§12.2). */
+export interface YearEndRecipient {
+  /** 受給者のフリガナ. */
+  furigana: string;
+  /** 翌年 1 月 1 日現在の住所 (退職者は退職時の住所): 提出先の市区町村を決める. */
+  address: string;
+  /** 提出先市町村コード (全国地方公共団体コード 6 桁); "" = 未入力. */
+  municipalityCode: string;
+  /** 受給者番号 (支払者が付ける番号); "" = 従業員の id から. */
+  recipientNo: string;
+}
+
 export interface YearEndDependent {
+  /** The name on 法定調書 (§12.2); not used by the calculation. */
+  person?: YearEndPerson;
   category: DependentCategory;
   disability: DisabilityKind;
   /**
@@ -77,6 +102,8 @@ export interface YearEndSpouse {
   /** 70 歳以上 (老人控除対象配偶者). */
   elderly: boolean;
   disability: DisabilityKind;
+  /** The name on 法定調書 (§12.2); not used by the calculation. */
+  person?: YearEndPerson;
 }
 
 export interface YearEndInsurance {
@@ -105,6 +132,8 @@ export interface YearEndPreviousEmployer {
   paid: Money;
   socialInsurance: Money;
   withheld: Money;
+  /** 前職の支払者 (源泉徴収票の摘要・統一 CSV の他の支払者); not used by the calculation. */
+  payer?: { name: string; address: string; leftOn: CalendarDate | null };
 }
 
 /** What the person declared for the year (`PayrollYearEndDeclaration.declarations`). */
@@ -118,7 +147,7 @@ export interface YearEndDeclaration {
   /** 配偶者控除等申告書; `null` = 配偶者なし (or not declared). */
   spouse: YearEndSpouse | null;
   /** 特定親族 (19〜22 歳, 合計所得金額 62 万円超), one per person. */
-  specificRelatives: { totalIncome: Money }[];
+  specificRelatives: { totalIncome: Money; person?: YearEndPerson }[];
   /**
    * 所得金額調整控除申告書: the requirement is met by someone not on the 扶養控除等申告書 (e.g. a child
    * the other parent claims). The requirement is otherwise derived from the declarations.
@@ -129,6 +158,29 @@ export interface YearEndDeclaration {
   /** 住宅借入金等特別控除申告書の控除額 (年末調整で控除する額). */
   housingLoanCredit: Money;
   previousEmployer: YearEndPreviousEmployer | null;
+  /** 給与支払報告書の受給者の欄 (§12.2); not used by the calculation. */
+  recipient?: YearEndRecipient;
+}
+
+/**
+ * The part of a declaration the calculation reads: without the names, フリガナ and addresses of
+ * §12.2. Two declarations with the same calculation part give the same 年末調整.
+ */
+export function yearEndCalculationPart(declaration: YearEndDeclaration): YearEndDeclaration {
+  const { recipient: _recipient, ...rest } = declaration;
+  return {
+    ...rest,
+    dependents: declaration.dependents.map(({ person: _person, ...dependent }) => dependent),
+    spouse: declaration.spouse
+      ? (({ person: _person, ...spouse }) => spouse)(declaration.spouse)
+      : null,
+    specificRelatives: declaration.specificRelatives.map(
+      ({ person: _person, ...relative }) => relative,
+    ),
+    previousEmployer: declaration.previousEmployer
+      ? (({ payer: _payer, ...previous }) => previous)(declaration.previousEmployer)
+      : null,
+  };
 }
 
 /** Nothing declared: 基礎控除 only. */
