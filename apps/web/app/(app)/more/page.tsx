@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Form from "next/form";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata: Metadata = { title: "その他" };
@@ -11,6 +13,7 @@ const SECTIONS = [
   { label: "明細の取込", href: "/imports", summary: "銀行・カードの CSV と Stripe の同期" },
   { label: "期限", href: "/calendar", summary: "申告・届出・納付の期限と完了の記録" },
   { label: "請求", href: "/invoices", summary: "見積・納品・請求と入金の消込" },
+  { label: "支払", href: "/payables", summary: "受領した請求書の未払と支払期日" },
   { label: "給与", href: "/payroll", summary: "従業員・支給・給与明細・納付" },
   { label: "立替精算", href: "/expenses", summary: "社員・業務委託の立替の提出と支払" },
   { label: "決算", href: "/closing", summary: "決算整理・固定資産・締め" },
@@ -22,6 +25,21 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="その他" />
+      {/* 全体検索の入口 on phones (10 §7.1): a GET form, usable without JavaScript. */}
+      <Form action="/search" role="search" className="mb-4 flex items-end gap-2">
+        <label className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-[12px] font-bold text-muted">検索</span>
+          <input
+            name="q"
+            type="search"
+            maxLength={100}
+            placeholder="摘要・金額・取引先・請求番号"
+            enterKeyHint="search"
+            className="control"
+          />
+        </label>
+        <Button type="submit">検索</Button>
+      </Form>
       <ul>
         {SECTIONS.map((section) => (
           <li key={section.href}>

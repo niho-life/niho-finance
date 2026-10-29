@@ -297,6 +297,8 @@ model Company {
   recordsPolicyOperator     String?   @map("records_policy_operator")
   /// 証憑の規程: version of the text that was put in force (POLICY_VERSION of the app)
   recordsPolicyVersion      String?   @map("records_policy_version")
+  /// 償却資産申告の申告先 (本店所在地の市町村)
+  propertyTaxMunicipality   String?   @map("property_tax_municipality")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -473,6 +475,10 @@ model Partner {
   email                        String?
   address                      String?
   note                         String?
+  /// 支払条件 (25-payables §3): 締め日 1–31 (31 = 末日), 何か月後 0–3, 支払日 1–31; all three or none
+  paymentClosingDay            Int?                      @map("payment_closing_day")
+  paymentDueMonths             Int?                      @map("payment_due_months")
+  paymentDueDay                Int?                      @map("payment_due_day")
   isActive                     Boolean                   @default(true) @map("is_active")
   /// 個人 (true) / 法人 (false) / 未確認 (null): 報酬の支払調書 (22-payroll §12.2) は個人だけ
   isIndividual                 Boolean?                  @map("is_individual")
@@ -545,15 +551,17 @@ model Wallet {
   /// Why the last sync failed; cleared by the next one that completes
   bankApiError         String?    @map("bank_api_error")
 
-  account         Account             @relation(fields: [accountId], references: [id])
-  subAccount      SubAccount?         @relation(fields: [subAccountId], references: [id])
-  defaultSegment  Segment?            @relation(fields: [defaultSegmentId], references: [id])
-  stripeAccount   StripeAccountLink?
-  transactions    WalletTransaction[]
-  importBatches   ImportBatch[]
-  rules           Rule[]
-  recurringItems  RecurringItem[]
-  expensePayments ExpensePayment[]
+  account                Account             @relation(fields: [accountId], references: [id])
+  subAccount             SubAccount?         @relation(fields: [subAccountId], references: [id])
+  defaultSegment         Segment?            @relation(fields: [defaultSegmentId], references: [id])
+  stripeAccount          StripeAccountLink?
+  transactions           WalletTransaction[]
+  importBatches          ImportBatch[]
+  rules                  Rule[]
+  recurringItems         RecurringItem[]     @relation("RecurringItemWallet")
+  recurringTransferItems RecurringItem[]     @relation("RecurringItemTransferWallet")
+  expensePayments        ExpensePayment[]
+  payables               Document[]          @relation("PayableWallet")
 
   @@map("wallet")
 }
@@ -724,6 +732,7 @@ model JournalEntry {
   expenseClaimReversals   ExpenseClaim[]      @relation("ExpenseClaimReversal")
   expensePayments         ExpensePayment[]    @relation("ExpensePaymentEntry")
   expensePaymentReversals ExpensePayment[]    @relation("ExpensePaymentReversal")
+  payables                Document[]          @relation("PayableEntry")
   payrollYearEnds         PayrollYearEnd[]    @relation("PayrollYearEndSettlement")
 
   @@unique([fiscalYearId, no])
@@ -808,12 +817,21 @@ model Document {
   voidedAt                  DateTime?      @map("voided_at") @db.Timestamptz(6)
   voidReason                String?        @map("void_reason")
   note                      String?
+  /// 支払 (25-payables §8.1): the 計上 entry of a received invoice (kept after a cancel; a new
+  /// registration overwrites it). The rest and the state are derived from the ledger, never stored
+  payableEntryId            String?        @map("payable_entry_id")
+  /// 支払期日
+  payableDueDate            DateTime?      @map("payable_due_date") @db.Date
+  /// 支払元の予定
+  payableWalletId           String?        @map("payable_wallet_id")
   createdAt                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   partner       Partner?       @relation(fields: [partnerId], references: [id])
   supersedes    Document?      @relation("Supersession", fields: [supersedesId], references: [id])
   supersededBy  Document[]     @relation("Supersession")
+  payableEntry  JournalEntry?  @relation("PayableEntry", fields: [payableEntryId], references: [id])
+  payableWallet Wallet?        @relation("PayableWallet", fields: [payableWalletId], references: [id])
   links         DocumentLink[]
   importBatches ImportBatch[]
   invoicePdfs   Invoice[]
@@ -825,6 +843,7 @@ model Document {
   @@index([txnDate, amount, partnerId])
   @@index([sha256])
   @@index([status])
+  @@index([payableDueDate])
   @@map("document")
 }
 
@@ -917,30 +936,34 @@ model Invoice {
 }
 
 model FixedAsset {
-  id                      String             @id
-  name                    String
-  accountId               String             @map("account_id")
-  acquisitionDate         DateTime           @map("acquisition_date") @db.Date
-  cost                    BigInt
-  method                  DepreciationMethod
-  usefulLifeYears         Int?               @map("useful_life_years")
+  id                        String             @id
+  name                      String
+  accountId                 String             @map("account_id")
+  acquisitionDate           DateTime           @map("acquisition_date") @db.Date
+  cost                      BigInt
+  method                    DepreciationMethod
+  usefulLifeYears           Int?               @map("useful_life_years")
   /// Memorandum value kept on the books (1 yen)
-  residualValue           BigInt             @default(1) @map("residual_value")
+  residualValue             BigInt             @default(1) @map("residual_value")
   /// Depreciation per fiscal year; source of the adjusting entries
-  schedule                Json?
+  schedule                  Json?
   /// Subject to the local depreciable assets tax (償却資産税)
-  isDepreciableAssetTaxed Boolean            @default(false) @map("is_depreciable_asset_taxed")
-  segmentId               String?            @map("segment_id")
-  disposedAt              DateTime?          @map("disposed_at") @db.Date
-  disposalEntryId         String?            @map("disposal_entry_id")
+  isDepreciableAssetTaxed   Boolean            @default(false) @map("is_depreciable_asset_taxed")
+  segmentId                 String?            @map("segment_id")
+  disposedAt                DateTime?          @map("disposed_at") @db.Date
+  disposalEntryId           String?            @map("disposal_entry_id")
   /// The journal entry the asset was bought with (登録の「取得の仕訳から」 or 「仕訳も一緒に登録」)
-  acquisitionEntryId      String?            @map("acquisition_entry_id")
-  note                    String?
+  acquisitionEntryId        String?            @map("acquisition_entry_id")
+  note                      String?
   /// Logical delete of the registration (登録の取消); the acquisition entry stays as it is
-  voidedAt                DateTime?          @map("voided_at") @db.Timestamptz(6)
-  voidReason              String?            @map("void_reason")
-  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  voidedAt                  DateTime?          @map("voided_at") @db.Timestamptz(6)
+  voidReason                String?            @map("void_reason")
+  /// 償却資産申告の資産の種類 (第二十六号様式 1 構築物 … 6 工具、器具及び備品); null = from the account
+  propertyTaxAssetType      Int?               @map("property_tax_asset_type")
+  /// 償却資産申告の対象外の理由 (e.g. a vehicle under 自動車税); null = by the rules
+  propertyTaxExcludedReason String?            @map("property_tax_excluded_reason")
+  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   account          Account       @relation(fields: [accountId], references: [id])
   segment          Segment?      @relation(fields: [segmentId], references: [id])
@@ -957,30 +980,33 @@ model FixedAsset {
 
 /// Recurring transaction (rent, subscriptions, taxes, salaries): cash-flow input and matching hint.
 model RecurringItem {
-  id              String              @id
-  name            String
-  accountId       String              @map("account_id")
+  id               String              @id
+  name             String
+  accountId        String              @map("account_id")
   /// Signed from the wallet's point of view: deposits are positive
-  amount          BigInt
-  frequency       RecurrenceFrequency
-  dayOfMonth      Int?                @map("day_of_month")
-  monthOfYear     Int?                @map("month_of_year")
-  startDate       DateTime            @map("start_date") @db.Date
-  endDate         DateTime?           @map("end_date") @db.Date
-  walletId        String?             @map("wallet_id")
-  taxCategoryCode String?             @map("tax_category_code")
-  segmentId       String?             @map("segment_id")
-  partnerId       String?             @map("partner_id")
-  isActive        Boolean             @default(true) @map("is_active")
-  note            String?
-  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  amount           BigInt
+  frequency        RecurrenceFrequency
+  dayOfMonth       Int?                @map("day_of_month")
+  monthOfYear      Int?                @map("month_of_year")
+  startDate        DateTime            @map("start_date") @db.Date
+  endDate          DateTime?           @map("end_date") @db.Date
+  walletId         String?             @map("wallet_id")
+  /// 振替 only (21-cashflow §10.1): the other wallet; `accountId` is kept on that wallet's account
+  transferWalletId String?             @map("transfer_wallet_id")
+  taxCategoryCode  String?             @map("tax_category_code")
+  segmentId        String?             @map("segment_id")
+  partnerId        String?             @map("partner_id")
+  isActive         Boolean             @default(true) @map("is_active")
+  note             String?
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  account     Account      @relation(fields: [accountId], references: [id])
-  wallet      Wallet?      @relation(fields: [walletId], references: [id])
-  taxCategory TaxCategory? @relation(fields: [taxCategoryCode], references: [code])
-  segment     Segment?     @relation(fields: [segmentId], references: [id])
-  partner     Partner?     @relation(fields: [partnerId], references: [id])
+  account        Account      @relation(fields: [accountId], references: [id])
+  wallet         Wallet?      @relation("RecurringItemWallet", fields: [walletId], references: [id])
+  transferWallet Wallet?      @relation("RecurringItemTransferWallet", fields: [transferWalletId], references: [id])
+  taxCategory    TaxCategory? @relation(fields: [taxCategoryCode], references: [code])
+  segment        Segment?     @relation(fields: [segmentId], references: [id])
+  partner        Partner?     @relation(fields: [partnerId], references: [id])
 
   @@map("recurring_item")
 }

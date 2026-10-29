@@ -68,6 +68,10 @@ export interface EditableAsset {
   cost: string;
   method: DepreciationMethod;
   usefulLifeYears: string;
+  /** 償却資産申告の資産の種類 "1"–"6", "" = from the account (16 §14.2). */
+  propertyTaxAssetType: string;
+  /** 申告の対象外の理由, "" = by the rules (§14.1). */
+  propertyTaxExcludedReason: string;
 }
 
 interface EditDraft {
@@ -79,6 +83,8 @@ interface EditDraft {
   cost: string;
   method: DepreciationMethod;
   usefulLifeYears: string;
+  propertyTaxAssetType: string;
+  propertyTaxExcludedReason: string;
 }
 
 const EDIT_FIELDS = new Set([
@@ -90,11 +96,18 @@ const EDIT_FIELDS = new Set([
   "cost",
   "method",
   "usefulLifeYears",
+  "propertyTaxAssetType",
+  "propertyTaxExcludedReason",
 ]);
+
+/** 即時・一括 do not use the life: it is kept for 償却資産申告 and changes at any time (§14.5). */
+const FREE_LIFE_HELP =
+  "中小企業者の特例の資産は、償却資産申告に使うので入れます（償却の計算には使いません）";
 
 /**
  * 編集 (16 §5.2): 名称・セグメント・メモ at any time; 取得価額・取得日・科目・償却方法・耐用年数 only while
- * there is no depreciation or disposal entry (disabled with the reason otherwise).
+ * there is no depreciation or disposal entry (disabled with the reason otherwise). 償却資産申告
+ * (§14.5): 資産の種類・申告の対象外 at any time, and the life of an 即時・一括 asset too.
  */
 export function EditAssetSheet({
   asset,
@@ -103,13 +116,22 @@ export function EditAssetSheet({
   accounts,
   segments,
   fiscalYears,
+  assetTypes,
 }: {
   asset: EditableAsset;
   canEditParameters: boolean;
   editBlockedReason: string | null;
-  accounts: readonly { id: string; code: string; label: string }[];
+  /** `propertyTaxDefault`: the account's 資産の種類 as text (「6 工具、器具及び備品」), `null` = none. */
+  accounts: readonly {
+    id: string;
+    code: string;
+    label: string;
+    propertyTaxDefault: string | null;
+  }[];
   segments: readonly { id: string; name: string }[];
   fiscalYears: readonly EntryFormFiscalYear[];
+  /** 資産の種類 1–6 as the select lists them. */
+  assetTypes: readonly { value: string; label: string }[];
 }) {
   const id = useId();
   const router = useRouter();
@@ -123,16 +145,21 @@ export function EditAssetSheet({
     cost: asset.cost,
     method: asset.method,
     usefulLifeYears: asset.usefulLifeYears,
+    propertyTaxAssetType: asset.propertyTaxAssetType,
+    propertyTaxExcludedReason: asset.propertyTaxExcludedReason,
   });
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<EditDraft>(initial);
   const [error, setError] = useState<ActionError | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const accountCode = accounts.find((account) => account.id === draft.accountId)?.code ?? null;
+  const account = accounts.find((item) => item.id === draft.accountId) ?? null;
+  const accountCode = account?.code ?? null;
   const cost: Money | null = parseYenInput(draft.cost);
   const allowed = accountCode ? allowedDepreciationMethods(accountCode) : [draft.method];
   const lifeBased = isLifeBased(draft.method);
+  // 定額・定率: the life is a parameter (locked once posted); 即時・一括: free at any time.
+  const lifeEditable = lifeBased ? canEditParameters : true;
   const year = fiscalYearContaining(draft.acquisitionDate, fiscalYears);
   const problems =
     canEditParameters &&
@@ -176,8 +203,16 @@ export function EditAssetSheet({
     event.preventDefault();
     // Every field goes back; the parameters unchanged when they are locked.
     const values = canEditParameters
-      ? { ...draft, usefulLifeYears: lifeBased ? draft.usefulLifeYears : "" }
-      : { ...initial(), name: draft.name, segmentId: draft.segmentId, note: draft.note };
+      ? draft
+      : {
+          ...initial(),
+          name: draft.name,
+          segmentId: draft.segmentId,
+          note: draft.note,
+          usefulLifeYears: lifeEditable ? draft.usefulLifeYears : initial().usefulLifeYears,
+          propertyTaxAssetType: draft.propertyTaxAssetType,
+          propertyTaxExcludedReason: draft.propertyTaxExcludedReason,
+        };
     startTransition(async () => {
       const result = await updateFixedAssetAction(asset.id, values);
       if (!result.ok) {
@@ -347,7 +382,7 @@ export function EditAssetSheet({
                 ) : lifeBased ? (
                   "2〜50 年"
                 ) : (
-                  "定額法・定率法のときに入れます"
+                  FREE_LIFE_HELP
                 )
               }
             >
@@ -358,12 +393,55 @@ export function EditAssetSheet({
                 min={2}
                 max={50}
                 step={1}
-                value={lifeBased ? draft.usefulLifeYears : ""}
-                disabled={locked || !lifeBased}
+                value={draft.usefulLifeYears}
+                disabled={!lifeEditable}
                 onChange={(event) => change({ usefulLifeYears: event.currentTarget.value })}
               />
             </FormField>
-            {locked ? null : <UsefulLifeHints />}
+            {lifeEditable ? <UsefulLifeHints /> : null}
+          </fieldset>
+          <fieldset className="flex min-w-0 flex-col gap-4 border-t border-border pt-4">
+            <legend className="text-[14px] font-extrabold">償却資産申告</legend>
+            <FormField
+              label="資産の種類"
+              htmlFor={`${id}-asset-type`}
+              error={fieldError("propertyTaxAssetType")}
+              help="種類別明細書の資産の種類です。いつでも変えられます"
+            >
+              <Select
+                id={`${id}-asset-type`}
+                value={draft.propertyTaxAssetType}
+                onChange={(event) => change({ propertyTaxAssetType: event.currentTarget.value })}
+              >
+                <option value="">
+                  {account?.propertyTaxDefault
+                    ? `科目から（${account.propertyTaxDefault}）`
+                    : "科目から（未選択）"}
+                </option>
+                {assetTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField
+              label="申告の対象外"
+              htmlFor={`${id}-excluded`}
+              error={fieldError("propertyTaxExcludedReason")}
+              help="空なら規則どおりに判定します。自動車税の対象の車両などは、理由を入れて外します"
+            >
+              <Input
+                id={`${id}-excluded`}
+                value={draft.propertyTaxExcludedReason}
+                maxLength={200}
+                autoComplete="off"
+                placeholder="自動車税の課税対象（車両）"
+                onChange={(event) =>
+                  change({ propertyTaxExcludedReason: event.currentTarget.value })
+                }
+              />
+            </FormField>
           </fieldset>
         </form>
       </Sheet>

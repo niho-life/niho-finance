@@ -335,6 +335,18 @@ export function checkDepreciationChoice(choice: DepreciationChoice): Depreciatio
     problems.push({ code: "INVALID_METHOD", field: "method", message: "償却方法を選んでください" });
     return problems;
   }
+  // 即時・一括 do not use the life; it may still be kept for 償却資産申告 (§14.2), within the table.
+  if (
+    (choice.method === "immediate" || choice.method === "lump_sum_3y") &&
+    choice.usefulLifeYears !== null &&
+    !isUsefulLife(choice.usefulLifeYears)
+  ) {
+    problems.push({
+      code: "INVALID_USEFUL_LIFE",
+      field: "usefulLifeYears",
+      message: `耐用年数は ${MIN_USEFUL_LIFE}〜${MAX_USEFUL_LIFE} 年で入力してください`,
+    });
+  }
   switch (choice.method) {
     case "straight_line":
     case "declining_balance":

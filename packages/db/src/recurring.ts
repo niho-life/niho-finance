@@ -8,7 +8,6 @@
 import {
   addDays,
   CORPORATE_TAX_PAYABLE_CODE,
-  dateParts,
   type CalendarDate,
   type Money,
 } from "@niho-finance/ledger";
@@ -25,7 +24,9 @@ import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { SettingsError } from "./errors";
 import { newId } from "./ids";
 import { INVOICE_LIST_LIMIT, listInvoices } from "./invoices";
+import { listPayablesForCashflow } from "./payables";
 import { listPayrollSchedule } from "./payroll";
+import { recurringScheduleOf } from "./recurring-post";
 import {
   recurringItemCreateSchema,
   recurringItemUpdateSchema,
@@ -51,6 +52,9 @@ export interface RecurringItemSettings {
   endDate: CalendarDate | null;
   walletId: string | null;
   walletName: string | null;
+  /** 振替 (21 §10.1): the other wallet; `accountId` is its account. `null` for 収入 / 支出. */
+  transferWalletId: string | null;
+  transferWalletName: string | null;
   accountId: string;
   accountCode: string;
   accountName: string;
@@ -66,6 +70,7 @@ export interface RecurringItemSettings {
 const recurringInclude = {
   account: { select: { code: true, name: true, isCashLike: true } },
   wallet: { select: { name: true, accountId: true, account: { select: { isCashLike: true } } } },
+  transferWallet: { select: { name: true } },
 } satisfies Prisma.RecurringItemInclude;
 
 type RecurringRow = Prisma.RecurringItemGetPayload<{ include: typeof recurringInclude }>;
@@ -90,6 +95,8 @@ function toRecurringItemSettings(row: RecurringRow): RecurringItemSettings {
     endDate: fromDbDateOrNull(row.endDate),
     walletId: row.walletId,
     walletName: wallet?.name ?? null,
+    transferWalletId: row.transferWalletId,
+    transferWalletName: row.transferWallet?.name ?? null,
     accountId: row.accountId,
     accountCode: row.account.code,
     accountName: row.account.name,
@@ -165,6 +172,34 @@ function assertOtherAccount(wallet: Wallet, accountId: string, field: string): v
   if (wallet.accountId === accountId) {
     throw new SettingsError("口座の科目と同じ科目は選べません", { field });
   }
+}
+
+/**
+ * 振替 (21 §10.1): the other wallet is an active wallet other than the item's own. It is chosen in
+ * the 科目 select (「口座（振替）」), so problems are reported on `accountId`.
+ */
+async function requireTransferWallet(
+  tx: Tx,
+  transferWalletId: string,
+  wallet: Wallet | null,
+): Promise<Wallet> {
+  const other = await tx.wallet.findUnique({ where: { id: transferWalletId } });
+  if (!other) {
+    throw new SettingsError("相手の口座が見つかりません。一覧から選んでください", {
+      field: "accountId",
+    });
+  }
+  if (!other.isActive) {
+    throw new SettingsError(`口座「${other.name}」は無効です。有効な口座を選んでください`, {
+      field: "accountId",
+    });
+  }
+  if (wallet && wallet.id === other.id) {
+    throw new SettingsError("振替の相手には口座と別の口座を選んでください", {
+      field: "accountId",
+    });
+  }
+  return other;
 }
 
 /** 毎年 needs its month; 毎月 keeps none. */
@@ -243,8 +278,16 @@ export async function createRecurringItem(
   const data = recurringItemCreateSchema.parse(input);
   return runInTransaction(db, async (tx) => {
     const wallet = await requireActiveWallet(tx, data.walletId);
-    await requireActiveAccount(tx, data.accountId);
-    assertOtherAccount(wallet, data.accountId, "accountId");
+    // 振替: the account follows the other wallet (21 §10.1), so the forecast (§3.2) still reads it.
+    const transfer = data.transferWalletId
+      ? await requireTransferWallet(tx, data.transferWalletId, wallet)
+      : null;
+    const accountId = transfer ? transfer.accountId : data.accountId;
+    if (accountId === null) {
+      throw new SettingsError("科目を選んでください", { field: "accountId" });
+    }
+    await requireActiveAccount(tx, accountId);
+    if (!transfer) assertOtherAccount(wallet, accountId, "accountId");
     const monthOfYear = monthFor(data.frequency, data.monthOfYear);
     assertPeriod(data.startDate, data.endDate, "endDate");
     await assertOptionalReferences(tx, data);
@@ -252,7 +295,7 @@ export async function createRecurringItem(
       data: {
         id: newId(),
         name: data.name,
-        accountId: data.accountId,
+        accountId,
         amount: signedAmount(data.direction, data.amount),
         frequency: data.frequency,
         dayOfMonth: data.dayOfMonth,
@@ -260,6 +303,7 @@ export async function createRecurringItem(
         startDate: toDbDate(data.startDate),
         endDate: data.endDate === null ? null : toDbDate(data.endDate),
         walletId: wallet.id,
+        transferWalletId: transfer?.id ?? null,
         taxCategoryCode: data.taxCategoryCode,
         segmentId: data.segmentId ?? wallet.defaultSegmentId,
         partnerId: data.partnerId,
@@ -295,16 +339,33 @@ export async function updateRecurringItem(
       throw new SettingsError("定期取引が見つかりません。画面を読み込み直してください");
     }
     const walletId = data.walletId ?? current.walletId;
-    const accountId = data.accountId ?? current.accountId;
+    // A new 科目 alone turns a 振替 back into 収入 / 支出 (21 §10.1).
+    const transferWalletId =
+      data.transferWalletId !== undefined
+        ? data.transferWalletId
+        : data.accountId !== undefined
+          ? null
+          : current.transferWalletId;
+    let accountId = data.accountId ?? current.accountId;
     const activating = data.isActive === true && !current.isActive;
-    if (data.walletId !== undefined || data.accountId !== undefined || activating) {
+    const transferChanged = transferWalletId !== current.transferWalletId;
+    if (
+      data.walletId !== undefined ||
+      data.accountId !== undefined ||
+      transferChanged ||
+      activating
+    ) {
       const wallet = walletId ? await requireActiveWallet(tx, walletId) : null;
+      if (transferWalletId) {
+        const transfer = await requireTransferWallet(tx, transferWalletId, wallet);
+        accountId = transfer.accountId;
+      }
       await requireActiveAccount(tx, accountId);
-      if (wallet) {
+      if (wallet && !transferWalletId) {
         assertOtherAccount(
           wallet,
           accountId,
-          data.accountId !== undefined ? "accountId" : "walletId",
+          data.accountId !== undefined || transferChanged ? "accountId" : "walletId",
         );
       }
     }
@@ -340,7 +401,10 @@ export async function updateRecurringItem(
       update.endDate = data.endDate === null ? null : toDbDate(data.endDate);
     }
     if (data.walletId !== undefined) update.walletId = data.walletId;
-    if (data.accountId !== undefined) update.accountId = data.accountId;
+    if (data.accountId !== undefined || accountId !== current.accountId) {
+      update.accountId = accountId;
+    }
+    if (transferChanged) update.transferWalletId = transferWalletId;
     if (data.partnerId !== undefined) update.partnerId = data.partnerId;
     if (data.segmentId !== undefined) update.segmentId = data.segmentId;
     if (data.taxCategoryCode !== undefined) update.taxCategoryCode = data.taxCategoryCode;
@@ -392,19 +456,11 @@ async function corporateTaxToPay(
 export const CASHFLOW_PAYMENT_RULE_KEYS = ["annual.tax-return", "annual.interim-return"] as const;
 
 function toForecastItem(row: RecurringItem): CashflowRecurringItem {
-  const startDate = fromDbDate(row.startDate);
-  const start = dateParts(startDate);
   return {
     id: row.id,
     name: row.name,
     amount: row.amount,
-    frequency: row.frequency,
-    // The screens always set the day (and the month of a yearly item); a row without them
-    // happens on the day (month) of its start.
-    dayOfMonth: row.dayOfMonth ?? start.day,
-    monthOfYear: row.frequency === "yearly" ? (row.monthOfYear ?? start.month) : null,
-    startDate,
-    endDate: fromDbDateOrNull(row.endDate),
+    ...recurringScheduleOf(row),
     walletId: row.walletId,
     accountId: row.accountId,
     isActive: row.isActive,
@@ -415,8 +471,8 @@ function toForecastItem(row: RecurringItem): CashflowRecurringItem {
  * What the forecast reads besides the book (21 §3.1): every recurring item (the forecast counts
  * the active ones), the open payment deadlines of `start < due ≤ start + days` (`null` while the
  * calendar has no row at all) with the amounts the pay runs give (22-payroll §7.2), and what
- * issued invoices still wait for (18-invoicing). 申告と納付 carries 法人税等 (16-year-end §12); the
- * interim return has no amount yet, and received invoices are not connected yet (`null`).
+ * issued invoices still wait for (18-invoicing) and what received invoices still wait for
+ * (25-payables). 申告と納付 carries 法人税等 (16-year-end §12); the interim return has no amount yet.
  */
 export async function loadCashflowInputs(
   db: Db,
@@ -476,5 +532,6 @@ export async function loadCashflowInputs(
     });
   }
 
-  return { recurring, deadlines, receivables, payables: null };
+  // 未払の請求: what received invoices still wait for (支払, 25-payables §8.3).
+  return { recurring, deadlines, receivables, payables: await listPayablesForCashflow(db) };
 }

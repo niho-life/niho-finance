@@ -6,11 +6,11 @@
  */
 import {
   addDays,
-  dateParts,
-  lastDayOfMonth,
   normalSide,
+  recurringOccurrences,
   type CalendarDate,
   type Money,
+  type RecurringFrequency,
   type WalletKind,
 } from "@niho-finance/ledger";
 import type { UnassignedCash } from "./cash";
@@ -30,7 +30,7 @@ import {
 /** The forecast runs from the start to 90 days after it (91 points, §1). */
 export const CASHFLOW_DAYS = 90;
 
-export type CashflowFrequency = "monthly" | "yearly";
+export type CashflowFrequency = RecurringFrequency;
 
 /** A recurring item (§2) as the forecast reads it. */
 export interface CashflowRecurringItem {
@@ -90,7 +90,7 @@ export const CASHFLOW_EVENT_KIND_LABELS: Readonly<Record<CashflowEventKind, stri
   recurring: "定期取引",
   deadline: "納付",
   receivable: "請求",
-  payable: "請求",
+  payable: "支払",
 };
 
 /** Same day: 仕訳 → 定期取引 → 納付 → 請求 (§6). */
@@ -200,45 +200,10 @@ export function forecastStartDate(
 // ---------------------------------------------------------------------------
 
 /**
- * The dates of an item with `after < d ≤ through`, `startDate ≤ d` and `d ≤ endDate` (§2.1). A day
- * the month does not have is the month's last day (末日 = 31). `isActive` is not looked at here.
+ * The dates of an item (§2.1): the rule lives in `@niho-finance/ledger` (the registration of an
+ * occurrence, 21 §10, uses it too) and is re-exported here for the forecast's callers.
  */
-export function recurringOccurrences(
-  item: Pick<
-    CashflowRecurringItem,
-    "frequency" | "dayOfMonth" | "monthOfYear" | "startDate" | "endDate"
-  >,
-  range: { after: CalendarDate; through: CalendarDate },
-): CalendarDate[] {
-  const { after, through } = range;
-  if (through <= after) return [];
-  if (item.frequency === "yearly" && item.monthOfYear === null) return [];
-  const dates: CalendarDate[] = [];
-  let { year, month } = dateParts(after);
-  const last = dateParts(through);
-  while (year < last.year || (year === last.year && month <= last.month)) {
-    if (item.frequency === "monthly" || item.monthOfYear === month) {
-      const monthEnd = lastDayOfMonth(year, month);
-      const day = Math.min(Math.max(item.dayOfMonth, 1), dateParts(monthEnd).day);
-      const date =
-        `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` as CalendarDate;
-      if (
-        date > after &&
-        date <= through &&
-        date >= item.startDate &&
-        (item.endDate === null || date <= item.endDate)
-      ) {
-        dates.push(date);
-      }
-    }
-    month += 1;
-    if (month > 12) {
-      month = 1;
-      year += 1;
-    }
-  }
-  return dates;
-}
+export { recurringOccurrences };
 
 /** What `recurringCashEffect` needs of the book. */
 export interface CashEffectSource {

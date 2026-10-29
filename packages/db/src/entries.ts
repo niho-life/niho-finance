@@ -236,7 +236,7 @@ function voucherField(error: LedgerError): string | undefined {
  * `buildSimpleEntry` writes them: 収入 [入金先, 収益, 仮受?], 支出 [科目, 仮払?, 支払元],
  * 振替 [入金先, 手数料?, 仮払?, 出金元]. Errors of the added tax lines stay on the form.
  */
-function simpleField(input: ParsedSimpleEntry, entry: JournalEntryInput | undefined) {
+function simpleField(input: Pick<ParsedSimpleEntry, "type">, entry: JournalEntryInput | undefined) {
   return (error: LedgerError): string | undefined => {
     const header = headerField(error);
     if (header) return header;
@@ -361,6 +361,18 @@ export async function postSimpleEntry(
       throw error;
     }
   });
+}
+
+/**
+ * A ledger rejection of a 収入 / 支出 / 振替 built elsewhere (定期取引の登録, 21-cashflow §10.5), with
+ * the fields and messages `postSimpleEntry` gives the same problems (no line numbers).
+ */
+export function simpleEntryValidationError(
+  type: ParsedSimpleEntry["type"],
+  entry: JournalEntryInput | undefined,
+  error: LedgerValidationError,
+): LedgerValidationError {
+  return withFields(error, simpleField({ type }, entry), { dropLineNo: true });
 }
 
 /** The rows of the entry being corrected, whose tax unchanged rows keep (11 §1). */

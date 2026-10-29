@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { CaptureTab } from "./capture-tab";
 import { NavIcon } from "./icons";
 import { isActivePath } from "./nav-items";
 
@@ -39,13 +40,18 @@ function Tab({
   );
 }
 
-/** The sections reached through その他 on phones (11 §2). */
+/**
+ * The sections reached through その他 on phones (11 §2). 証憑 too: the centre tab opens the camera
+ * (10 §1.1), so その他 is the current tab on `/documents`.
+ */
 const MORE_PATHS = [
   "/more",
   "/entries",
+  "/documents",
   "/imports",
   "/calendar",
   "/invoices",
+  "/payables",
   "/expenses",
   "/closing",
   "/settings",
@@ -72,7 +78,10 @@ function ViewerTabs({ pathname }: { pathname: string }) {
   );
 }
 
-/** Phone navigation under 768px: ホーム / 明細 / 証憑 / 報告 / その他 (→ 取引・明細の取込・期限・請求・決算・設定). */
+/**
+ * Phone navigation under 768px: ホーム / 明細 / 証憑を撮影 (the camera, 10 §1.1) / 報告 / その他
+ * (→ 取引・証憑・明細の取込・期限・請求・支払・立替精算・決算・設定).
+ */
 export function BottomTabs({ viewer = false }: { viewer?: boolean }) {
   const pathname = usePathname();
   if (viewer) return <ViewerTabs pathname={pathname} />;
@@ -88,16 +97,7 @@ export function BottomTabs({ viewer = false }: { viewer?: boolean }) {
       <Tab href="/statements" active={isActivePath(pathname, "/statements")} label="明細">
         <NavIcon name="statements" className="size-[22px]" />
       </Tab>
-      <Link
-        href="/documents"
-        aria-label="証憑"
-        aria-current={isActivePath(pathname, "/documents") ? "page" : undefined}
-        className="flex min-h-12 flex-col items-center justify-center"
-      >
-        <span className="-mt-4 flex size-11 items-center justify-center rounded-full bg-primary text-white shadow-float">
-          <NavIcon name="camera" className="size-[22px]" />
-        </span>
-      </Link>
+      <CaptureTab />
       <Tab href="/reports" active={isActivePath(pathname, "/reports")} label="報告">
         <NavIcon name="reports" className="size-[22px]" />
       </Tab>

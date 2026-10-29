@@ -55,6 +55,7 @@ import { voidJournalEntryWithOpenDate } from "./entries";
 import { SettingsError } from "./errors";
 import type { AfterImportHook } from "./imports";
 import { postJournalEntryInTransaction, type ActorOptions } from "./journal";
+import { loadRecurringSuggestItems } from "./recurring-post";
 import { loadActiveRules, parseRuleMatch } from "./rule-json";
 import {
   documentSearchSchema,
@@ -409,6 +410,28 @@ async function markSettled(
     after: snapshot(updated),
     reason: options.reason ?? null,
   });
+}
+
+/**
+ * 明細を登録済みにする for an entry another module posted for the line (請求の入金 18 §5.2, 支払
+ * 25 §4.2): pending → registered with `journalEntryId`, `settledAt` and the audit log
+ * `wallet_transaction.register`, as 登録 does. The caller checked the line (its wallet and amount)
+ * under the line's lock in the same transaction; the lock is taken again here (re-entrant).
+ */
+export async function settleWalletTransactionWithEntry(
+  tx: Tx,
+  lineId: string,
+  entryId: string,
+  options: ActorOptions,
+): Promise<void> {
+  const row = requireRow(await lockRows(tx, [lineId]), lineId);
+  assertPending(row);
+  await markSettled(
+    tx,
+    row,
+    { status: "registered", journalEntryId: entryId, ignoredReason: null, ruleId: null },
+    { actor: options.actor },
+  );
 }
 
 /** The rule named by a settle, if it exists (rules are never deleted; a stale id is dropped). */
@@ -1309,6 +1332,8 @@ export interface StatementRow {
   entry: StatementEntrySummary | null;
   /** The chips of a pending line (computed on every read); `null` for settled lines. */
   suggestion: Suggestion | null;
+  /** The recurring item the suggestion came from (「定期取引 家賃」, 21-cashflow §10.6). */
+  recurring: { id: string; name: string } | null;
   /** Transfer candidates of a pending line, nearest first (at most 5). */
   candidates: TransferCandidate[];
   /** Why the automatic settlement on import failed (§11), while the line is pending. */
@@ -1418,12 +1443,26 @@ function storedError(suggestion: Prisma.JsonValue): string | null {
   return typeof error === "string" && error !== "" ? error : null;
 }
 
+/** The first and the last date of the pending lines. */
+function pendingRange(rows: readonly { txnDate: Date }[]): {
+  from: CalendarDate;
+  through: CalendarDate;
+} {
+  const dates = rows.map((row) => fromDbDate(row.txnDate)).sort();
+  const from: CalendarDate = dates[0] ?? "1970-01-01";
+  return { from, through: dates[dates.length - 1] ?? from };
+}
+
 async function toRows(db: Db, rows: readonly ListRow[]): Promise<StatementRow[]> {
   const wallets = await db.wallet.findMany({
     select: { id: true, name: true, accountId: true, subAccountId: true },
   });
   const pending = rows.filter((row) => row.status === "pending");
   const base = pending.length > 0 ? await loadSuggestBase(db) : null;
+  // 定期取引の段 (21-cashflow §10.6): on the list only; the settlement on import (§11) never uses it.
+  const recurring =
+    pending.length > 0 ? await loadRecurringSuggestItems(db, pendingRange(pending)) : [];
+  const recurringNames = new Map(recurring.map((item) => [item.id, item.name]));
   const candidates =
     pending.length > 0
       ? await candidatesFor(
@@ -1435,6 +1474,9 @@ async function toRows(db: Db, rows: readonly ListRow[]): Promise<StatementRow[]>
     const isPending = row.status === "pending";
     const own = candidates.get(row.id) ?? [];
     const match = row.rule ? parseRuleMatch(row.rule.match) : null;
+    const suggestion =
+      isPending && base ? suggest(lineOf(row), { ...base, candidates: own, recurring }) : null;
+    const recurringId = suggestion?.recurringItemId ?? null;
     return {
       id: row.id,
       walletId: row.walletId,
@@ -1458,7 +1500,10 @@ async function toRows(db: Db, rows: readonly ListRow[]): Promise<StatementRow[]>
         : null,
       hasDocument: row._count.documentLinks > 0,
       entry: entrySummary(row, wallets),
-      suggestion: isPending && base ? suggest(lineOf(row), { ...base, candidates: own }) : null,
+      suggestion,
+      recurring: recurringId
+        ? { id: recurringId, name: recurringNames.get(recurringId) ?? "定期取引" }
+        : null,
       candidates: isPending ? own.slice(0, CANDIDATE_LIMIT) : [],
       error: isPending ? storedError(row.suggestion) : null,
     };

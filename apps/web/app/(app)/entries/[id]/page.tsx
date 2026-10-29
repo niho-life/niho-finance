@@ -1,10 +1,16 @@
 import {
   chainedEntryIds,
+  describeRecurringSource,
   getJournalEntryDetail,
   loadEntryHistory,
   type JournalEntryDetail,
 } from "@niho-finance/db";
-import { displayDate, ENTRY_KIND_LABELS, SOURCE_KIND_LABELS } from "@niho-finance/ledger";
+import {
+  displayDate,
+  ENTRY_KIND_LABELS,
+  recurringMonthLabel,
+  SOURCE_KIND_LABELS,
+} from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -127,6 +133,11 @@ export default async function EntryDetailPage({
   const detail = await getJournalEntryDetail(prisma, id);
   if (!detail) notFound();
   const history = await loadEntryHistory(prisma, chainedEntryIds(detail));
+  // 生成元 of an entry registered from a recurring item (21-cashflow §10.8).
+  const recurring =
+    detail.sourceKind === "recurring"
+      ? await describeRecurringSource(prisma, detail.sourceId)
+      : null;
   const canChange = detail.blockedReason === null && detail.reversalDate !== null;
   const meta = [
     formatDate(detail.entryDate),
@@ -162,7 +173,15 @@ export default async function EntryDetailPage({
       <EntryLinesTable detail={detail} />
       <EntryDocuments entryId={detail.id} />
       <p className="mt-2 text-[12px] text-muted">
-        第 {detail.fiscalYear.no} 期 · 生成元 {SOURCE_KIND_LABELS[detail.sourceKind]}
+        第 {detail.fiscalYear.no} 期 · 生成元{" "}
+        {recurring?.name ? (
+          <Link href="/settings/recurring" className="underline underline-offset-4 hover:text-text">
+            {SOURCE_KIND_LABELS.recurring} {recurring.name}（{recurringMonthLabel(recurring.month)}
+            分）
+          </Link>
+        ) : (
+          SOURCE_KIND_LABELS[detail.sourceKind]
+        )}
       </p>
       <EntryHistory rows={history} />
     </>

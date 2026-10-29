@@ -176,6 +176,31 @@ export function TextCell({
 export interface Option {
   value: string;
   label: string;
+  /** Consecutive options of the same group are drawn as one `<optgroup>`. */
+  group?: string;
+}
+
+/** The `<option>`s of a select; options with a `group` go into an `<optgroup>`. */
+function OptionList({ options }: { options: readonly Option[] }) {
+  const runs: { group: string | undefined; options: Option[] }[] = [];
+  for (const option of options) {
+    const last = runs[runs.length - 1];
+    if (last && last.group === option.group) last.options.push(option);
+    else runs.push({ group: option.group, options: [option] });
+  }
+  return runs.flatMap((run, index) => {
+    const items = run.options.map((option) => (
+      <option key={option.value} value={option.value}>
+        {option.label}
+      </option>
+    ));
+    if (run.group === undefined) return items;
+    return [
+      <optgroup key={`group:${index}:${run.group}`} label={run.group}>
+        {items}
+      </optgroup>,
+    ];
+  });
 }
 
 export function SelectCell({
@@ -216,11 +241,7 @@ export function SelectCell({
       className={`cell-input ${className}`}
       onChange={(event) => void change(event.currentTarget.value)}
     >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
+      <OptionList options={options} />
     </select>
   );
 }

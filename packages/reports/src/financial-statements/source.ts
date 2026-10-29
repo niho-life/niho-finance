@@ -112,7 +112,7 @@ export function toFinancialStatementsSource(
     })),
     subAccounts: base.subAccounts.map((subAccount) => ({
       ...subAccount,
-      partnerId: extras.subAccountPartners?.[subAccount.id] ?? null,
+      partnerId: extras.subAccountPartners?.[subAccount.id] ?? subAccount.partnerId ?? null,
     })),
     partners: base.partners.map((partner) => ({
       ...partner,

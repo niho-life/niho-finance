@@ -41,17 +41,34 @@ const FIELDS = new Set([
 ]);
 
 /** 振替 (11 §4.3): between two wallets; the fee goes to 支払手数料 and leaves the paying wallet. */
-export function TransferForm({ options, today }: { options: EntryFormOptions; today: string }) {
+/** First values from 「テンプレートから」 (21-cashflow §10.7). */
+export interface TransferInitial {
+  fromWalletId?: string;
+  toWalletId?: string;
+  /** 3-digit grouping. */
+  amount?: string;
+  description?: string;
+}
+
+export function TransferForm({
+  options,
+  today,
+  initial,
+}: {
+  options: EntryFormOptions;
+  today: string;
+  initial?: TransferInitial;
+}) {
   const id = useId();
   const router = useRouter();
   const toast = useToast();
   const wallets = options.wallets.filter((wallet) => wallet.isActive);
   const [draft, setDraft] = useState<Draft>({
     entryDate: today,
-    description: "振替",
-    fromWalletId: wallets[0]?.id ?? "",
-    toWalletId: wallets[1]?.id ?? "",
-    amount: "",
+    description: initial?.description ?? "振替",
+    fromWalletId: initial?.fromWalletId ?? wallets[0]?.id ?? "",
+    toWalletId: initial?.toWalletId ?? wallets[1]?.id ?? "",
+    amount: initial?.amount ?? "",
     fee: "",
     memoTagIds: [],
   });
