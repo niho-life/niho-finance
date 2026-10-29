@@ -6,6 +6,7 @@
  * and links it (`replacedById`) in one transaction. Nothing posted is ever rewritten.
  */
 import {
+  allowedSimpleEntryAccount,
   buildSimpleEntry,
   buildVoucherEntry,
   CORPORATE_SEGMENT_CODE,
@@ -33,6 +34,7 @@ import {
   type TaxKind,
   type TaxRateRule,
   type WalletKind,
+  walletAccountIdsOf,
 } from "@niho-finance/ledger";
 import type { FiscalYear, Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
@@ -1183,5 +1185,126 @@ export async function loadEntryFormOptions(
     partners,
     memoTags,
     taxRules: await loadTaxRules(db),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reads: the recent choices of the forms
+// ---------------------------------------------------------------------------
+
+/** How many recent accounts and partners the forms offer first (11 §4). */
+const RECENT_CHOICES = 5;
+/** The newest journal lines read for them (a one-person company's few years). */
+const CANDIDATE_LINES = 2_000;
+
+/** What the last 収入 or 支出 with a partner took (11 §4.7). */
+export interface EntryPreset {
+  accountId: string;
+  taxCategoryCode: string;
+  segmentId: string | null;
+}
+
+export interface EntryCandidates {
+  /** Account ids, most recently used first, at most `RECENT_CHOICES` each. */
+  recentAccounts: { income: string[]; expense: string[]; voucher: string[] };
+  recentPartnerIds: string[];
+  /** By partner id: the 科目・税区分・セグメント of its newest 収入 / 支出 line. */
+  partnerPresets: Record<string, { income?: EntryPreset; expense?: EntryPreset }>;
+}
+
+type FlowType = "income" | "expense";
+
+/**
+ * Whether a line is the 科目 of a 収入 or a 支出 (11 §4.1, §4.2), active or not: a revenue line on the
+ * credit side, or a line on the debit side of an account the 支出 form takes, in an entry without
+ * revenue (not the receivable of a sale). The other lines are the money side or the other direction.
+ */
+function flowOf(
+  line: {
+    side: Side;
+    account: { id: string; code: string; kind: AccountKind; isCashLike: boolean };
+  },
+  withRevenue: boolean,
+  walletAccountIds: ReadonlySet<string>,
+): FlowType | null {
+  const { id, code, kind, isCashLike } = line.account;
+  const account = { id, code, kind, isCashLike };
+  if (line.side === "credit") {
+    return allowedSimpleEntryAccount(account, "income", walletAccountIds) ? "income" : null;
+  }
+  return !withRevenue && allowedSimpleEntryAccount(account, "expense", walletAccountIds)
+    ? "expense"
+    : null;
+}
+
+/**
+ * 最近の候補と取引先の前回の値 (11 §4.7). Reads the entries in force (no reversals, no voided
+ * entries; no 開始仕訳 and 決算振替 either: they carry balances, nobody chose those accounts), newest
+ * first by date and then by number. 収入 and 支出 look only at the lines a 収入 / 支出 would make its
+ * 科目 (`flowOf`), so a partner's preset never comes from the other direction; 伝票 at every account
+ * not tied to a wallet. Inactive accounts and partners are not offered; a preset keeps the last
+ * values as they were (the form skips the ones it no longer offers).
+ */
+export async function loadEntryCandidates(db: Db): Promise<EntryCandidates> {
+  const walletAccountIds = walletAccountIdsOf(
+    await db.wallet.findMany({ select: { accountId: true, isActive: true } }),
+  );
+  const lines = await db.journalLine.findMany({
+    where: {
+      journalEntry: { status: "posted", kind: { notIn: ["reversal", "opening", "closing"] } },
+    },
+    orderBy: [
+      { journalEntry: { entryDate: "desc" } },
+      { journalEntry: { no: "desc" } },
+      { lineNo: "asc" },
+    ],
+    take: CANDIDATE_LINES,
+    select: {
+      journalEntryId: true,
+      side: true,
+      taxCategoryCode: true,
+      segmentId: true,
+      partnerId: true,
+      account: { select: { id: true, code: true, kind: true, isCashLike: true, isActive: true } },
+      partner: { select: { isActive: true } },
+    },
+  });
+  const revenueEntries = new Set(
+    lines.filter((line) => line.account.kind === "revenue").map((line) => line.journalEntryId),
+  );
+
+  const recent = {
+    income: new Set<string>(),
+    expense: new Set<string>(),
+    voucher: new Set<string>(),
+  };
+  const partners = new Set<string>();
+  const presets: EntryCandidates["partnerPresets"] = {};
+  const remember = (set: Set<string>, id: string) => {
+    if (set.size < RECENT_CHOICES) set.add(id);
+  };
+  for (const line of lines) {
+    const { account } = line;
+    if (account.isActive && !walletAccountIds.has(account.id)) remember(recent.voucher, account.id);
+    const flow = flowOf(line, revenueEntries.has(line.journalEntryId), walletAccountIds);
+    if (flow && account.isActive) remember(recent[flow], account.id);
+    if (!line.partnerId || !line.partner?.isActive) continue;
+    remember(partners, line.partnerId);
+    if (!flow) continue;
+    const preset = (presets[line.partnerId] ??= {});
+    preset[flow] ??= {
+      accountId: account.id,
+      taxCategoryCode: line.taxCategoryCode,
+      segmentId: line.segmentId,
+    };
+  }
+  return {
+    recentAccounts: {
+      income: [...recent.income],
+      expense: [...recent.expense],
+      voucher: [...recent.voucher],
+    },
+    recentPartnerIds: [...partners],
+    partnerPresets: presets,
   };
 }

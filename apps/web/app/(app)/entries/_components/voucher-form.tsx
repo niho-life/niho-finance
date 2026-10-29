@@ -1,6 +1,6 @@
 "use client";
 
-import type { EntryFormOptions } from "@niho-finance/db";
+import type { EntryCandidates, EntryFormOptions } from "@niho-finance/db";
 import {
   ENTRY_KIND_LABELS,
   formatYen,
@@ -8,11 +8,20 @@ import {
   parseYenInput,
   voucherLineTaxAmount,
   type AccountingMethod,
+  type CalendarDate,
   type EntryKind,
   type Side,
 } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { FormField, Input, Select, Textarea } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -20,11 +29,16 @@ import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
 import { entryNo } from "@/lib/format";
 import { correctEntryAction, postVoucherEntryAction } from "../actions";
+import { defaultEntryDate } from "./entry-date";
+import { entryFormKeyDown } from "./entry-keys";
 import {
   accountLabel,
+  ChoiceOptions,
   DateField,
+  EntryFormActions,
   fiscalYearOn,
   FormAlerts,
+  partnerLabel,
   TagsField,
   TaxCategoryOptions,
 } from "./form-kit";
@@ -134,19 +148,46 @@ function amountOf(text: string): bigint {
   return amount !== null && amount > 0n ? amount : 0n;
 }
 
+/** Debit minus credit of the rows. */
+function differenceOf(lines: readonly VoucherLineDraft[]): bigint {
+  let difference = 0n;
+  for (const line of lines) {
+    difference += line.side === "debit" ? amountOf(line.amount) : -amountOf(line.amount);
+  }
+  return difference;
+}
+
+/** A plain Tab (not Shift+Tab, not while an IME converts). */
+function isPlainTab(event: KeyboardEvent<HTMLElement>): boolean {
+  return (
+    event.key === "Tab" &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.nativeEvent.isComposing
+  );
+}
+
 /**
  * 伝票 (11 §4.4) and 訂正 (11 §6): a header and the debit / credit rows. 登録 stays disabled while
  * the totals differ; the server rejects an unbalanced entry too.
  */
 export function VoucherForm({
   options,
+  candidates,
   today,
+  entryDate,
   initial,
   kinds,
   mode,
 }: {
   options: EntryFormOptions;
-  today: string;
+  /** The recent accounts and partners (11 §4.7); none on 訂正. */
+  candidates?: EntryCandidates;
+  today: CalendarDate;
+  /** The date of a new 伝票 (`?date=`); `defaultEntryDate` otherwise. */
+  entryDate?: CalendarDate;
   /** The rows to start from (訂正); a blank 借方 / 貸方 pair otherwise. */
   initial?: VoucherDraft;
   kinds: readonly EntryKind[];
@@ -156,17 +197,28 @@ export function VoucherForm({
   const router = useRouter();
   const toast = useToast();
   const nextKey = useRef(0);
+  /** The row whose first field takes the focus once drawn (Tab on the last row, 11 §4.4). */
+  const focusLine = useRef<string | null>(null);
+  const blankLines = () => {
+    nextKey.current += 2;
+    return [
+      blankLine(`blank-${nextKey.current - 1}`, "debit"),
+      blankLine(`blank-${nextKey.current}`, "credit"),
+    ];
+  };
   const [draft, setDraft] = useState<VoucherDraft>(
     () =>
       initial ?? {
         kind: kinds[0] ?? "normal",
-        entryDate: today,
+        entryDate: entryDate ?? defaultEntryDate(today, options.fiscalYears),
         description: "",
         partnerId: "",
         memoTagIds: [],
         lines: [blankLine("line-1", "debit"), blankLine("line-2", "credit")],
       },
   );
+  /** On a new 伝票 the date's problem is told once the date is changed (11 §4: none on opening). */
+  const [dateChanged, setDateChanged] = useState(mode.kind === "correct");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<ActionError | null>(null);
   const [pending, startTransition] = useTransition();
@@ -204,15 +256,49 @@ export function VoucherForm({
     else creditTotal += amountOf(line.amount);
   }
   const difference = debitTotal - creditTotal;
+  const lastLine = draft.lines.at(-1);
+  /** What the rows above the last one leave for it (「差額を入れる」). */
+  const remainder = differenceOf(draft.lines.slice(0, -1));
 
-  function addLine() {
+  useEffect(() => {
+    if (!focusLine.current) return;
+    document.getElementById(`${id}-line-${focusLine.current}-side`)?.focus();
+    focusLine.current = null;
+  }, [id, draft.lines]);
+
+  /** A row; with the difference on the short side. `focus`: its first field takes the focus. */
+  function addLine(focus = false) {
     if (draft.lines.length >= MAX_LINES) return;
     nextKey.current += 1;
     const side: Side = difference > 0n ? "credit" : "debit";
     const line = blankLine(`added-${nextKey.current}`, side);
     if (difference !== 0n) line.amount = formatYen(difference > 0n ? difference : -difference);
+    if (focus) focusLine.current = line.key;
     setError(null);
     setDraft({ ...draft, lines: [...draft.lines, line] });
+  }
+
+  /**
+   * 「差額を入れる」 (11 §4.4): the last row takes what the other rows leave, on the short side
+   * (credit when the debits are more); its account and the rest stay.
+   */
+  function fillDifference() {
+    if (!lastLine || remainder === 0n) return;
+    changeLine(lastLine.key, {
+      side: remainder > 0n ? "credit" : "debit",
+      amount: formatYen(remainder > 0n ? remainder : -remainder),
+    });
+  }
+
+  /**
+   * Tab out of the last row's 摘要 adds a row (the difference on its short side) and goes to its
+   * first field while the totals differ; balanced, Tab goes on to the buttons. Shift+Tab only goes
+   * back.
+   */
+  function tabOutOfLastRow(event: KeyboardEvent<HTMLInputElement>) {
+    if (!isPlainTab(event) || difference === 0n || draft.lines.length >= MAX_LINES) return;
+    event.preventDefault();
+    addLine(true);
   }
 
   function removeLine(key: string) {
@@ -252,31 +338,32 @@ export function VoucherForm({
         return;
       }
       setError(null);
-      toast(`${entryNo(result.data.no)} を登録しました`);
       if (keepGoing) {
-        // Same kind and date; the amounts, the description and the partner start over (11 §4).
-        setDraft({
-          ...draft,
+        toast(`${entryNo(result.data.no)} を登録しました`, {
+          link: { href: `/entries/${result.data.id}`, label: "開く" },
+        });
+        // The kind and the date stay; the rest starts over from a blank 借方 / 貸方 pair (11 §4.5).
+        const lines = blankLines();
+        setDraft((current) => ({
+          ...current,
           description: "",
           partnerId: "",
-          lines: draft.lines.map((line) => ({
-            ...line,
-            amount: "",
-            description: "",
-            partnerId: "",
-          })),
-        });
+          memoTagIds: [],
+          lines,
+        }));
         document.getElementById(`${id}-description`)?.focus();
       } else {
+        toast(`${entryNo(result.data.no)} を登録しました`);
         router.push(`/entries/${result.data.id}`);
       }
     });
   }
 
+  /** 訂正: 訂正を登録. New: 続けて登録 (the submit button; 登録して開く is a plain button). */
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (difference !== 0n) return;
-    send(false);
+    send(mode.kind === "new");
   }
 
   const fieldError = (field: string) => error?.fieldErrors[field];
@@ -293,8 +380,23 @@ export function VoucherForm({
     return match[2] !== "subAccountId" || subAccountsOf(line.accountId).length > 0;
   };
 
+  const accountChoiceList = options.accounts.map((account) => ({
+    value: account.id,
+    label: accountLabel(account),
+  }));
+  const partnerChoiceList = options.partners.map((partner) => ({
+    value: partner.id,
+    label: partnerLabel(partner),
+  }));
+  const recentPartners = candidates?.recentPartnerIds ?? [];
+
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
+    <form
+      onSubmit={submit}
+      onKeyDown={mode.kind === "new" ? entryFormKeyDown : undefined}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       {mode.kind === "correct" ? (
         <section className="flex flex-col gap-3 rounded-card border border-border px-4 py-3.5">
           <p className="text-[14px] font-bold">{mode.notice}</p>
@@ -327,10 +429,14 @@ export function VoucherForm({
         <DateField
           id={`${id}-date`}
           value={draft.entryDate}
-          onChange={(entryDate) => change({ entryDate })}
+          onChange={(entryDate) => {
+            setDateChanged(true);
+            change({ entryDate });
+          }}
           fiscalYears={options.fiscalYears}
           error={fieldError("entryDate")}
           help={mode.kind === "correct" ? mode.dateHelp : null}
+          periodHint={dateChanged}
         />
         <FormField
           label="摘要"
@@ -357,11 +463,7 @@ export function VoucherForm({
             onChange={(event) => change({ partnerId: event.currentTarget.value })}
           >
             <option value="">なし</option>
-            {options.partners.map((partner) => (
-              <option key={partner.id} value={partner.id}>
-                {partner.isActive ? partner.name : `${partner.name}（無効）`}
-              </option>
-            ))}
+            <ChoiceOptions choices={partnerChoiceList} recent={recentPartners} />
           </Select>
         </FormField>
         <div className="md:col-span-2">
@@ -467,11 +569,10 @@ export function VoucherForm({
                     }
                   >
                     <option value="">選んでください</option>
-                    {options.accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {accountLabel(account)}
-                      </option>
-                    ))}
+                    <ChoiceOptions
+                      choices={accountChoiceList}
+                      recent={candidates?.recentAccounts.voucher}
+                    />
                   </select>
                   {errorText("accountId")}
                 </div>
@@ -588,11 +689,7 @@ export function VoucherForm({
                     }
                   >
                     <option value="">取引先は仕訳のもの</option>
-                    {options.partners.map((partner) => (
-                      <option key={partner.id} value={partner.id}>
-                        {partner.isActive ? partner.name : `${partner.name}（無効）`}
-                      </option>
-                    ))}
+                    <ChoiceOptions choices={partnerChoiceList} recent={recentPartners} />
                   </select>
                 </div>
                 <div style={{ gridArea: "desc" }} className="flex min-w-0 flex-col gap-1">
@@ -606,6 +703,7 @@ export function VoucherForm({
                     onChange={(event) =>
                       changeLine(line.key, { description: event.currentTarget.value })
                     }
+                    onKeyDown={line === lastLine ? tabOutOfLastRow : undefined}
                   />
                 </div>
               </li>
@@ -613,7 +711,11 @@ export function VoucherForm({
           })}
         </ol>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="ghost" onClick={addLine} disabled={draft.lines.length >= MAX_LINES}>
+          <Button
+            variant="ghost"
+            onClick={() => addLine()}
+            disabled={draft.lines.length >= MAX_LINES}
+          >
             ＋ 行を追加
           </Button>
           {draft.lines.length >= MAX_LINES ? (
@@ -635,6 +737,11 @@ export function VoucherForm({
         <span className={difference === 0n ? "text-muted" : "font-extrabold"}>
           差額 <span className="num">{formatYen(difference < 0n ? -difference : difference)}</span>
         </span>
+        {difference !== 0n && remainder !== 0n ? (
+          <Button size="sm" onClick={fillDifference} className="self-center">
+            差額を入れる
+          </Button>
+        ) : null}
         {difference !== 0n ? (
           <span className="basis-full text-right text-[12px] text-muted">
             借方と貸方の合計が同じになると登録できます
@@ -642,16 +749,20 @@ export function VoucherForm({
         ) : null}
       </section>
 
-      <div className="flex flex-wrap justify-end gap-2">
-        {mode.kind === "new" ? (
-          <Button onClick={() => send(true)} disabled={pending || difference !== 0n}>
-            続けて登録
+      {mode.kind === "new" ? (
+        <EntryFormActions
+          pending={pending}
+          disabled={difference !== 0n}
+          divider={false}
+          onOpen={() => send(false)}
+        />
+      ) : (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="submit" variant="primary" disabled={pending || difference !== 0n}>
+            {pending ? "登録中…" : "訂正を登録"}
           </Button>
-        ) : null}
-        <Button type="submit" variant="primary" disabled={pending || difference !== 0n}>
-          {pending ? "登録中…" : mode.kind === "correct" ? "訂正を登録" : "登録"}
-        </Button>
-      </div>
+        </div>
+      )}
     </form>
   );
 }
