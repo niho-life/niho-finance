@@ -794,7 +794,8 @@ export async function voidDocument(
 
 /**
  * Replaces the file of a document: a new document (`supersedesId`) inherits the items (those in
- * `replacement` win) and the links, then the original is voided with 「差し替え: 理由」. When a
+ * `replacement` win), the links and the payable (支払, 25 §8.1), then the original is voided with
+ * 「差し替え: 理由」. When a
  * document that is not voided already has the new file, nothing is written (`duplicate: true`).
  */
 export async function replaceDocument(
@@ -849,6 +850,10 @@ export async function replaceDocument(
         note: file.note === undefined ? original.note : file.note,
         status: links.length > 0 || importCount > 0 ? "linked" : "inbox",
         supersedesId: original.id,
+        // A received invoice's payable moves with it (25-payables §8.1).
+        payableEntryId: original.payableEntryId,
+        payableDueDate: original.payableDueDate,
+        payableWalletId: original.payableWalletId,
       },
     });
     await audit(tx, options, {

@@ -6,6 +6,7 @@ import {
   todayInJapan,
 } from "@niho-finance/db";
 import type { Metadata } from "next";
+import { BillingSwitch } from "@/components/app-shell/billing-switch";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -59,6 +60,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
           </>
         }
       />
+      <BillingSwitch current="invoices" />
       <InvoicesFilter
         key={listQuery}
         values={{
