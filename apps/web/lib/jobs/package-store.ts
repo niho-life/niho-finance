@@ -8,13 +8,13 @@ import { appEnv, type AppEnv } from "../env";
 import { downloadResponse, ZIP_CONTENT_TYPE, contentDisposition } from "../pdf/download";
 
 /*
- * Where the jobs put 受け渡しパッケージ (14-reports §15.4): the backup bucket under `packages/`
+ * Where the jobs put 受け渡しパッケージ (14-reports §16.4): the backup bucket under `packages/`
  * (kept under its retention policy; the runtime can create and read, not replace or delete), or the
  * local backup folder in development. The zip is written as a stream, never whole in memory, and
  * handed out as a 10-minute V4 signed URL (GCS) or as the bytes (local).
  */
 
-/** Signed download URLs live 10 minutes (§15.4). */
+/** Signed download URLs live 10 minutes (§16.4). */
 const SIGNED_URL_SECONDS = 10 * 60;
 
 export interface PackageWriter {

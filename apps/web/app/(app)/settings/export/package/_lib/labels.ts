@@ -1,6 +1,6 @@
 import type { HandoverRequestState } from "@niho-finance/db";
 
-/** 状態 of a made package (14-reports §15.1). */
+/** 状態 of a made package (14-reports §16.1). */
 export const REQUEST_STATE_LABELS: Readonly<Record<HandoverRequestState, string>> = {
   pending: "作成中",
   stale: "作成中",
@@ -10,7 +10,7 @@ export const REQUEST_STATE_LABELS: Readonly<Record<HandoverRequestState, string>
 
 export const STALE_MESSAGE = "失敗した可能性があります。もう一度依頼してください";
 
-/** README note when the production screen leaves the files out (no queue, §15.4). */
+/** README note when the production screen leaves the files out (no queue, §16.4). */
 export const FILES_LEFT_OUT_NOTE =
   "大きいパッケージを作る設定がないため、証憑のファイルを外して書き出しました（索引簿は入っています）。";
 

@@ -107,7 +107,7 @@ async function submitPackageRequest(formData: FormData): Promise<void> {
 }
 
 /**
- * 設定 › 書き出しとバックアップ › 受け渡しパッケージ (14-reports §15.1): the year and whether to include
+ * 設定 › 書き出しとバックアップ › 受け渡しパッケージ (14-reports §16.1): the year and whether to include
  * the document files (a GET form), what the zip will hold, 「書き出す」 (direct, up to 20 MB) or
  * 「作成を依頼」 (a job), and the latest requests with their state and download.
  */

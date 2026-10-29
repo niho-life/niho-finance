@@ -1,7 +1,7 @@
 import { appEnv, type AppEnv } from "../env";
 
 /*
- * Jobs the screens start (受け渡しパッケージ, 14-reports §15.4): a Cloud Tasks HTTP task to the jobs
+ * Jobs the screens start (受け渡しパッケージ, 14-reports §16.4): a Cloud Tasks HTTP task to the jobs
  * service, created with the REST API and the runtime's application default credentials. The task
  * carries the scheduler's OIDC token (audience = the jobs service's URL), so the job checks it like
  * Cloud Scheduler's (`verifyJobRequest`). The queue does not retry (S8 `niho-finance-manual`).

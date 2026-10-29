@@ -207,7 +207,7 @@ access() {
   gcp tasks queues describe "$TASKS_QUEUE" --location "$GCP_REGION" > /dev/null 2>&1 \
     || gcp tasks queues create "$TASKS_QUEUE" --location "$GCP_REGION" \
       --max-attempts 1 --max-concurrent-dispatches 1 > /dev/null
-  # 受け渡しパッケージ (14-reports §15.4): the web service (runtime account) puts tasks on the queue
+  # 受け渡しパッケージ (14-reports §16.4): the web service (runtime account) puts tasks on the queue
   # and gives them the scheduler's OIDC token, which needs actAs on the scheduler's account.
   gcp tasks queues add-iam-policy-binding "$TASKS_QUEUE" --location "$GCP_REGION" \
     --member "serviceAccount:$RUNNER_SA_EMAIL" --role roles/cloudtasks.enqueuer > /dev/null

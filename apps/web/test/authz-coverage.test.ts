@@ -39,7 +39,7 @@ const OWNER_ACTIONS: Readonly<Record<string, readonly string[] | "all">> = {
   "setup/actions.ts": "all",
 };
 
-/** Server Actions 閲覧 may run (23 §3.1): the 受け渡しパッケージ request (14 §15.1, #55). */
+/** Server Actions 閲覧 may run (23 §3.1): the 受け渡しパッケージ request (14 §16.1, #55). */
 const VIEWER_ACTIONS: Readonly<Record<string, readonly string[]>> = {
   "(app)/settings/export/package/actions.ts": ["requestHandoverPackage"],
 };

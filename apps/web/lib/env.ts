@@ -50,7 +50,7 @@ const environmentSchema = z.object({
   NIHO_FINANCE_GIT_SHA: optionalText,
   /**
    * The Cloud Tasks queue for jobs the screens start (`projects/<p>/locations/<r>/queues/<q>`;
-   * 受け渡しパッケージ, 14-reports §15.4). Unset locally: the screen runs the job itself.
+   * 受け渡しパッケージ, 14-reports §16.4). Unset locally: the screen runs the job itself.
    */
   NIHO_FINANCE_TASKS_QUEUE: optionalText,
   /** The jobs service's URL (the task's target and its OIDC audience). */

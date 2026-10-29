@@ -16,12 +16,19 @@ import { Td } from "@/components/ui/table";
 import { formatAmount, formatDate } from "@/lib/format";
 import { AutoSubmitSelect } from "../_components/auto-submit-select";
 import { NoFiscalYear } from "../_components/empty";
+import { FilterChips } from "../_components/filter-chips";
 import { Note, SectionHeading } from "../_components/notices";
 import { ReportsFrame } from "../_components/reports-frame";
 import { WideHead, WideRow, WideTable } from "../_components/wide-table";
 import { segmentName } from "../_lib/format";
 import { entryHref } from "../_lib/links";
-import { loadReports, parseReportParams, reportHref, resolvePeriodOrNull } from "../_lib/query";
+import {
+  loadReports,
+  parseReportParams,
+  reportHref,
+  resolvePeriodOrNull,
+  type ExtraParams,
+} from "../_lib/query";
 
 export const metadata: Metadata = { title: "総勘定元帳" };
 
@@ -36,18 +43,27 @@ function accountOption(account: ReportAccount) {
   );
 }
 
-/** The account select: 動きのある科目 first, then the rest (14-reports §8). Submits on change. */
+/**
+ * The account select: 動きのある科目 first, then the rest (14-reports §8). Submits on change and
+ * keeps 集計's partner / tag filters (§15.3).
+ */
 function AccountPicker({
   period,
   accountId,
+  filters,
   active,
   others,
 }: {
   period: ReportPeriod;
   accountId: string | null;
+  filters: ExtraParams;
   active: readonly ReportAccount[];
   others: readonly ReportAccount[];
 }) {
+  const kept = Object.entries({ ...periodSearchParams(period), ...filters }).filter(
+    (entry): entry is [string, string | number] =>
+      entry[1] !== null && entry[1] !== undefined && entry[1] !== "",
+  );
   return (
     <form
       method="get"
@@ -55,7 +71,7 @@ function AccountPicker({
       aria-label="科目"
       className="mb-3 flex flex-wrap items-center gap-2"
     >
-      {Object.entries(periodSearchParams(period)).map(([name, value]) => (
+      {kept.map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
       <AutoSubmitSelect
@@ -184,25 +200,53 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
 
   const choices = ledgerAccountChoices(source, period);
   const report = params.account
-    ? buildGeneralLedger(source, period, { accountId: params.account, subAccountId: params.sub })
+    ? buildGeneralLedger(source, period, {
+        accountId: params.account,
+        subAccountId: params.sub,
+        partnerId: params.partner,
+        tagId: params.tag,
+      })
     : null;
   const segment = period.segmentId ? segmentName(source.segments, period.segmentId) : null;
+  // 集計's filters (§15.3) stay on every link of the tab until their chip's × removes them.
+  const filters = { partner: params.partner, tag: params.tag };
+  const kept = { account: params.account, sub: params.sub, ...filters };
+  const chips = [
+    ...(report?.partnerFilter
+      ? [
+          {
+            filter: report.partnerFilter,
+            removeHref: reportHref("ledger", period, { ...kept, partner: null }),
+          },
+        ]
+      : []),
+    ...(report?.tagFilter
+      ? [
+          {
+            filter: report.tagFilter,
+            removeHref: reportHref("ledger", period, { ...kept, tag: null }),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <ReportsFrame
       tab="ledger"
       source={source}
       period={period}
-      hidden={{ account: params.account, sub: params.sub }}
-      exportParams={{ account: params.account, sub: params.sub }}
+      hidden={kept}
+      exportParams={kept}
       exportable={report !== null && !report.empty}
     >
       <AccountPicker
         period={period}
         accountId={params.account}
+        filters={filters}
         active={choices.active}
         others={choices.others}
       />
+      <FilterChips chips={chips} />
       {report ? (
         <div className="flex flex-col gap-3">
           {report.subAccounts.length > 0 ? (
@@ -213,6 +257,7 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
                   <Link
                     key={sub?.id ?? "all"}
                     href={reportHref("ledger", period, {
+                      ...filters,
                       account: report.account.id,
                       sub: sub?.id ?? null,
                     })}
@@ -234,6 +279,11 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
             {report.subAccount ? ` / ${report.subAccount.name}` : ""}
           </SectionHeading>
           {segment ? <Note>{segment} の行だけを足しています（繰越も同じ）。</Note> : null}
+          {chips.length > 0 ? (
+            <Note>
+              絞り込みに当たる行だけを足しています（繰越も同じ）。取引先は集計と同じ決め方です。
+            </Note>
+          ) : null}
           {report.empty ? (
             <EmptyState
               title="この期間にこの科目の仕訳はありません"
@@ -257,7 +307,7 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
                   {group.accounts.map((account) => (
                     <li key={account.id} className="border-b border-border">
                       <Link
-                        href={reportHref("ledger", period, { account: account.id })}
+                        href={reportHref("ledger", period, { ...filters, account: account.id })}
                         className="flex min-h-10 items-center gap-2 px-1 text-[14px] hover:bg-black/[0.02]"
                       >
                         <span className="num text-muted">{account.code}</span>

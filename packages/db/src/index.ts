@@ -608,3 +608,18 @@ export {
   type HandoverRequest,
   type HandoverRequestState,
 } from "./handover-package-query";
+export {
+  isSearchable,
+  isSearchKind,
+  parseSearchQuery,
+  searchAll,
+  searchKind,
+  SEARCH_KIND_LABELS,
+  SEARCH_KINDS,
+  SEARCH_PAGE_SIZE,
+  SEARCH_PER_KIND,
+  type ParsedSearchQuery,
+  type SearchGroup,
+  type SearchHit,
+  type SearchKind,
+} from "./search";

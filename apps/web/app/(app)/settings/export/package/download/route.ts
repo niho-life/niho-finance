@@ -26,7 +26,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * `GET /settings/export/package/download` (14-reports §15.1, §15.4):
+ * `GET /settings/export/package/download` (14-reports §16.1, §16.4):
  * - `?request=<id>`: a package the job made — a 302 to a 10-minute signed URL (GCS) or the bytes
  *   (local), recorded as `downloaded` (`delivery: "signed-url"`).
  * - `?fy=<n>&documents=1`: made here and returned when the estimate is within 20 MB, recorded as

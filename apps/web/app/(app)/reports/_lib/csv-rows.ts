@@ -50,10 +50,27 @@ export function trialBalanceCsvRows(view: TrialBalanceView, segmentLabel: string
   return rows;
 }
 
-/** 科目コード ・ 科目 ・ 各月 ・ 合計 (the subtotal rows included). */
+/**
+ * 科目コード ・ 科目 ・ 各月 ・ 合計 (the subtotal rows included). With 前年同月 (§15.6), each month
+ * and 合計 is followed by 「YYYY/MM 前年」 (empty where the screen shows 「—」).
+ */
 export function monthlyCsvRows(report: MonthlyReport): CsvRow[] {
-  const rows: CsvRow[] = [["科目コード", "科目", ...report.columns.map((c) => c.label), "合計"]];
-  for (const row of report.rows) rows.push([row.code ?? "", row.label, ...row.value]);
+  const labels = [...report.columns.map((c) => c.label), "合計"];
+  if (!report.comparing) {
+    const rows: CsvRow[] = [["科目コード", "科目", ...labels]];
+    for (const row of report.rows) rows.push([row.code ?? "", row.label, ...row.value]);
+    return rows;
+  }
+  const rows: CsvRow[] = [
+    ["科目コード", "科目", ...labels.flatMap((label) => [label, `${label} 前年`])],
+  ];
+  for (const row of report.rows) {
+    rows.push([
+      row.code ?? "",
+      row.label,
+      ...row.value.flatMap((value, i): CsvCell[] => [value, row.prior?.[i] ?? null]),
+    ]);
+  }
   return rows;
 }
 

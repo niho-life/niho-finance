@@ -35,7 +35,7 @@ import { buildTrialBalanceView } from "../../../../reports/_lib/trial-balance-vi
 import { TrialBalancePdf } from "../../../../reports/_pdf/trial-balance";
 
 /*
- * What goes into 受け渡しパッケージ (14-reports §15.2), gathered with the existing exports: S7's CSV
+ * What goes into 受け渡しパッケージ (14-reports §16.2), gathered with the existing exports: S7's CSV
  * rows and PDFs, #15's statements, #14's fixed asset ledger and S6's index and storage. The screen's
  * direct download and the job (`lib/jobs/handover-package.ts`) build the same plan from here.
  */

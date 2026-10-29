@@ -30,7 +30,7 @@ import {
 import { BOOK, CLOSED_BOOK, FY1, FY2 } from "./financial-statements/fixture";
 
 /*
- * 受け渡しパッケージ (14-reports §15.6) on the fictional company of the statements tests: README 中身
+ * 受け渡しパッケージ (14-reports §16.6) on the fictional company of the statements tests: README 中身
  * = the zip's entries, manifest SHA-256 = the contents, index rows ↔ documents/files/ (included /
  * not included / not fetchable), statements only for a closed year, and the streamed zip unzips to
  * the inputs.

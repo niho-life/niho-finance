@@ -1,5 +1,5 @@
 /**
- * 受け渡しパッケージ (14-reports §15): one zip per fiscal year for the tax accountant — the books
+ * 受け渡しパッケージ (14-reports §16): one zip per fiscal year for the tax accountant — the books
  * (S7's CSV and PDF), the fixed assets and consumption tax, the statements of a closed year (#15),
  * the index of the documents (13 §7) and, optionally, the document files. Every file comes from the
  * existing exports; this module only plans the entries, writes README.txt and manifest.json, and
@@ -48,15 +48,15 @@ import type { ReportPeriod } from "./period";
 import { compareAccounts, type ReportSource } from "./source";
 
 // ---------------------------------------------------------------------------
-// Constants (§15.2, §15.4)
+// Constants (§16.2, §16.4)
 // ---------------------------------------------------------------------------
 
 export const HANDOVER_PACKAGE_FORMAT = "niho-finance-handover-package";
 /** The version of the package's layout (manifest.json). */
 export const HANDOVER_PACKAGE_VERSION = 1;
-/** The books count as 2 MB in the estimate (§15.4). */
+/** The books count as 2 MB in the estimate (§16.4). */
 export const HANDOVER_BOOKS_ESTIMATE_BYTES = 2 * 1024 * 1024;
-/** Up to this estimate the screen makes the zip itself; above it a job does (§15.4). */
+/** Up to this estimate the screen makes the zip itself; above it a job does (§16.4). */
 export const HANDOVER_DIRECT_LIMIT_BYTES = 20 * 1024 * 1024;
 
 export const HANDOVER_README_PATH = "README.txt";
@@ -194,7 +194,7 @@ export const FIXED_ASSET_LEDGER_CSV_HEADER = [
   "特例",
 ] as const;
 
-/** 固定資産台帳 (§15.2): one row per asset, the header alone when there is none. */
+/** 固定資産台帳 (§16.2): one row per asset, the header alone when there is none. */
 export function fixedAssetLedgerCsvRows(rows: readonly HandoverFixedAssetRow[]): CsvCell[][] {
   const out: CsvCell[][] = [[...FIXED_ASSET_LEDGER_CSV_HEADER]];
   for (const row of rows) {
@@ -221,7 +221,7 @@ export function fixedAssetLedgerCsvRows(rows: readonly HandoverFixedAssetRow[]):
 }
 
 /**
- * 総勘定元帳 for every account (§15.2): S7's ledger CSV (14 §8) of each account with a balance or a
+ * 総勘定元帳 for every account (§16.2): S7's ledger CSV (14 §8) of each account with a balance or a
  * movement, in code order, one under the other, with 科目コード・科目 in front. One header row.
  */
 export function handoverGeneralLedgerCsvRows(
@@ -239,7 +239,7 @@ export function handoverGeneralLedgerCsvRows(
 }
 
 /**
- * 証憑の索引簿 (§15.2): the 13 §7 columns plus 「パッケージ内のファイル」 — the file's path when it is in
+ * 証憑の索引簿 (§16.2): the 13 §7 columns plus 「パッケージ内のファイル」 — the file's path when it is in
  * the zip, 「（取得できませんでした）」 when the storage did not return it, empty when the package has
  * no files (`packaged` is `null`).
  */
@@ -309,7 +309,7 @@ export function handoverPeriod(source: ReportSource, fiscalYearId: string): Repo
 }
 
 /**
- * The generated files of the year in zip order (§15.2): books/, closing/ and — for a closed year —
+ * The generated files of the year in zip order (§16.2): books/, closing/ and — for a closed year —
  * statements/. HOT010 is left out (with the reason in `notes`) when a name has a character e-Tax
  * does not accept.
  */
@@ -483,7 +483,7 @@ export function handoverDateTime(at: Date): string {
   return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
-/** The text of README.txt (§15.3), before the BOM and CRLF. */
+/** The text of README.txt (§16.3), before the BOM and CRLF. */
 export function handoverReadme(
   plan: Pick<
     HandoverPackagePlan,
@@ -581,7 +581,7 @@ function isCompressible(path: string): boolean {
 const encoder = new TextEncoder();
 
 /**
- * Writes the package as a zip to `sink` (§15.6): the generated files, then each document file
+ * Writes the package as a zip to `sink` (§16.6): the generated files, then each document file
  * (fetched one at a time and dropped once written), the index, README.txt and manifest.json. The
  * index, README and manifest come last because they say which document files could be fetched and
  * carry every file's SHA-256; README 中身 lists exactly the zip's other entries in the same order.

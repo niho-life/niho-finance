@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  接続がない画面 (10 §1.1): what the Service Worker (sw.js) shows when a page cannot be reached.
+  Self-contained: no external CSS, JS, fonts or images. The tokens are those of app/globals.css.
+-->
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>接続がありません | NIHO finance</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --text: #1f1f1f;
+        --muted: #6b6b6b;
+        --primary: #4b9e5e;
+        --primary-ink: #2f7a41;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(24px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+          calc(24px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "Hiragino Maru Gothic ProN",
+          "Hiragino Sans",
+          "Hiragino Kaku Gothic ProN",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        font-size: 15px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0 0 24px;
+        color: var(--muted);
+      }
+      button {
+        min-height: 48px;
+        min-width: 160px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 0 20px;
+        background: var(--primary);
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--primary-ink);
+      }
+      button:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>接続がありません</h1>
+      <p>
+        帳簿は最新の内容だけを表示するため、つながっていない間は開けません。つながったら開き直してください。
+      </p>
+      <button type="button" id="reopen">開き直す</button>
+    </main>
+    <script>
+      (function () {
+        // Shown in place of the page that failed: reload it. Opened as itself: go to ホーム.
+        function reopen() {
+          if (location.pathname === "/offline.html") location.assign("/");
+          else location.reload();
+        }
+        document.getElementById("reopen").addEventListener("click", reopen);
+        window.addEventListener("online", reopen);
+      })();
+    </script>
+  </body>
+</html>

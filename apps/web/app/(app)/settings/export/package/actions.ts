@@ -19,7 +19,7 @@ import { PACKAGE_ERRORS } from "./_lib/labels";
 import { conditionsOfForm, largePackageMode, packagePageHref } from "./_lib/query";
 
 /**
- * 「作成を依頼」 (14-reports §15.4): records `requested` and hands the package to the jobs service
+ * 「作成を依頼」 (14-reports §16.4): records `requested` and hands the package to the jobs service
  * through Cloud Tasks — or, locally without a queue, makes it in place. Back to the page with the
  * outcome; the request appears under 「作成した受け渡しパッケージ」.
  */

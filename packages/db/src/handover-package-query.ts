@@ -1,6 +1,6 @@
 /**
- * 受け渡しパッケージ (14-reports §15): the documents of the year with their index row, and the audit
- * log `export.package` — one row per phase (`downloaded` · `requested` · `ready` · `failed`, §15.5),
+ * 受け渡しパッケージ (14-reports §16): the documents of the year with their index row, and the audit
+ * log `export.package` — one row per phase (`downloaded` · `requested` · `ready` · `failed`, §16.5),
  * never updated. A request is resolved from its rows (`entityId` = the request id).
  */
 import type { CalendarDate } from "@niho-finance/ledger";
@@ -14,7 +14,7 @@ import { listRecentExports, loadDocumentsForArchive, type ExportLogRow } from ".
 
 export const HANDOVER_PACKAGE_AUDIT_ACTION = "export.package";
 const ENTITY = "export";
-/** A request still being made after this long has probably failed (§15.1). */
+/** A request still being made after this long has probably failed (§16.1). */
 export const HANDOVER_STALE_MINUTES = 30;
 /** The `kind` of a package download in 「最近の書き出し」 (labels.ts names it). */
 export const HANDOVER_EXPORT_KIND = "package";
@@ -105,7 +105,7 @@ export async function loadHandoverDocuments(
 }
 
 // ---------------------------------------------------------------------------
-// Audit log (§15.5)
+// Audit log (§16.5)
 // ---------------------------------------------------------------------------
 
 export interface HandoverPeriodInput {
@@ -324,7 +324,7 @@ export async function findHandoverRequest(
   return requested ? resolveRequest(requested, rows, options.now ?? new Date()) : null;
 }
 
-/** The latest requests (「作成した受け渡しパッケージ」, §15.1), newest first. */
+/** The latest requests (「作成した受け渡しパッケージ」, §16.1), newest first. */
 export async function listHandoverRequests(
   db: Db,
   options: { limit?: number; now?: Date } = {},
@@ -345,7 +345,7 @@ export async function listHandoverRequests(
 }
 
 /**
- * 「最近の書き出し」 (14 §10, §15.5): `listRecentExports` plus the package downloads (both
+ * 「最近の書き出し」 (14 §10, §16.5): `listRecentExports` plus the package downloads (both
  * deliveries) as kind `package` / format `zip`, newest first.
  */
 export async function listRecentExportsWithPackages(db: Db, limit = 20): Promise<ExportLogRow[]> {

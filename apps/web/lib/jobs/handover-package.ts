@@ -21,7 +21,7 @@ import {
 import { JOB_ACTOR, type JobContext, type JobSummary } from "./run";
 
 /*
- * handover-package (14-reports §15.4): makes the 受け渡しパッケージ of one request with the screens'
+ * handover-package (14-reports §16.4): makes the 受け渡しパッケージ of one request with the screens'
  * functions, streams the zip to the backup bucket (`packages/<作成日時>_fy<n>_<requestId>.zip`) and
  * records `ready` — or `failed` with a reason for the owner. Once per request: a request that is
  * already made is left alone. The screen calls the same function itself when there is no queue

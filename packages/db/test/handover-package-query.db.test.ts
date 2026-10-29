@@ -25,7 +25,7 @@ import { hasTestDatabase } from "./support/database";
 import { testPrisma } from "./support/prisma";
 
 /*
- * 受け渡しパッケージ (14-reports §15.5–§15.6): the documents of the year with their index rows, and
+ * 受け渡しパッケージ (14-reports §16.5–§16.6): the documents of the year with their index rows, and
  * the phases of `export.package` resolved into requests (requested → ready / failed → downloaded).
  * A period of its own (2052) keeps the shared test database's other documents out.
  */
