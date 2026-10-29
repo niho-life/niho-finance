@@ -186,6 +186,17 @@ function PendingChips({
   if (amountOf(row) < 0n && !row.hasDocument) {
     chips.push(<NoDocumentChip key="document" row={row} handlers={handlers} />);
   }
+  // 出どころ of the 定期取引 stage (21-cashflow §10.6): 「定期取引 家賃」 while the chips are its.
+  if (row.recurring && suggestion?.source === "recurring" && !draft.edited) {
+    chips.push(
+      <span
+        key="recurring"
+        className="inline-flex min-h-7 shrink-0 items-center text-[12px] whitespace-nowrap text-muted"
+      >
+        定期取引 {row.recurring.name}
+      </span>,
+    );
+  }
   return <>{chips}</>;
 }
 

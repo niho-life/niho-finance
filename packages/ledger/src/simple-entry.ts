@@ -249,6 +249,27 @@ const ALLOWED_KINDS = {
   { account: readonly AccountKind[]; counterpart: readonly AccountKind[] }
 >;
 
+/**
+ * Whether an account can be the 科目 of a 収入 / 支出 (11 §4.1, §4.2): of a kind the form accepts,
+ * active, and not reserved (`isReservedAccount`). The same rule `buildSimpleEntry` rejects with
+ * `ACCOUNT_NOT_ALLOWED`, for screens that offer an entry before it is built (21-cashflow §10.7).
+ */
+export function allowedSimpleEntryAccount(
+  account: {
+    id: string;
+    code: string;
+    kind: AccountKind;
+    isCashLike?: boolean;
+    isActive?: boolean;
+  },
+  type: "income" | "expense",
+  walletAccountIds: ReadonlySet<string>,
+): boolean {
+  if (account.isActive === false) return false;
+  const kinds: readonly AccountKind[] = ALLOWED_KINDS[type].account;
+  return kinds.includes(account.kind) && !isReservedAccount(account, walletAccountIds);
+}
+
 /** Collects the builder's problems so that one request reports all of them. */
 class Problems {
   readonly errors: LedgerError[] = [];

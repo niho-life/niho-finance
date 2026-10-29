@@ -1,14 +1,25 @@
 "use client";
 
+import Link from "next/link";
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+
+/** A link after the message (「No. 12 を登録しました」 → the entry). */
+interface ToastLink {
+  href: string;
+  label: string;
+}
 
 interface ToastState {
   id: number;
   message: string;
   tone: "default" | "error";
+  link: ToastLink | null;
 }
 
-type ShowToast = (message: string, options?: { tone?: "default" | "error" }) => void;
+type ShowToast = (
+  message: string,
+  options?: { tone?: "default" | "error"; link?: ToastLink },
+) => void;
 
 const ToastContext = createContext<ShowToast>(() => {});
 
@@ -27,7 +38,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show: ShowToast = (message, options = {}) => {
     if (timer.current) clearTimeout(timer.current);
     nextId.current += 1;
-    setToast({ id: nextId.current, message, tone: options.tone ?? "default" });
+    setToast({
+      id: nextId.current,
+      message,
+      tone: options.tone ?? "default",
+      link: options.link ?? null,
+    });
     timer.current = setTimeout(() => setToast(null), DURATION_MS);
   };
 
@@ -47,6 +63,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             }`}
           >
             <span>{toast.message}</span>
+            {toast.link ? (
+              <Link
+                href={toast.link.href}
+                onClick={() => setToast(null)}
+                className="font-bold whitespace-nowrap text-accent underline underline-offset-4"
+              >
+                {toast.link.label}
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => setToast(null)}
