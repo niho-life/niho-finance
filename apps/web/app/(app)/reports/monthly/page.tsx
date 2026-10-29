@@ -1,5 +1,10 @@
 import type { Money } from "@niho-finance/ledger";
-import { buildMonthlyTrend, type MonthlyRow, type ReportPeriod } from "@niho-finance/reports";
+import {
+  buildMonthlyTrend,
+  hasPriorFiscalYear,
+  type MonthlyRow,
+  type ReportPeriod,
+} from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -11,7 +16,14 @@ import { Note } from "../_components/notices";
 import { ReportsFrame } from "../_components/reports-frame";
 import { stickyCell, WideHead, wideGrid, WideRow, WideTable } from "../_components/wide-table";
 import { segmentName } from "../_lib/format";
-import { loadReports, parseReportParams, reportHref, resolvePeriodOrNull } from "../_lib/query";
+import {
+  conditionsKey,
+  loadReportFrame,
+  loadReports,
+  parseReportParams,
+  reportHref,
+  resolvePeriodOrNull,
+} from "../_lib/query";
 
 export const metadata: Metadata = { title: "月次推移" };
 
@@ -65,18 +77,24 @@ function PriorToggle({ period, on }: { period: ReportPeriod; on: boolean }) {
   );
 }
 
-/**
- * 月次推移 (14-reports §4): the income statement by month and the total. Groups open and close;
- * the table scrolls sideways inside its frame on narrow screens.
- */
-export default async function MonthlyPage({ searchParams }: PageProps<"/reports/monthly">) {
-  const { source, today } = await loadReports();
-  const params = parseReportParams(await searchParams, source);
-  const period = resolvePeriodOrNull(source, params.query, today);
-  if (!period) return <NoFiscalYear />;
+/** The numbers of the tab, computed once for the table and the CSV / PDF links. */
+async function monthlyOf(period: ReportPeriod, comparePrior: boolean) {
+  const { source } = await loadReports();
+  return {
+    source,
+    report: buildMonthlyTrend(source, period, { compareWithPriorYear: comparePrior }),
+  };
+}
 
-  const report = buildMonthlyTrend(source, period, { compareWithPriorYear: params.comparePrior });
-  const compare = report.comparing ? "prior" : null;
+/** The table of the tab, streamed after the frame (05-ui-ux §3.1). */
+async function MonthlyBody({
+  data,
+  period,
+}: {
+  data: ReturnType<typeof monthlyOf>;
+  period: ReportPeriod;
+}) {
+  const { source, report } = await data;
   const count = report.columns.length + 1;
   const columns = `minmax(10rem,1.4fr) repeat(${count}, minmax(6.25rem,1fr))`;
   const minWidth = 160 + count * 100 + count * 12 + 28;
@@ -144,45 +162,64 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/reports/
     );
   }
 
+  return report.empty ? (
+    <NoEntries />
+  ) : (
+    <>
+      <Note>
+        {period.segmentId ? `${segmentName(source.segments, period.segmentId)} · ` : ""}
+        金額の単位は円です。各月の当期純利益は、その月の損益計算書と一致します。
+        {report.comparing ? "下の小さな数字は前年同月です（帳簿が始まる前の月は「—」）。" : ""}
+      </Note>
+      <WideTable label="月次推移" minWidth={minWidth}>
+        <WideHead columns={columns}>
+          <span role="columnheader" className={stickyCell({ background: "surface-2" })}>
+            科目
+          </span>
+          {report.columns.map((column) => (
+            <span key={column.key} role="columnheader" className="text-right">
+              {column.label}
+            </span>
+          ))}
+          <span role="columnheader" className="text-right">
+            合計
+          </span>
+        </WideHead>
+        {rows}
+      </WideTable>
+    </>
+  );
+}
+
+/**
+ * 月次推移 (14-reports §4): the income statement by month and the total. Groups open and close;
+ * the table scrolls sideways inside its frame on narrow screens.
+ */
+export default async function MonthlyPage({ searchParams }: PageProps<"/reports/monthly">) {
+  const raw = await searchParams;
+  const { source, today } = await loadReportFrame();
+  const params = parseReportParams(raw, source);
+  const period = resolvePeriodOrNull(source, params.query, today);
+  if (!period) return <NoFiscalYear />;
+
+  // 前年同月 depends on the years only (§15.6): the frame shows the switch before the numbers.
+  const hasPriorYear = hasPriorFiscalYear(source.fiscalYears, period);
+  const comparing = params.comparePrior && hasPriorYear;
+  const compare = comparing ? "prior" : null;
+  const data = monthlyOf(period, params.comparePrior);
+
   return (
     <ReportsFrame
       tab="monthly"
       source={source}
       period={period}
       hidden={{ compare }}
-      controls={
-        report.hasPriorYear ? <PriorToggle period={period} on={report.comparing} /> : undefined
-      }
+      controls={hasPriorYear ? <PriorToggle period={period} on={comparing} /> : undefined}
       exportParams={{ compare }}
-      exportable={!report.empty}
+      exportable={data.then(({ report }) => !report.empty)}
+      streamKey={conditionsKey(raw)}
     >
-      {report.empty ? (
-        <NoEntries />
-      ) : (
-        <>
-          <Note>
-            {period.segmentId ? `${segmentName(source.segments, period.segmentId)} · ` : ""}
-            金額の単位は円です。各月の当期純利益は、その月の損益計算書と一致します。
-            {report.comparing ? "下の小さな数字は前年同月です（帳簿が始まる前の月は「—」）。" : ""}
-          </Note>
-          <WideTable label="月次推移" minWidth={minWidth}>
-            <WideHead columns={columns}>
-              <span role="columnheader" className={stickyCell({ background: "surface-2" })}>
-                科目
-              </span>
-              {report.columns.map((column) => (
-                <span key={column.key} role="columnheader" className="text-right">
-                  {column.label}
-                </span>
-              ))}
-              <span role="columnheader" className="text-right">
-                合計
-              </span>
-            </WideHead>
-            {rows}
-          </WideTable>
-        </>
-      )}
+      <MonthlyBody data={data} period={period} />
     </ReportsFrame>
   );
 }

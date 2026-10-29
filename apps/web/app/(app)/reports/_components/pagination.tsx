@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/button";
 
-/** 「前へ / 次へ」 with the page and the count (仕訳帳, 14-reports §7). */
+/**
+ * 「前へ / 次へ」 with the page and the count (仕訳帳, 14-reports §7). Both pages are read ahead
+ * (`prefetch`, 05-ui-ux §3.1).
+ */
 export function Pagination({
   page,
   pageCount,
@@ -18,7 +21,11 @@ export function Pagination({
 }) {
   const link = (target: number, label: string, enabled: boolean) =>
     enabled ? (
-      <Link href={hrefFor(target)} className={buttonClass({ variant: "secondary", size: "sm" })}>
+      <Link
+        href={hrefFor(target)}
+        className={buttonClass({ variant: "secondary", size: "sm" })}
+        prefetch
+      >
         {label}
       </Link>
     ) : (

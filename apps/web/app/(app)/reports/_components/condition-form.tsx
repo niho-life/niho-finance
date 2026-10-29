@@ -4,7 +4,8 @@ import {
   PERIOD_PRESETS,
   segmentLabels,
 } from "@niho-finance/reports";
-import type { ReportPeriod, ReportSource } from "@niho-finance/reports";
+import type { ReportFrameSource } from "@niho-finance/db";
+import type { ReportPeriod } from "@niho-finance/reports";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,7 @@ export function ConditionForm({
   segmentSwitch,
 }: {
   tab: ReportTab;
-  source: ReportSource;
+  source: ReportFrameSource;
   period: ReportPeriod;
   /** Tab parameters kept when the conditions change (総勘定元帳's account …). */
   hidden?: ExtraParams;

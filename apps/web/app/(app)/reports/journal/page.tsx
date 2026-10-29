@@ -1,4 +1,9 @@
-import { buildJournal, type JournalEntryRow } from "@niho-finance/reports";
+import {
+  buildJournal,
+  type JournalEntryRow,
+  type JournalStatusFilter,
+  type ReportPeriod,
+} from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Td } from "@/components/ui/table";
@@ -10,7 +15,15 @@ import { Pagination } from "../_components/pagination";
 import { ReportsFrame } from "../_components/reports-frame";
 import { WideHead, WideRow, WideTable } from "../_components/wide-table";
 import { entryHref } from "../_lib/links";
-import { loadReports, parseReportParams, reportHref, resolvePeriodOrNull } from "../_lib/query";
+import {
+  conditionsKey,
+  loadReportFrame,
+  loadReports,
+  parseReportParams,
+  reportHref,
+  resolvePeriodOrNull,
+  type ReportParams,
+} from "../_lib/query";
 
 export const metadata: Metadata = { title: "仕訳帳" };
 
@@ -83,18 +96,87 @@ function EntryRows({ entry }: { entry: JournalEntryRow }) {
   );
 }
 
+/** The numbers of the tab, computed once for the table and the CSV / PDF links. */
+async function journalOf(period: ReportPeriod, params: Pick<ReportParams, "status" | "page">) {
+  const { source } = await loadReports();
+  return buildJournal(source, period, { status: params.status, page: params.page });
+}
+
+/** The entries of the page and the totals, streamed after the frame (05-ui-ux §3.1). */
+async function JournalBody({
+  data,
+  period,
+  status,
+}: {
+  data: ReturnType<typeof journalOf>;
+  period: ReportPeriod;
+  status: Exclude<JournalStatusFilter, "all"> | null;
+}) {
+  const report = await data;
+  return report.empty ? (
+    <NoEntries />
+  ) : (
+    <div className="flex flex-col gap-3">
+      <WideTable label="仕訳帳" minWidth={MIN_WIDTH}>
+        <WideHead columns={COLUMNS}>
+          <span role="columnheader">貸借</span>
+          <span role="columnheader">科目 / 補助科目</span>
+          <span role="columnheader" className="text-right">
+            借方（円）
+          </span>
+          <span role="columnheader" className="text-right">
+            貸方（円）
+          </span>
+          <span role="columnheader">税区分（税額）</span>
+          <span role="columnheader">セグメント</span>
+          <span role="columnheader">取引先</span>
+          <span role="columnheader">行の摘要</span>
+        </WideHead>
+        {report.entries.map((entry) => (
+          <EntryRows key={entry.id} entry={entry} />
+        ))}
+      </WideTable>
+      <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+        <div className="flex gap-2">
+          <dt className="text-muted">借方合計</dt>
+          <dd className="num font-bold">{formatAmount(report.debitTotal)} 円</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted">貸方合計</dt>
+          <dd className="num font-bold">{formatAmount(report.creditTotal)} 円</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted">仕訳</dt>
+          <dd className="num font-bold">{report.total.toLocaleString("ja-JP")} 件</dd>
+        </div>
+      </dl>
+      {report.pageCount > 1 ? (
+        <Pagination
+          page={report.page}
+          pageCount={report.pageCount}
+          total={report.total}
+          unit="件"
+          hrefFor={(page) => reportHref("journal", period, { status, page })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * 仕訳帳 (14-reports §7): every entry of the period in date and number order, 50 per page, with
  * its lines. Voided entries stay (muted); 「登録済みだけ」 leaves out voided entries and reversals.
  */
 export default async function JournalPage({ searchParams }: PageProps<"/reports/journal">) {
-  const { source, today } = await loadReports();
-  const params = parseReportParams(await searchParams, source);
+  const raw = await searchParams;
+  const { source, today } = await loadReportFrame();
+  const params = parseReportParams(raw, source);
   const period = resolvePeriodOrNull(source, params.query, today);
   if (!period) return <NoFiscalYear />;
 
-  const report = buildJournal(source, period, { status: params.status, page: params.page });
-  const status = report.status === "all" ? null : report.status;
+  // The report's state is the one asked for (`buildJournal` keeps it), so the frame has it first.
+  const status = params.status === "all" ? null : params.status;
+  const data = journalOf(period, params);
 
   return (
     <ReportsFrame
@@ -103,12 +185,13 @@ export default async function JournalPage({ searchParams }: PageProps<"/reports/
       period={period}
       linkParams={{ status }}
       exportParams={{ status }}
-      exportable={!report.empty}
+      exportable={data.then((report) => !report.empty)}
+      streamKey={conditionsKey(raw)}
       controls={
         <AutoSubmitSelect
           name="status"
           aria-label="状態"
-          defaultValue={report.status}
+          defaultValue={params.status}
           className={COMPACT_CONTROL}
         >
           <option value="all">すべて</option>
@@ -116,54 +199,7 @@ export default async function JournalPage({ searchParams }: PageProps<"/reports/
         </AutoSubmitSelect>
       }
     >
-      {report.empty ? (
-        <NoEntries />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <WideTable label="仕訳帳" minWidth={MIN_WIDTH}>
-            <WideHead columns={COLUMNS}>
-              <span role="columnheader">貸借</span>
-              <span role="columnheader">科目 / 補助科目</span>
-              <span role="columnheader" className="text-right">
-                借方（円）
-              </span>
-              <span role="columnheader" className="text-right">
-                貸方（円）
-              </span>
-              <span role="columnheader">税区分（税額）</span>
-              <span role="columnheader">セグメント</span>
-              <span role="columnheader">取引先</span>
-              <span role="columnheader">行の摘要</span>
-            </WideHead>
-            {report.entries.map((entry) => (
-              <EntryRows key={entry.id} entry={entry} />
-            ))}
-          </WideTable>
-          <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
-            <div className="flex gap-2">
-              <dt className="text-muted">借方合計</dt>
-              <dd className="num font-bold">{formatAmount(report.debitTotal)} 円</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="text-muted">貸方合計</dt>
-              <dd className="num font-bold">{formatAmount(report.creditTotal)} 円</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="text-muted">仕訳</dt>
-              <dd className="num font-bold">{report.total.toLocaleString("ja-JP")} 件</dd>
-            </div>
-          </dl>
-          {report.pageCount > 1 ? (
-            <Pagination
-              page={report.page}
-              pageCount={report.pageCount}
-              total={report.total}
-              unit="件"
-              hrefFor={(page) => reportHref("journal", period, { status, page })}
-            />
-          ) : null}
-        </div>
-      )}
+      <JournalBody data={data} period={period} status={status} />
     </ReportsFrame>
   );
 }

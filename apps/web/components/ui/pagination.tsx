@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-/** 「前へ / 次へ」 and the count of a paged list (50 rows per page, 11 §3, §8). */
+/**
+ * 「前へ / 次へ」 and the count of a paged list (50 rows per page, 11 §3, §8). Both pages are read
+ * ahead (`prefetch`), so that paging shows the rows at once (05-ui-ux §3.1).
+ */
 export function Pagination({
   page,
   pageCount,
@@ -28,7 +31,7 @@ export function Pagination({
       {pageCount > 1 ? (
         <div className="flex gap-2">
           {page > 1 ? (
-            <Link href={href(page - 1)} className={link} rel="prev">
+            <Link href={href(page - 1)} className={link} rel="prev" prefetch>
               前へ
             </Link>
           ) : (
@@ -37,7 +40,7 @@ export function Pagination({
             </span>
           )}
           {page < pageCount ? (
-            <Link href={href(page + 1)} className={link} rel="next">
+            <Link href={href(page + 1)} className={link} rel="next" prefetch>
               次へ
             </Link>
           ) : (

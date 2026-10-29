@@ -93,6 +93,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
             <Link
               href={`/expenses?payments=${limit + MORE_PAYMENTS}`}
               scroll={false}
+              prefetch
               className="w-fit text-[13px] font-bold text-muted underline-offset-4 hover:underline"
             >
               さらに表示

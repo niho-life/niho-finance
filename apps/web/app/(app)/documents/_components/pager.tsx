@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-/** 「n 件中 a〜b 件」 and 前へ / 次へ of the list (50 per page, 13 §3.3). */
+/**
+ * 「n 件中 a〜b 件」 and 前へ / 次へ of the list (50 per page, 13 §3.3). Both pages are read ahead
+ * (`prefetch`, 05-ui-ux §3.1).
+ */
 export function Pager({
   page,
   pageSize,
@@ -32,7 +35,7 @@ export function Pager({
       </p>
       <div className="flex gap-2">
         {page > 1 ? (
-          <Link href={href(page - 1)} className={link} rel="prev">
+          <Link href={href(page - 1)} className={link} rel="prev" prefetch>
             前へ
           </Link>
         ) : (
@@ -41,7 +44,7 @@ export function Pager({
           </span>
         )}
         {page < pageCount ? (
-          <Link href={href(page + 1)} className={link} rel="next">
+          <Link href={href(page + 1)} className={link} rel="next" prefetch>
             次へ
           </Link>
         ) : (

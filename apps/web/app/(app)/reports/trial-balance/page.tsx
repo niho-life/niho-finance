@@ -1,3 +1,4 @@
+import type { ReportPeriod } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { NoEntries, NoFiscalYear } from "../_components/empty";
@@ -5,21 +6,33 @@ import { Note, SectionHeading, WarningBand } from "../_components/notices";
 import { ReportsFrame } from "../_components/reports-frame";
 import { StatementTable } from "../_components/statement-table";
 import { segmentName } from "../_lib/format";
-import { loadReports, parseReportParams, reportHref, resolvePeriodOrNull } from "../_lib/query";
+import {
+  conditionsKey,
+  loadReportFrame,
+  loadReports,
+  parseReportParams,
+  reportHref,
+  resolvePeriodOrNull,
+} from "../_lib/query";
 import { buildTrialBalanceView } from "../_lib/trial-balance-view";
 
 export const metadata: Metadata = { title: "試算表" };
 
-/** 試算表 (14-reports §3): 貸借対照表 on `to`, 損益計算書 of `from`..`to`. */
-export default async function TrialBalancePage({
-  searchParams,
-}: PageProps<"/reports/trial-balance">) {
-  const { source, today } = await loadReports();
-  const params = parseReportParams(await searchParams, source);
-  const period = resolvePeriodOrNull(source, params.query, today);
-  if (!period) return <NoFiscalYear />;
+/** The numbers of the tab, computed once for the table and the CSV / PDF links. */
+async function trialBalanceOf(period: ReportPeriod) {
+  const { source } = await loadReports();
+  return { source, view: buildTrialBalanceView(source, period) };
+}
 
-  const view = buildTrialBalanceView(source, period);
+/** The statements of the tab, streamed after the frame (05-ui-ux §3.1). */
+async function TrialBalanceBody({
+  data,
+  period,
+}: {
+  data: ReturnType<typeof trialBalanceOf>;
+  period: ReportPeriod;
+}) {
+  const { source, view } = await data;
   const { report } = view;
   // The balance sheet is the whole company's: its accounts open the ledger without the segment,
   // so that the ledger's closing balance is the number clicked (14-reports §14).
@@ -30,7 +43,7 @@ export default async function TrialBalancePage({
     reportHref("ledger", period, { account: accountId, sub: subAccountId });
 
   return (
-    <ReportsFrame tab="trial-balance" source={source} period={period} exportable={!report.empty}>
+    <>
       {report.check.ok ? null : <WarningBand messages={report.check.messages} />}
       {report.empty ? (
         <NoEntries />
@@ -61,6 +74,30 @@ export default async function TrialBalancePage({
           </section>
         </div>
       )}
+    </>
+  );
+}
+
+/** 試算表 (14-reports §3): 貸借対照表 on `to`, 損益計算書 of `from`..`to`. */
+export default async function TrialBalancePage({
+  searchParams,
+}: PageProps<"/reports/trial-balance">) {
+  const raw = await searchParams;
+  const { source, today } = await loadReportFrame();
+  const params = parseReportParams(raw, source);
+  const period = resolvePeriodOrNull(source, params.query, today);
+  if (!period) return <NoFiscalYear />;
+
+  const data = trialBalanceOf(period);
+  return (
+    <ReportsFrame
+      tab="trial-balance"
+      source={source}
+      period={period}
+      exportable={data.then(({ view }) => !view.report.empty)}
+      streamKey={conditionsKey(raw)}
+    >
+      <TrialBalanceBody data={data} period={period} />
     </ReportsFrame>
   );
 }

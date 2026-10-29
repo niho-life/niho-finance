@@ -18,6 +18,7 @@ import {
   withoutClosingOf,
   type ReportAccount,
   type ReportEntry,
+  type ReportFiscalYear,
   type ReportSource,
   type SourceIndex,
 } from "./source";
@@ -64,6 +65,17 @@ export function monthlyColumns(period: ReportPeriod): MonthRange[] {
   return period.preset === "custom"
     ? monthsBetween(period.from, period.to)
     : monthsBetween(period.fiscalYear.startDate, period.fiscalYear.endDate);
+}
+
+/**
+ * A fiscal year before the period's exists: the 前年同月 switch is offered (§15.6). Only the years
+ * are read, so the frame of the tab knows it before the entries are (05-ui-ux §3.1).
+ */
+export function hasPriorFiscalYear(
+  fiscalYears: readonly Pick<ReportFiscalYear, "startDate">[],
+  period: ReportPeriod,
+): boolean {
+  return fiscalYears.some((year) => year.startDate < period.fiscalYear.startDate);
 }
 
 /** The same day a year earlier (29 Feb → 28 Feb). */
@@ -142,9 +154,7 @@ export function buildMonthlyTrend(
   const from = columns[0]?.from ?? period.from;
   const to = columns[columns.length - 1]?.to ?? period.to;
   const columnIndex = new Map(columns.map((column, i) => [column.key, i]));
-  const hasPriorYear = source.fiscalYears.some(
-    (year) => year.startDate < period.fiscalYear.startDate,
-  );
+  const hasPriorYear = hasPriorFiscalYear(source.fiscalYears, period);
   const comparing = Boolean(options.compareWithPriorYear) && hasPriorYear;
 
   const current = accumulate(

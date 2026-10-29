@@ -1,4 +1,9 @@
-import { loadReportSource, todayInJapan } from "@niho-finance/db";
+import {
+  loadReportEntries,
+  loadReportFrameSource,
+  todayInJapan,
+  type ReportFrameSource,
+} from "@niho-finance/db";
 import { isCalendarDate, type CalendarDate } from "@niho-finance/ledger";
 import {
   isBreakdownAxis,
@@ -81,7 +86,18 @@ function calendarDate(value: string | undefined): CalendarDate | null {
   return isCalendarDate(value) ? value : null;
 }
 
-export function parseReportParams(raw: RawSearchParams, source: ReportSource): ReportParams {
+/** The URL's conditions as one string: a tab's streamed part starts over when it changes. */
+export function conditionsKey(raw: RawSearchParams): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+      params.append(key, item);
+    }
+  }
+  return params.toString();
+}
+
+export function parseReportParams(raw: RawSearchParams, source: ReportFrameSource): ReportParams {
   const period = first(raw.period);
   const segment = first(raw.segment);
   const status = first(raw.status);
@@ -155,16 +171,26 @@ export function breakdownLinkParams(
   };
 }
 
-/** The book and today, read once per request (the frame and the page share it). */
-export const loadReports = cache(async () => {
+/**
+ * The master data and today, read once per request: all the frame needs (the heading, the
+ * conditions, the tabs), so that it shows before the entries are read (05-ui-ux §3.1).
+ */
+export const loadReportFrame = cache(async () => {
   const prisma = await db();
-  const source = await loadReportSource(prisma);
+  const source = await loadReportFrameSource(prisma);
   return { prisma, source, today: todayInJapan() };
+});
+
+/** The book (the frame's master data and every entry) and today, read once per request. */
+export const loadReports = cache(async () => {
+  const { prisma, source: frame, today } = await loadReportFrame();
+  const source: ReportSource = { ...frame, entries: await loadReportEntries(prisma) };
+  return { prisma, source, today };
 });
 
 /** `null` without a fiscal year (the setup creates the first one, so only in odd states). */
 export function resolvePeriodOrNull(
-  source: ReportSource,
+  source: ReportFrameSource,
   query: ReportQuery,
   today: CalendarDate,
 ): ReportPeriod | null {

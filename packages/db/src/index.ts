@@ -446,6 +446,8 @@ export {
   loadBackupSource,
   loadDocumentsForArchive,
   loadHomeTodos,
+  loadReportEntries,
+  loadReportFrameSource,
   loadReportSource,
   loadWalletStatus,
   pendingStatementsTodo,
@@ -455,6 +457,7 @@ export {
   type ExportLogRow,
   type HomeTodo,
   type HomeTodoSource,
+  type ReportFrameSource,
 } from "./reports-query";
 export {
   loadFinancialStatementsSource,

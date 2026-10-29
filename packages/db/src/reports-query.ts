@@ -87,6 +87,18 @@ function toReportEntry(row: EntryRow): ReportEntry {
  * every request (a few thousand entries at most); narrow it by year when that gets slow.
  */
 export async function loadReportSource(db: Db): Promise<ReportSource> {
+  const frame = await loadReportFrameSource(db);
+  return { ...frame, entries: await loadReportEntries(db) };
+}
+
+/** The master data of the reports without the entries (05-ui-ux §3.1). */
+export type ReportFrameSource = Omit<ReportSource, "entries">;
+
+/**
+ * The master data only: what the frame of 報告 needs (期・期間・セグメント and the conditions of
+ * the URL), read before the entries so that the frame shows while the numbers are computed.
+ */
+export async function loadReportFrameSource(db: Db): Promise<ReportFrameSource> {
   const company = await requireCompanyRow(db);
   const fiscalYears = await db.fiscalYear.findMany({ orderBy: { no: "asc" } });
   const accounts = await db.account.findMany({ orderBy: { code: "asc" } });
@@ -101,10 +113,6 @@ export async function loadReportSource(db: Db): Promise<ReportSource> {
   const taxCategories = await db.taxCategory.findMany({ select: { code: true, name: true } });
   const memoTags = await db.memoTag.findMany({ select: { id: true, name: true } });
   const wallets = await db.wallet.findMany({ orderBy: { createdAt: "asc" } });
-  const entries = await db.journalEntry.findMany({
-    select: entrySelect,
-    orderBy: [{ entryDate: "asc" }, { no: "asc" }],
-  });
   return {
     company: { name: company.name, foundedOn: fromDbDate(company.foundedOn) },
     fiscalYears: fiscalYears.map((year) => ({
@@ -153,8 +161,16 @@ export async function loadReportSource(db: Db): Promise<ReportSource> {
       subAccountId: wallet.subAccountId,
       isActive: wallet.isActive,
     })),
-    entries: entries.map(toReportEntry),
   };
+}
+
+/** Every entry with its lines, in date and number order (the heavy part of `loadReportSource`). */
+export async function loadReportEntries(db: Db): Promise<ReportEntry[]> {
+  const entries = await db.journalEntry.findMany({
+    select: entrySelect,
+    orderBy: [{ entryDate: "asc" }, { no: "asc" }],
+  });
+  return entries.map(toReportEntry);
 }
 
 function bankApiStatusOf(value: string | null): WalletStatus["bankApiStatus"] {

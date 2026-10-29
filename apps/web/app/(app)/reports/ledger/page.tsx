@@ -23,11 +23,14 @@ import { WideHead, WideRow, WideTable } from "../_components/wide-table";
 import { segmentName } from "../_lib/format";
 import { entryHref } from "../_lib/links";
 import {
+  conditionsKey,
+  loadReportFrame,
   loadReports,
   parseReportParams,
   reportHref,
   resolvePeriodOrNull,
   type ExtraParams,
+  type ReportParams,
 } from "../_lib/query";
 
 export const metadata: Metadata = { title: "総勘定元帳" };
@@ -187,30 +190,43 @@ function LedgerTable({ report }: { report: GeneralLedgerReport }) {
   );
 }
 
-/**
- * 総勘定元帳 (14-reports §8): one account (or one sub-account) over the period with 繰越, the
- * running balance on the account's normal side, 合計 and 残高. Without an account: the accounts
- * to choose from.
- */
-export default async function LedgerPage({ searchParams }: PageProps<"/reports/ledger">) {
-  const { source, today } = await loadReports();
-  const params = parseReportParams(await searchParams, source);
-  const period = resolvePeriodOrNull(source, params.query, today);
-  if (!period) return <NoFiscalYear />;
-
-  const choices = ledgerAccountChoices(source, period);
-  const report = params.account
-    ? buildGeneralLedger(source, period, {
-        accountId: params.account,
-        subAccountId: params.sub,
-        partnerId: params.partner,
-        tagId: params.tag,
-      })
-    : null;
-  const segment = period.segmentId ? segmentName(source.segments, period.segmentId) : null;
-  // 集計's filters (§15.3) stay on every link of the tab until their chip's × removes them.
+/** 集計's filters (§15.3) stay on every link of the tab until their chip's × removes them. */
+function keptParams(params: ReportParams) {
   const filters = { partner: params.partner, tag: params.tag };
-  const kept = { account: params.account, sub: params.sub, ...filters };
+  return { filters, kept: { account: params.account, sub: params.sub, ...filters } };
+}
+
+/** The numbers of the tab, computed once for the content and the CSV / PDF links. */
+async function ledgerOf(period: ReportPeriod, params: ReportParams) {
+  const { source } = await loadReports();
+  return {
+    source,
+    // 動きのある科目 come from the entries (§8), so the account select comes with the numbers.
+    choices: ledgerAccountChoices(source, period),
+    report: params.account
+      ? buildGeneralLedger(source, period, {
+          accountId: params.account,
+          subAccountId: params.sub,
+          partnerId: params.partner,
+          tagId: params.tag,
+        })
+      : null,
+  };
+}
+
+/** The account select, the filters and the ledger, streamed after the frame (05-ui-ux §3.1). */
+async function LedgerBody({
+  data,
+  period,
+  params,
+}: {
+  data: ReturnType<typeof ledgerOf>;
+  period: ReportPeriod;
+  params: ReportParams;
+}) {
+  const { source, choices, report } = await data;
+  const segment = period.segmentId ? segmentName(source.segments, period.segmentId) : null;
+  const { filters, kept } = keptParams(params);
   const chips = [
     ...(report?.partnerFilter
       ? [
@@ -231,14 +247,7 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
   ];
 
   return (
-    <ReportsFrame
-      tab="ledger"
-      source={source}
-      period={period}
-      hidden={kept}
-      exportParams={kept}
-      exportable={report !== null && !report.empty}
-    >
+    <>
       <AccountPicker
         period={period}
         accountId={params.account}
@@ -324,6 +333,39 @@ export default async function LedgerPage({ searchParams }: PageProps<"/reports/l
           )}
         </section>
       )}
+    </>
+  );
+}
+
+/**
+ * 総勘定元帳 (14-reports §8): one account (or one sub-account) over the period with 繰越, the
+ * running balance on the account's normal side, 合計 and 残高. Without an account: the accounts
+ * to choose from.
+ */
+export default async function LedgerPage({ searchParams }: PageProps<"/reports/ledger">) {
+  const raw = await searchParams;
+  const { source, today } = await loadReportFrame();
+  const params = parseReportParams(raw, source);
+  const period = resolvePeriodOrNull(source, params.query, today);
+  if (!period) return <NoFiscalYear />;
+
+  const { kept } = keptParams(params);
+  const data = ledgerOf(period, params);
+
+  return (
+    <ReportsFrame
+      tab="ledger"
+      source={source}
+      period={period}
+      hidden={kept}
+      exportParams={kept}
+      // Without an account there is no ledger to write: known before the numbers.
+      exportable={
+        params.account ? data.then(({ report }) => report !== null && !report.empty) : false
+      }
+      streamKey={conditionsKey(raw)}
+    >
+      <LedgerBody data={data} period={period} params={params} />
     </ReportsFrame>
   );
 }

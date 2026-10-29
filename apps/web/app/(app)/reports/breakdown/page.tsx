@@ -26,6 +26,8 @@ import { stickyCell, WideHead, WideRow, WideTable } from "../_components/wide-ta
 import { segmentName } from "../_lib/format";
 import {
   breakdownLinkParams,
+  conditionsKey,
+  loadReportFrame,
   loadReports,
   parseReportParams,
   reportHref,
@@ -138,24 +140,31 @@ function BreakdownControls({ period, params }: { period: ReportPeriod; params: R
   );
 }
 
-/**
- * 集計 (14-reports §15): revenue or expenses by 取引先 / タグ / 科目 / セグメント and by month, the
- * top n with 「その他」, the share of each row. Rows lead to the 科目 axis filtered by the row's value,
- * and from there to the general ledger and the entries.
- */
-export default async function BreakdownPage({ searchParams }: PageProps<"/reports/breakdown">) {
-  const { source, today } = await loadReports();
-  const params = parseReportParams(await searchParams, source);
-  const period = resolvePeriodOrNull(source, params.query, today);
-  if (!period) return <NoFiscalYear />;
+/** The numbers of the tab, computed once for the table and the CSV / PDF links. */
+async function breakdownOf(period: ReportPeriod, params: ReportParams) {
+  const { source } = await loadReports();
+  return {
+    source,
+    report: buildBreakdown(source, period, {
+      ...params.breakdown,
+      partnerId: params.partner,
+      tagId: params.tag,
+    }),
+  };
+}
 
+/** The filters and the table of the tab, streamed after the frame (05-ui-ux §3.1). */
+async function BreakdownBody({
+  data,
+  period,
+  params,
+}: {
+  data: ReturnType<typeof breakdownOf>;
+  period: ReportPeriod;
+  params: ReportParams;
+}) {
+  const { source, report } = await data;
   const { axis, side } = params.breakdown;
-  const report = buildBreakdown(source, period, {
-    ...params.breakdown,
-    partnerId: params.partner,
-    tagId: params.tag,
-  });
-  const own = breakdownLinkParams(params);
 
   const count = report.columns.length + 1;
   const columns = `minmax(10rem,1.4fr) repeat(${count}, minmax(6.25rem,1fr)) 4.5rem`;
@@ -187,17 +196,7 @@ export default async function BreakdownPage({ searchParams }: PageProps<"/report
   ];
 
   return (
-    <ReportsFrame
-      tab="breakdown"
-      source={source}
-      period={period}
-      hidden={{ side: own.side, partner: own.partner, tag: own.tag }}
-      linkParams={{ axis: own.axis, top: own.top, sort: own.sort }}
-      controls={<BreakdownControls period={period} params={params} />}
-      segmentSwitch={axis !== "segment"}
-      exportParams={own}
-      exportable={!report.empty}
-    >
+    <>
       <FilterChips chips={chips} />
       {report.empty ? (
         <EmptyState
@@ -289,6 +288,39 @@ export default async function BreakdownPage({ searchParams }: PageProps<"/report
           </p>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * 集計 (14-reports §15): revenue or expenses by 取引先 / タグ / 科目 / セグメント and by month, the
+ * top n with 「その他」, the share of each row. Rows lead to the 科目 axis filtered by the row's value,
+ * and from there to the general ledger and the entries.
+ */
+export default async function BreakdownPage({ searchParams }: PageProps<"/reports/breakdown">) {
+  const raw = await searchParams;
+  const { source, today } = await loadReportFrame();
+  const params = parseReportParams(raw, source);
+  const period = resolvePeriodOrNull(source, params.query, today);
+  if (!period) return <NoFiscalYear />;
+
+  const own = breakdownLinkParams(params);
+  const data = breakdownOf(period, params);
+
+  return (
+    <ReportsFrame
+      tab="breakdown"
+      source={source}
+      period={period}
+      hidden={{ side: own.side, partner: own.partner, tag: own.tag }}
+      linkParams={{ axis: own.axis, top: own.top, sort: own.sort }}
+      controls={<BreakdownControls period={period} params={params} />}
+      segmentSwitch={params.breakdown.axis !== "segment"}
+      exportParams={own}
+      exportable={data.then(({ report }) => !report.empty)}
+      streamKey={conditionsKey(raw)}
+    >
+      <BreakdownBody data={data} period={period} params={params} />
     </ReportsFrame>
   );
 }
