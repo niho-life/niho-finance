@@ -451,6 +451,8 @@ export {
   pendingStatementsTodo,
   recordExport,
   upcomingDeadlinesTodo,
+  unpaidExpenseClaimsTodo,
+  draftInvoicesTodo,
   type ExportLogInput,
   type ExportLogRow,
   type HomeTodo,

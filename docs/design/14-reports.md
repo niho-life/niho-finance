@@ -108,7 +108,7 @@
   4. 7 日以内の期限（期限切れを含め日付の近い順。1 件 1 行で、バッジは日付）→ `/calendar`（S8。[24](24-calendar.md)）
   5. 支払う立替精算 n 件 → `/expenses`（#21 の立替精算の未払。`loadExpenseOverview` の未払の件数。[23 §5](23-users-and-expenses.md)）
   6. 発行する請求書 n 件 → `/invoices?status=draft`（#16 の請求書の下書き。`listInvoices` を下書きで呼んだ件数。[18](18-invoicing.md)）
-  7. 登録する定期取引 n 件 → 定期取引の登録の画面（#54 `recurringDueTodo`。[21 §10.3](21-cashflow.md)）
+  7. 定期取引を登録する n 件 → 定期取引の登録の画面（#54 `recurringDueTodo`。[21 §10.3](21-cashflow.md)）
   8. 口座がない / 開始仕訳がない（初期設定で後回しにしたとき。S2）
   - 件数が 0 の行は出さない。すべて 0 なら「今日やることはありません」。
   - 新しい種類は、そのレーンが件数を返す関数を `HOME_TODO_SOURCES` に足す（ホームの部品は変えない）。

@@ -17,6 +17,8 @@ import type { Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { countInboxDocuments } from "./documents";
+import { loadExpenseOverview } from "./expenses";
+import { listInvoices } from "./invoices";
 import { recurringDueTodo } from "./recurring-post";
 import { requireCompanyRow } from "./settings";
 import { countPendingWalletTransactions } from "./statements";
@@ -334,11 +336,54 @@ export const bankReconnectTodo: HomeTodoSource = async (db) => {
   ];
 };
 
+/**
+ * 支払う立替精算 n 件 (23-users-and-expenses §5): the submitted claims not paid yet, counted by the
+ * 立替精算 screen's own overview (`loadExpenseOverview`'s 未払).
+ */
+export const unpaidExpenseClaimsTodo: HomeTodoSource = async (db) => {
+  // The overview always reads at least one payment; the home needs only the 未払.
+  const { unpaid } = await loadExpenseOverview(db, { paymentsLimit: 1 });
+  if (unpaid.count === 0) return [];
+  return [
+    {
+      key: "unpaid-expense-claims",
+      badge: String(unpaid.count),
+      tone: "warn",
+      label: "支払う立替精算",
+      href: "/expenses",
+    },
+  ];
+};
+
+/**
+ * 発行する請求書 n 件 (18-invoicing §7): the invoices still in draft, counted by the list of the
+ * 請求 screen with the 下書き filter (`listInvoices`), the page that the row opens.
+ */
+export const draftInvoicesTodo: HomeTodoSource = async (db, today) => {
+  const { total } = await listInvoices(db, { type: "invoice", status: "draft" }, 1, {
+    today,
+    pageSize: 1,
+  });
+  if (total === 0) return [];
+  return [
+    {
+      key: "draft-invoices",
+      badge: String(total),
+      tone: "count",
+      label: "発行する請求書",
+      href: "/invoices?status=draft",
+    },
+  ];
+};
+
+/** The order of 「やること」 (14-reports §9). */
 export const HOME_TODO_SOURCES: readonly HomeTodoSource[] = [
   pendingStatementsTodo,
   inboxDocumentsTodo,
   bankReconnectTodo,
   upcomingDeadlinesTodo,
+  unpaidExpenseClaimsTodo,
+  draftInvoicesTodo,
   // 定期取引を登録する n 件 (21-cashflow §10.3)
   recurringDueTodo,
 ];
