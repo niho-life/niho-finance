@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Form from "next/form";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata: Metadata = { title: "その他" };
@@ -22,6 +24,21 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="その他" />
+      {/* 全体検索の入口 on phones (10 §7.1): a GET form, usable without JavaScript. */}
+      <Form action="/search" role="search" className="mb-4 flex items-end gap-2">
+        <label className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-[12px] font-bold text-muted">検索</span>
+          <input
+            name="q"
+            type="search"
+            maxLength={100}
+            placeholder="摘要・金額・取引先・請求番号"
+            enterKeyHint="search"
+            className="control"
+          />
+        </label>
+        <Button type="submit">検索</Button>
+      </Form>
       <ul>
         {SECTIONS.map((section) => (
           <li key={section.href}>

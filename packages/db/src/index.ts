@@ -589,3 +589,18 @@ export {
   type BankSyncOptions,
   type LinkableBankAccount,
 } from "./bank-links";
+export {
+  isSearchable,
+  isSearchKind,
+  parseSearchQuery,
+  searchAll,
+  searchKind,
+  SEARCH_KIND_LABELS,
+  SEARCH_KINDS,
+  SEARCH_PAGE_SIZE,
+  SEARCH_PER_KIND,
+  type ParsedSearchQuery,
+  type SearchGroup,
+  type SearchHit,
+  type SearchKind,
+} from "./search";
