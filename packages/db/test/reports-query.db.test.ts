@@ -11,7 +11,6 @@ import {
   CALENDAR_RULES,
   countInboxDocuments,
   createInvoiceDraft,
-  createUser,
   draftInvoicesTodo,
   HOME_TODO_SOURCES,
   inboxDocumentsTodo,
@@ -23,22 +22,19 @@ import {
   loadReportSource,
   loadTrialBalance,
   loadWalletStatus,
-  newId,
   pendingStatementsTodo,
   recordExport,
   recurringDueTodo,
-  submitExpenseClaim,
   toDbDate,
   TRANSACTION_OPTIONS,
-  unpaidExpenseClaimsTodo,
+  payablesDueSoonTodo,
   upcomingDeadlinesTodo,
-  voidExpenseClaim,
   type InvoiceDraftInput,
 } from "../src";
 import { SEED_FISCAL_YEAR } from "../src/seed";
 import { hasTestDatabase } from "./support/database";
 import { testPrisma } from "./support/prisma";
-import { createFiscalYear, seededRefs } from "./support/refs";
+import { createFiscalYear } from "./support/refs";
 
 const ROLLBACK = new Error("rolled back on purpose");
 
@@ -154,33 +150,29 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
     expect(custom.map((row) => row.key)).toEqual(["x"]);
   });
 
-  it("lists the unpaid expense claims and the draft invoices in the order of 14 §9", async () => {
+  it("lists the draft invoices and keeps the sources in the order of 14 §9", async () => {
     expect(HOME_TODO_SOURCES).toEqual([
       pendingStatementsTodo,
       inboxDocumentsTodo,
       bankReconnectTodo,
       upcomingDeadlinesTodo,
-      unpaidExpenseClaimsTodo,
+      payablesDueSoonTodo,
       draftInvoicesTodo,
       recurringDueTodo,
     ]);
     const today = "2026-12-15";
     const actor = "home-todo-tester@example.com";
-    const refs = await seededRefs(prisma);
 
     await rolledBack(prisma, async (tx) => {
-      // Set aside the claims and drafts of the other files (state columns only, as the guards allow).
+      // Set aside the drafts of the other files (state columns only, as the guards allow).
       const setAside = {
         status: "void" as const,
         voidedAt: new Date(),
         voidReason: "テストで外す",
       };
-      await tx.expenseClaim.updateMany({ where: { status: "submitted" }, data: setAside });
       await tx.invoice.updateMany({ where: { status: "draft" }, data: setAside });
-      expect(await unpaidExpenseClaimsTodo(tx, today)).toEqual([]);
       expect(await draftInvoicesTodo(tx, today)).toEqual([]);
       const none = (await loadHomeTodos(tx, today)).map((row) => row.key);
-      expect(none).not.toContain("unpaid-expense-claims");
       expect(none).not.toContain("draft-invoices");
 
       // A year of its own (after every other file's years); everything here is rolled back.
@@ -190,33 +182,6 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
         endDate: "2111-03-31",
         tax: { consumptionTax: "general", accountingMethod: "tax_inclusive" },
       });
-      const claimant = await createUser(
-        tx,
-        {
-          email: `home-todo-${newId().toLowerCase()}@example.com`,
-          name: "架空 花子",
-          role: "accountant",
-        },
-        { actor },
-      );
-      const claim = (description: string) =>
-        submitExpenseClaim(
-          tx,
-          {
-            claimantId: claimant.id,
-            spentOn: "2110-05-10",
-            amount: "1,100",
-            accountId: refs.account("5360"),
-            taxCategoryCode: "purchase_10",
-            segmentId: refs.segment("platform"),
-            partnerId: "",
-            description,
-            documentId: "",
-          },
-          { actor },
-        );
-      const taxi = await claim("タクシー代");
-      await claim("会議の飲料");
       const partner = await tx.partner.findFirstOrThrow({
         where: { name: "架空デザイン合同会社" },
       });
@@ -247,13 +212,6 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
       await createInvoiceDraft(tx, draft("quote"), { actor });
 
       const rows = await loadHomeTodos(tx, today);
-      expect(rows.find((row) => row.key === "unpaid-expense-claims")).toEqual({
-        key: "unpaid-expense-claims",
-        badge: "2",
-        tone: "warn",
-        label: "支払う立替精算",
-        href: "/expenses",
-      });
       expect(rows.find((row) => row.key === "draft-invoices")).toEqual({
         key: "draft-invoices",
         badge: "1",
@@ -261,12 +219,6 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
         label: "発行する請求書",
         href: "/invoices?status=draft",
       });
-      const keys = rows.map((row) => row.key);
-      expect(keys.indexOf("unpaid-expense-claims")).toBeLessThan(keys.indexOf("draft-invoices"));
-
-      // A voided claim is no longer to pay.
-      await voidExpenseClaim(tx, taxi.claim.id, { reason: "二重に出した" }, { actor });
-      expect((await unpaidExpenseClaimsTodo(tx, today))[0]?.badge).toBe("1");
     });
   });
 

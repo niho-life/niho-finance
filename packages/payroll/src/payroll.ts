@@ -238,13 +238,15 @@ const TABLE_LABELS: Record<PayrollTableKind, string> = {
   "kyokai-kenpo": "協会けんぽの料率・等級表",
   pension: "厚生年金の料率・等級表",
   "employment-insurance": "雇用保険料率",
+  "withholding-bonus": "賞与に対する源泉徴収税額の算出率の表",
+  "year-end": "年末調整の表",
 };
 
 /** A pinned table must be of its kind and in force at the date or month it is used for. */
-function checkPinned(
+export function checkPinnedTable(
   table: PayrollTable,
   kind: PayrollTableKind,
-  field: keyof PayrollTables,
+  field: string,
   when: string,
 ): PayrollInputIssue | null {
   const label = TABLE_LABELS[kind];
@@ -271,11 +273,16 @@ function resolveTables(input: PayrollInput): Omit<PayrollTables, "employment"> &
   const pinned = input.tables ?? {};
   const issues = [
     pinned.withholding &&
-      checkPinned(pinned.withholding, "withholding-monthly", "withholding", input.paymentDate),
-    pinned.kenpo && checkPinned(pinned.kenpo, "kyokai-kenpo", "kenpo", input.premiumMonth),
-    pinned.pension && checkPinned(pinned.pension, "pension", "pension", input.premiumMonth),
+      checkPinnedTable(pinned.withholding, "withholding-monthly", "withholding", input.paymentDate),
+    pinned.kenpo && checkPinnedTable(pinned.kenpo, "kyokai-kenpo", "kenpo", input.premiumMonth),
+    pinned.pension && checkPinnedTable(pinned.pension, "pension", "pension", input.premiumMonth),
     input.coverage.employment && pinned.employment
-      ? checkPinned(pinned.employment, "employment-insurance", "employment", input.premiumMonth)
+      ? checkPinnedTable(
+          pinned.employment,
+          "employment-insurance",
+          "employment",
+          input.premiumMonth,
+        )
       : null,
   ].filter((issue): issue is PayrollInputIssue => typeof issue === "object" && issue !== null);
   if (issues.length > 0) throw new PayrollInputError(issues);

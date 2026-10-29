@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./icons";
-import { isActivePath, NAV_ITEMS, VIEWER_NAV_ITEMS } from "./nav-items";
+import { isActiveItem, NAV_ITEMS, VIEWER_NAV_ITEMS } from "./nav-items";
 
 /**
  * PC navigation (216px). Sections not built yet are muted text, not links. 閲覧 sees 報告 and
@@ -25,7 +25,7 @@ export function SideNav({ viewer = false }: { viewer?: boolean }) {
             </span>
           );
         }
-        const active = isActivePath(pathname, item.href);
+        const active = isActiveItem(pathname, { href: item.href, match: item.match });
         return (
           <Link
             key={item.key}

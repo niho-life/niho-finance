@@ -36,6 +36,7 @@ import {
   parseQuantity,
   parseYenInput,
   PARTNER_KINDS,
+  paymentTermsProblem,
   RULE_MODES,
   RULE_REGEX_MAX_LENGTH,
   ACCRUAL_TYPES,
@@ -46,13 +47,22 @@ import {
   type DocumentMime,
   type EntryCounterpart,
   type Money,
+  type PaymentTerms,
   type RecurringMonth,
   type RuleAction,
   type RuleMatch,
   type RuleSign,
   type SalesTaxCategoryCode,
 } from "@niho-finance/ledger";
-import { isYearMonth, PREMIUM_TIMINGS, type YearMonth } from "@niho-finance/payroll";
+import {
+  DEPENDENT_CATEGORIES,
+  DISABILITY_KINDS,
+  isYearMonth,
+  PREMIUM_TIMINGS,
+  SELF_DISABILITY_KINDS,
+  WIDOW_STATUSES,
+  type YearMonth,
+} from "@niho-finance/payroll";
 import {
   SIMPLIFIED_TAX_CLASSES,
   STATEMENT_OTHER_NOTES_MAX,
@@ -965,6 +975,122 @@ export const invoicesFilterSchema = z.object({
   page: filterPage,
 });
 export type InvoicesFilter = z.output<typeof invoicesFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// 支払 (25-payables §3, §4, §6, §7)
+// ---------------------------------------------------------------------------
+
+/**
+ * 未払として登録 (25 §4.1, §7.1). One expense line: the amount is tax-inclusive. Empty 支払期日 →
+ * the default of the partner's payment terms; empty セグメント → the partner's, else the account's
+ * default, else 共通; empty 摘要 → 「請求書 <取引先>」.
+ */
+export const payableRegisterSchema = z.object({
+  documentId: idField("証憑"),
+  partnerId: idField("取引先"),
+  invoiceDate: requiredDate("請求書の日付"),
+  dueDate: optionalDate("支払期日"),
+  amount: positiveYen("金額"),
+  accountId: idField("科目"),
+  taxCategoryCode: taxCategoryCodeField("税区分"),
+  segmentId: optionalIdField("セグメント"),
+  description: optionalText("摘要", 200),
+  /** 支払元の予定 */
+  walletId: optionalIdField("支払元の予定"),
+});
+export type PayableRegisterInput = z.input<typeof payableRegisterSchema>;
+
+/** 期日・支払元を変える (25 §4.3). A missing key is left as it is; empty clears it. */
+export const payableUpdateSchema = z.object({
+  dueDate: optionalDate("支払期日").optional(),
+  walletId: optionalIdField("支払元の予定").optional(),
+});
+export type PayableUpdateInput = z.input<typeof payableUpdateSchema>;
+
+/**
+ * 支払の登録 (25 §4.2). With a statement line (`walletTransactionId`, a pending outflow of the chosen
+ * wallet) the date, the wallet and the amount are the line's.
+ */
+export const payablePaymentSchema = z.object({
+  paidOn: requiredDate("支払日"),
+  walletId: idField("口座"),
+  amount: positiveYen("出金額"),
+  walletTransactionId: optionalIdField("明細"),
+});
+export type PayablePaymentInput = z.input<typeof payablePaymentSchema>;
+
+/** 支払の取消 (25 §4.3): the payment's entry and the reason. */
+export const cancelPayablePaymentSchema = z.object({
+  entryId: idField("支払"),
+  reason: requiredText("理由", 500),
+});
+export type CancelPayablePaymentInput = z.input<typeof cancelPayablePaymentSchema>;
+
+/** 登録の取消 (25 §4.3). */
+export const cancelPayableSchema = z.object({ reason: requiredText("理由", 500) });
+export type CancelPayableInput = z.input<typeof cancelPayableSchema>;
+
+const PAYMENT_TERM_FIELDS = ["closingDay", "dueMonths", "dueDay"] as const;
+
+/**
+ * 支払条件 of a partner (25 §3): 締め日・何か月後・支払日 (31 = 末日), all three or none (none clears
+ * them). Parsed into `terms` (`null` = no terms).
+ */
+export const partnerPaymentTermsSchema = z
+  .object({
+    partnerId: idField("取引先"),
+    closingDay: optionalIntegerInRange("締め日", 1, 31),
+    dueMonths: optionalIntegerInRange("何か月後", 0, 3),
+    dueDay: optionalIntegerInRange("支払日", 1, 31),
+  })
+  .superRefine((value, ctx) => {
+    const missing = PAYMENT_TERM_FIELDS.filter((field) => value[field] === null);
+    if (missing.length === PAYMENT_TERM_FIELDS.length) return;
+    const [first] = missing;
+    if (first) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "締め日・何か月後・支払日の 3 つを入力してください（支払条件をなくすときは 3 つとも空にします）",
+        path: [first],
+      });
+      return;
+    }
+    const problem = paymentTermsProblem({
+      closingDay: value.closingDay ?? 0,
+      dueMonths: value.dueMonths ?? 0,
+      dueDay: value.dueDay ?? 0,
+    });
+    if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["dueDay"] });
+  })
+  .transform((value): { partnerId: string; terms: PaymentTerms | null } => ({
+    partnerId: value.partnerId,
+    terms:
+      value.closingDay === null || value.dueMonths === null || value.dueDay === null
+        ? null
+        : { closingDay: value.closingDay, dueMonths: value.dueMonths, dueDay: value.dueDay },
+  }));
+export type PartnerPaymentTermsInput = z.input<typeof partnerPaymentTermsSchema>;
+
+/** 状態 of the list: 未払 (default: 未払・一部支払) / 支払済み / すべて (取消 too; never void documents). */
+export const PAYABLE_STATUS_FILTERS = ["open", "paid", "all"] as const;
+export type PayableStatusFilter = (typeof PAYABLE_STATUS_FILTERS)[number];
+
+/** 並び: 期日順 (default) / 取引先別. */
+export const PAYABLE_VIEWS = ["due", "partner"] as const;
+export type PayableView = (typeof PAYABLE_VIEWS)[number];
+
+/** `/payables?status&partner&view&q&page` (25 §6). */
+export const payablesFilterSchema = z.object({
+  status: lenient<PayableStatusFilter>(z.enum(PAYABLE_STATUS_FILTERS), "open"),
+  partner: filterId,
+  view: lenient<PayableView>(z.enum(PAYABLE_VIEWS), "due"),
+  /** 取引先名・ファイル名・メモ, partial match. */
+  q: lenient<string | null>(z.string().trim().min(1).max(100), null),
+  page: filterPage,
+});
+export type PayablesFilter = z.output<typeof payablesFilterSchema>;
+
 // Imports (取込, 12-imports)
 // ---------------------------------------------------------------------------
 
@@ -1965,8 +2091,18 @@ export const fixedAssetUpdateSchema = z.object({
   cost: positiveYen("取得価額").optional(),
   method: fixedAssetFields.method.optional(),
   usefulLifeYears: fixedAssetFields.usefulLifeYears.optional(),
+  /** 償却資産申告の資産の種類 (§14.2): 1–6, empty = from the account. Changes at any time. */
+  propertyTaxAssetType: optionalIntegerInRange("資産の種類", 1, 6).optional(),
+  /** 申告の対象外の理由 (§14.1): empty = by the rules. Changes at any time. */
+  propertyTaxExcludedReason: optionalText("申告の対象外の理由", 200).optional(),
 });
 export type FixedAssetUpdateInput = z.input<typeof fixedAssetUpdateSchema>;
+
+/** 償却資産申告の申告先 (§14.4): 本店所在地の市町村; empty clears it. */
+export const propertyTaxMunicipalitySchema = z.object({
+  municipality: optionalText("申告先", 100),
+});
+export type PropertyTaxMunicipalityInput = z.input<typeof propertyTaxMunicipalitySchema>;
 
 /** 登録の取消 (§5.2). */
 export const fixedAssetVoidSchema = z.object({ reason: requiredText("理由", 500) });
@@ -2358,3 +2494,165 @@ export const recurringPostSchema = z.object({
   amount: recurringAmountField("金額"),
 });
 export type RecurringPostInput = z.input<typeof recurringPostSchema>;
+
+// ---------------------------------------------------------------------------
+// 賞与 (22-payroll §10)
+// ---------------------------------------------------------------------------
+
+/**
+ * One person of a bonus run: what the screen lets change (master data comes from the database).
+ * A bonus of 0 (or empty) means the person gets none in this run.
+ */
+export const payrollBonusItemSchema = z.object({
+  employeeId: idField("従業員"),
+  bonus: nonNegativeYen("賞与の額", { emptyAs: 0n }),
+  /** 前月の給与（社会保険料等控除後）. Empty → 前月の給与なし. */
+  previousMonthPay: optionalSignedYen("前月の給与（社会保険料等控除後）"),
+  /** 前月の税額 (月額表). Empty → 0. */
+  previousMonthTax: nonNegativeYen("前月の税額", { emptyAs: 0n }),
+  /** 役員: 事前確定届出給与の届出の支給日 (§10.3). */
+  filingDate: optionalDate("届け出た支給日"),
+  /** 役員: 事前確定届出給与の届出の金額 (§10.3). */
+  filingAmount: optionalPositiveYen("届け出た金額"),
+});
+export type PayrollBonusItemFormInput = z.input<typeof payrollBonusItemSchema>;
+
+/** The table versions the preview used: the confirmation then computes with the same ones. */
+export const payrollBonusTableIdsSchema = z.object({
+  bonusWithholding: tableIdText,
+  withholding: tableIdText,
+  kenpo: tableIdText,
+  pension: tableIdText,
+  employment: tableIdText.nullable(),
+});
+
+/** 賞与の計算 → 確定 (22-payroll §10.5). */
+export const payrollBonusRunSchema = z.object({
+  payMonth: yearMonthField("支給月"),
+  paymentDate: requiredDate("支払日"),
+  title: requiredText("題名", 40),
+  /** 賞与の計算期間が 6 か月を超える. */
+  calcPeriodOver6Months: booleanField("計算期間"),
+  /** Empty → 未払金〔給与〕. */
+  payFromWalletId: optionalIdField("支払元"),
+  withholdingSpecialDue: booleanField("源泉所得税の納期の特例"),
+  items: z
+    .array(payrollBonusItemSchema, { error: "従業員ごとの入力の形式が正しくありません" })
+    .min(1, { error: "賞与を支給する従業員がいません。従業員を追加してください" })
+    .max(100, { error: "従業員は 100 人までです" }),
+  tableIds: payrollBonusTableIdsSchema.nullish().transform((value) => value ?? null),
+  expected: payrollExpectedSchema.nullish().transform((value) => value ?? null),
+});
+export type PayrollBonusRunInput = z.input<typeof payrollBonusRunSchema>;
+export type ParsedPayrollBonusRun = z.output<typeof payrollBonusRunSchema>;
+
+// ---------------------------------------------------------------------------
+// 年末調整 (22-payroll §11)
+// ---------------------------------------------------------------------------
+
+/** An amount of a declaration: whole yen, 0 or more; empty → 0. */
+const yearEndAmount = (label: string) => nonNegativeYen(label, { emptyAs: 0n });
+
+/** At most this many 扶養親族 / 特定親族 rows. */
+export const YEAR_END_PEOPLE_MAX = 30;
+
+const yearEndDependentSchema = z
+  .object({
+    category: enumField("扶養親族の区分", DEPENDENT_CATEGORIES),
+    disability: enumField("障害の区分", DISABILITY_KINDS),
+    /** 一般の扶養親族だけ: 16〜18 歳 (23 歳未満). */
+    under23: booleanField("23 歳未満"),
+  })
+  .transform((value) => ({
+    ...value,
+    under23: value.category === "general" ? value.under23 : false,
+  }));
+
+const yearEndSpouseSchema = z.object({
+  totalIncome: yearEndAmount("配偶者の合計所得の見積額"),
+  elderly: booleanField("老人控除対象配偶者"),
+  disability: enumField("配偶者の障害の区分", DISABILITY_KINDS),
+});
+
+const yearEndInsuranceSchema = z.object({
+  newGeneral: yearEndAmount("一般の生命保険料（新）"),
+  oldGeneral: yearEndAmount("一般の生命保険料（旧）"),
+  medical: yearEndAmount("介護医療保険料"),
+  newPension: yearEndAmount("個人年金保険料（新）"),
+  oldPension: yearEndAmount("個人年金保険料（旧）"),
+  under23Dependent: booleanField("23 歳未満の扶養親族"),
+  earthquake: yearEndAmount("地震保険料"),
+  oldLongTerm: yearEndAmount("旧長期損害保険料"),
+  socialInsurance: yearEndAmount("申告による社会保険料"),
+  smallBusinessMutualAid: yearEndAmount("小規模企業共済等掛金"),
+});
+
+const yearEndPreviousEmployerSchema = z.object({
+  paid: yearEndAmount("前職の支払金額"),
+  socialInsurance: yearEndAmount("前職の社会保険料"),
+  withheld: yearEndAmount("前職の源泉徴収税額"),
+});
+
+/**
+ * 年末調整の申告 (22-payroll §11.4): categories, counts and income estimates only — no relative's
+ * name. Validates both the form's values and the stored JSON (`PayrollYearEndDeclaration.
+ * declarations`, amounts as decimal strings); the output is `YearEndDeclaration` of the payroll core.
+ */
+export const yearEndDeclarationSchema = z.object({
+  dependents: z
+    .array(yearEndDependentSchema, { error: "扶養親族の形式が正しくありません" })
+    .max(YEAR_END_PEOPLE_MAX, { error: `扶養親族は ${YEAR_END_PEOPLE_MAX} 人までです` }),
+  self: z.object({
+    disability: enumField("本人の障害", SELF_DISABILITY_KINDS),
+    widowStatus: enumField("寡婦・ひとり親", WIDOW_STATUSES),
+    workingStudent: booleanField("勤労学生"),
+  }),
+  otherIncome: yearEndAmount("給与以外の所得の見積額"),
+  spouse: yearEndSpouseSchema.nullish().transform((value) => value ?? null),
+  specificRelatives: z
+    .array(z.object({ totalIncome: yearEndAmount("特定親族の合計所得の見積額") }), {
+      error: "特定親族の形式が正しくありません",
+    })
+    .max(YEAR_END_PEOPLE_MAX, { error: `特定親族は ${YEAR_END_PEOPLE_MAX} 人までです` }),
+  incomeAdjustment: booleanField("所得金額調整控除の要件"),
+  insurance: yearEndInsuranceSchema,
+  housingLoanCredit: yearEndAmount("住宅借入金等特別控除額"),
+  previousEmployer: yearEndPreviousEmployerSchema.nullish().transform((value) => value ?? null),
+});
+export type YearEndDeclarationFormInput = z.input<typeof yearEndDeclarationSchema>;
+
+/** 申告を保存 (§11.5). */
+export const yearEndDeclarationSaveSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  employeeId: idField("従業員"),
+  declaration: yearEndDeclarationSchema,
+});
+export type YearEndDeclarationSaveInput = z.input<typeof yearEndDeclarationSaveSchema>;
+
+/** The year and the person of 年末調整を確定, with what the confirmation dialog showed. */
+export const yearEndConfirmSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  employeeId: idField("従業員"),
+  /** 年調年税額 and 過不足 shown: the confirmation is refused when they changed meanwhile. */
+  expected: z
+    .object({
+      annualTax: signedYenOrZero("年調年税額"),
+      difference: signedYenOrZero("過不足"),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
+});
+export type YearEndConfirmInput = z.input<typeof yearEndConfirmSchema>;
+
+/** The inputs kept in `PayrollYearEnd.snapshot.input` (amounts as decimal strings). */
+export const yearEndSnapshotInputSchema = z.object({
+  year: integerInRange("年分", 2000, 2100),
+  taxColumn: enumField("源泉徴収の区分", EMPLOYEE_TAX_COLUMNS),
+  salary: z.object({
+    pay: yearEndAmount("給与の課税支給額"),
+    bonus: yearEndAmount("賞与の額"),
+    socialInsurance: yearEndAmount("社会保険料"),
+    withheld: yearEndAmount("源泉所得税"),
+  }),
+  declaration: yearEndDeclarationSchema,
+});

@@ -286,6 +286,23 @@ export interface ScheduleRowView {
   paymentEntry: { id: string; no: number } | null;
 }
 
+/**
+ * 源泉所得税 with a 年末調整's settlement (22-payroll §11.4): 「納付なし。過納 n 円は翌月以降の源泉所得税
+ * から充当」 when the refund is larger, the refund taken from an earlier deadline, or that the
+ * settlement is in it.
+ */
+function withholdingNote(row: PayrollScheduleRow): string | null {
+  if (row.category !== "withholding") return null;
+  const notes: string[] = [];
+  if (row.refundCarried > 0n) {
+    notes.push(`納付なし。過納 ${formatYen(row.refundCarried)} 円は翌月以降の源泉所得税から充当`);
+  } else if (row.refundApplied > 0n) {
+    notes.push(`前の納付の過納 ${formatYen(row.refundApplied)} 円を充当`);
+  }
+  if (row.yearEndMonths.length > 0) notes.push("年末調整の精算を含む");
+  return notes.length > 0 ? notes.join(" · ") : null;
+}
+
 export function toScheduleRowView(
   row: PayrollScheduleRow,
   formatTime: (date: Date) => string,
@@ -302,7 +319,7 @@ export function toScheduleRowView(
     breakdown:
       row.category === "social_insurance"
         ? `本人分 ${formatYen(row.withheld)} · 会社分 ${formatYen(row.employer)}`
-        : null,
+        : withholdingNote(row),
     completed: row.completedAt !== null,
     completedAt: row.completedAt ? formatTime(row.completedAt) : null,
     paymentEntry: row.paymentEntry ? { id: row.paymentEntry.id, no: row.paymentEntry.no } : null,

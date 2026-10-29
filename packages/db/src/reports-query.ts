@@ -3,7 +3,7 @@
  * is derived by `@niho-finance/reports` from what is loaded here; nothing is stored. Exports are
  * recorded in the audit log (`export.download`, 01-domain-model §8).
  */
-import { addDays, type CalendarDate } from "@niho-finance/ledger";
+import { addDays, PAYABLE_DUE_SOON_DAYS, type CalendarDate } from "@niho-finance/ledger";
 import type {
   ArchiveDocument,
   BackupDocument,
@@ -17,8 +17,8 @@ import type { Prisma } from "@prisma/client";
 import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { countInboxDocuments } from "./documents";
-import { loadExpenseOverview } from "./expenses";
 import { listInvoices } from "./invoices";
+import { countPayablesDue } from "./payables";
 import { recurringDueTodo } from "./recurring-post";
 import { requireCompanyRow } from "./settings";
 import { countPendingWalletTransactions } from "./statements";
@@ -290,6 +290,24 @@ export const inboxDocumentsTodo: HomeTodoSource = async (db) => {
   ];
 };
 
+/**
+ * 7 日以内に支払う請求 n 件 (25-payables §8.3): 未払・一部支払 due within 7 days, the overdue ones
+ * included (then `warn`); opens the list of 支払.
+ */
+export const payablesDueSoonTodo: HomeTodoSource = async (db, today) => {
+  const due = await countPayablesDue(db, { today, days: PAYABLE_DUE_SOON_DAYS });
+  if (due.count === 0) return [];
+  return [
+    {
+      key: "payables-due",
+      badge: String(due.count),
+      tone: due.overdueCount > 0 ? "warn" : "count",
+      label: "7 日以内に支払う請求",
+      href: "/payables",
+    },
+  ];
+};
+
 export const DEADLINE_WINDOW_DAYS = 7;
 
 /** Deadlines due within 7 days (overdue ones first); each row opens the calendar screen (24). */
@@ -337,25 +355,6 @@ export const bankReconnectTodo: HomeTodoSource = async (db) => {
 };
 
 /**
- * 支払う立替精算 n 件 (23-users-and-expenses §5): the submitted claims not paid yet, counted by the
- * 立替精算 screen's own overview (`loadExpenseOverview`'s 未払).
- */
-export const unpaidExpenseClaimsTodo: HomeTodoSource = async (db) => {
-  // The overview always reads at least one payment; the home needs only the 未払.
-  const { unpaid } = await loadExpenseOverview(db, { paymentsLimit: 1 });
-  if (unpaid.count === 0) return [];
-  return [
-    {
-      key: "unpaid-expense-claims",
-      badge: String(unpaid.count),
-      tone: "warn",
-      label: "支払う立替精算",
-      href: "/expenses",
-    },
-  ];
-};
-
-/**
  * 発行する請求書 n 件 (18-invoicing §7): the invoices still in draft, counted by the list of the
  * 請求 screen with the 下書き filter (`listInvoices`), the page that the row opens.
  */
@@ -382,7 +381,8 @@ export const HOME_TODO_SOURCES: readonly HomeTodoSource[] = [
   inboxDocumentsTodo,
   bankReconnectTodo,
   upcomingDeadlinesTodo,
-  unpaidExpenseClaimsTodo,
+  // 7 日以内に支払う請求 n 件 (25-payables §8.3)
+  payablesDueSoonTodo,
   draftInvoicesTodo,
   // 定期取引を登録する n 件 (21-cashflow §10.3)
   recurringDueTodo,

@@ -106,7 +106,7 @@
   2. 受信箱の証憑 n 件 → `/documents`（S6 `countInboxDocuments`。未紐づけ、または取引年月日・金額・取引先のどれかが空。[13 §3.2](13-documents.md)）
   3. 銀行 API の再接続 n 件 → 口座の接続の画面（#17。[19 §1.2](19-bank-api.md)）
   4. 7 日以内の期限（期限切れを含め日付の近い順。1 件 1 行で、バッジは日付）→ `/calendar`（S8。[24](24-calendar.md)）
-  5. 支払う立替精算 n 件 → `/expenses`（#21 の立替精算の未払。`loadExpenseOverview` の未払の件数。[23 §5](23-users-and-expenses.md)）
+  5. 7 日以内に支払う請求 n 件 → `/payables`（#48 の受領した請求書の未払・一部支払で、支払期日が 7 日以内か過ぎたもの。過ぎたものがあれば警告の色。`countPayablesDue`。[25 §8.3](25-payables.md)）
   6. 発行する請求書 n 件 → `/invoices?status=draft`（#16 の請求書の下書き。`listInvoices` を下書きで呼んだ件数。[18](18-invoicing.md)）
   7. 定期取引を登録する n 件 → 定期取引の登録の画面（#54 `recurringDueTodo`。[21 §10.3](21-cashflow.md)）
   8. 口座がない / 開始仕訳がない（初期設定で後回しにしたとき。S2）

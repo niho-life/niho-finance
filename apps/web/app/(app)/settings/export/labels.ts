@@ -14,6 +14,8 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   documents: "証憑一式",
   backup: "バックアップ",
   payslip: "給与明細",
+  "payslip-bonus": "賞与明細",
+  "withholding-ledger": "源泉徴収簿",
   // 決算書と申告用データ (17-financial-statements §1)
   "financial-statements": "計算書類",
   "opening-balance-sheet": "開始貸借対照表",
@@ -25,6 +27,8 @@ export const EXPORT_KIND_LABELS: Readonly<Record<string, string>> = {
   announcement: "決算公告",
   // 受け渡しパッケージ (14-reports §16.5)
   package: "受け渡しパッケージ",
+  // 償却資産申告 (16-year-end §14.4)
+  "depreciable-assets-return": "償却資産申告の元データ",
 };
 
 export const EXPORT_FORMAT_LABELS: Readonly<Record<string, string>> = {

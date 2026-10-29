@@ -26,3 +26,4 @@ export * from "./exports/backup";
 export * from "./exports/documents-archive";
 export * from "./financial-statements";
 export * from "./handover-package";
+export * from "./depreciable-assets-return";
