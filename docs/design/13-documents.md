@@ -25,7 +25,7 @@
 | `GET /api/documents/[id]/file` | ファイル本体（GCS は署名付き URL へ 302、ローカルは本体を返す） |
 | `GET /api/documents/index.csv` | 索引簿 |
 
-- 左ナビの「証憑」を `/documents` に有効化する。スマホの下タブ中央（カメラ）は `/documents` へのリンク（primary の丸いボタン、`aria-label="証憑"`）。
+- 左ナビの「証憑」を `/documents` に有効化する。スマホの下タブ中央（カメラ。primary の丸いボタン、名前は「証憑を撮影」）は、押すとカメラが開く。撮った写真は保存され、その証憑の詳細が開く（[10 §1.1](10-settings-and-setup.md)）。スマホの一覧へは、その他 › 証憑から入る。
 - 設定の索引の「証憑の規程」を `/settings/documents-policy` に有効化する（要約は「未制定」か「施行日 yyyy/mm/dd」）。
 - ホームの「やること」の「受信箱の証憑 n 件」は、S7 の差し込み口 `inboxDocumentsTodo` が `countInboxDocuments` で数えて `/documents` へ結ぶ（S7 が先に入ったので S6 で結線した）。
 
