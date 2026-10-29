@@ -75,6 +75,12 @@ export default async function FixedAssetsPage({ searchParams }: PageProps<"/clos
       固定資産を登録
     </ButtonLink>
   );
+  // 償却資産申告 (§14.4): a January task, entered from the ledger rather than the checklist.
+  const returnLink = (
+    <ButtonLink href="/closing/assets/return" variant="secondary" size="sm">
+      償却資産申告
+    </ButtonLink>
+  );
   const bookValueHeader = list.fiscalYear
     ? `帳簿価額（第 ${list.fiscalYear.no} 期末・円）`
     : "帳簿価額（円）";
@@ -84,7 +90,14 @@ export default async function FixedAssetsPage({ searchParams }: PageProps<"/clos
       <PageHeader
         title="固定資産台帳"
         back={{ href: "/closing", label: "決算" }}
-        actions={list.rows.length > 0 || list.voidedCount > 0 ? register : undefined}
+        actions={
+          list.rows.length > 0 || list.voidedCount > 0 ? (
+            <>
+              {returnLink}
+              {register}
+            </>
+          ) : undefined
+        }
       />
       {list.rows.length === 0 && list.voidedCount === 0 ? (
         <EmptyState

@@ -2,6 +2,7 @@
 
 import type { PartnerSettings, SelectOption } from "@niho-finance/db";
 import { PARTNER_KIND_LABELS, PARTNER_KINDS } from "@niho-finance/ledger";
+import Link from "next/link";
 import { useState } from "react";
 import {
   activeToggledMessage,
@@ -173,10 +174,20 @@ function PartnerRow({
       <Td sm="hide">{cell.defaultSegmentId}</Td>
       <Td sm="hide">{cell.defaultTaxCategoryCode}</Td>
       <Td sm="hide">{cell.active}</Td>
-      <Td className="md:hidden">
-        <OpenButton label={`${partner.name} のすべての項目`} onClick={onOpen}>
-          開く
-        </OpenButton>
+      <Td className="flex items-center justify-end gap-1">
+        <span className="md:hidden">
+          <OpenButton label={`${partner.name} のすべての項目`} onClick={onOpen}>
+            開く
+          </OpenButton>
+        </span>
+        <Link
+          href={`/settings/partners/${partner.id}`}
+          aria-label={`${partner.name} の詳細`}
+          className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[13px] font-bold whitespace-nowrap text-muted hover:bg-black/5 hover:text-text"
+        >
+          詳細
+          <span aria-hidden="true">›</span>
+        </Link>
       </Td>
       <SaveStatus status={row.status} />
     </TableRow>

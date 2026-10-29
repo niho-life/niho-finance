@@ -18,6 +18,7 @@ import { appendAuditLog, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { countInboxDocuments } from "./documents";
 import { countPayablesDue } from "./payables";
+import { recurringDueTodo } from "./recurring-post";
 import { requireCompanyRow } from "./settings";
 import { countPendingWalletTransactions } from "./statements";
 
@@ -133,6 +134,7 @@ export async function loadReportSource(db: Db): Promise<ReportSource> {
       name: sub.name,
       isActive: sub.isActive,
       sortOrder: sub.sortOrder,
+      partnerId: sub.partnerId,
     })),
     segments: segments.map((segment) => ({
       id: segment.id,
@@ -357,6 +359,8 @@ export const HOME_TODO_SOURCES: readonly HomeTodoSource[] = [
   payablesDueSoonTodo,
   bankReconnectTodo,
   upcomingDeadlinesTodo,
+  // 定期取引を登録する n 件 (21-cashflow §10.3)
+  recurringDueTodo,
 ];
 
 /** The rows of 「やること」 in the order of the sources (rows with nothing to do are left out). */

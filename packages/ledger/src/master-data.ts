@@ -236,6 +236,8 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "employee.update": "従業員の変更",
   "payroll_run.confirm": "支給の確定",
   "payroll_payment.post": "納付の登録",
+  // 定期取引からの登録 (21-cashflow §10.5)
+  "recurring_item.post": "定期取引の登録",
   "calendar_item.complete": "完了にする",
   // 期限 (24-calendar §2)
   "calendar_item.reopen": "未完了に戻す",

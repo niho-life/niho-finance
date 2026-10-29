@@ -207,6 +207,10 @@ export {
   type FixedAssetStatus,
   type RegisteredFixedAsset,
   type ScheduleRowState,
+  loadDepreciableAssetsReturn,
+  setPropertyTaxMunicipality,
+  type DepreciableAssetsReturnData,
+  type DepreciableAssetsReturnDeadline,
 } from "./fixed-assets";
 export { newId } from "./ids";
 export {
@@ -352,6 +356,25 @@ export {
   updateRecurringItem,
   type RecurringItemSettings,
 } from "./recurring";
+export {
+  countDueRecurringOccurrences,
+  describeRecurringSource,
+  listDueRecurringOccurrences,
+  listRecurringEntries,
+  listRecurringEntryTemplates,
+  loadRecurringSuggestItems,
+  postRecurringOccurrence,
+  RECURRING_DUE_DAYS,
+  RECURRING_ENTRY_HISTORY_LIMIT,
+  recurringDueTodo,
+  recurringEntryTemplate,
+  recurringScheduleOf,
+  type RecurringDueMode,
+  type RecurringDueOccurrence,
+  type RecurringEntryRow,
+  type RecurringEntryTemplate,
+  type RecurringPostResult,
+} from "./recurring-post";
 export {
   confirmPayrollRun,
   createEmployee,
@@ -637,3 +660,37 @@ export {
   type BankSyncOptions,
   type LinkableBankAccount,
 } from "./bank-links";
+export {
+  findHandoverRequest,
+  HANDOVER_EXPORT_KIND,
+  HANDOVER_PACKAGE_AUDIT_ACTION,
+  HANDOVER_STALE_MINUTES,
+  listHandoverRequests,
+  listRecentExportsWithPackages,
+  loadHandoverDocuments,
+  recordHandoverDirectDownload,
+  recordHandoverFailed,
+  recordHandoverReady,
+  recordHandoverRequest,
+  recordHandoverStoredDownload,
+  type HandoverDirectDownloadInput,
+  type HandoverDocumentRecord,
+  type HandoverPeriodInput,
+  type HandoverRequest,
+  type HandoverRequestState,
+} from "./handover-package-query";
+export {
+  isSearchable,
+  isSearchKind,
+  parseSearchQuery,
+  searchAll,
+  searchKind,
+  SEARCH_KIND_LABELS,
+  SEARCH_KINDS,
+  SEARCH_PAGE_SIZE,
+  SEARCH_PER_KIND,
+  type ParsedSearchQuery,
+  type SearchGroup,
+  type SearchHit,
+  type SearchKind,
+} from "./search";
