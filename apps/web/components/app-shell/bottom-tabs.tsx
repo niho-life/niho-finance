@@ -51,6 +51,7 @@ const MORE_PATHS = [
   "/imports",
   "/calendar",
   "/invoices",
+  "/payables",
   "/expenses",
   "/closing",
   "/settings",
@@ -79,7 +80,7 @@ function ViewerTabs({ pathname }: { pathname: string }) {
 
 /**
  * Phone navigation under 768px: ホーム / 明細 / 証憑を撮影 (the camera, 10 §1.1) / 報告 / その他
- * (→ 取引・証憑・明細の取込・期限・請求・決算・設定).
+ * (→ 取引・証憑・明細の取込・期限・請求・支払・立替精算・決算・設定).
  */
 export function BottomTabs({ viewer = false }: { viewer?: boolean }) {
   const pathname = usePathname();

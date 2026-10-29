@@ -549,6 +549,10 @@ export function StatementsList({
         ...(BigInt(row.amount) > 0n
           ? [{ label: "この請求に充てる", href: `/invoices/apply?statement=${row.id}` }]
           : []),
+        // 支払 (#48, 25 §5): an outflow can pay a received invoice (未払金の消込).
+        ...(BigInt(row.amount) < 0n
+          ? [{ label: "この支払に充てる", href: `/payables/apply?statement=${row.id}` }]
+          : []),
         {
           label: "証憑を紐づける",
           onSelect: () => setDialog({ kind: "documents", rowId: row.id }),

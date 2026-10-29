@@ -90,7 +90,7 @@ export const CASHFLOW_EVENT_KIND_LABELS: Readonly<Record<CashflowEventKind, stri
   recurring: "定期取引",
   deadline: "納付",
   receivable: "請求",
-  payable: "請求",
+  payable: "支払",
 };
 
 /** Same day: 仕訳 → 定期取引 → 納付 → 請求 (§6). */
