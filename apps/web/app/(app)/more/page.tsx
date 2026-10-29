@@ -15,7 +15,8 @@ function MoreRow({ item }: { item: MoreItem }) {
         href={item.href}
         className="flex min-h-12 items-center gap-3 border-b border-border px-1 py-3 hover:bg-black/[0.02]"
       >
-        <span className="font-bold">{item.label}</span>
+        {/* The name stays on one line; the summary gives way on narrow phones. */}
+        <span className="shrink-0 font-bold whitespace-nowrap">{item.label}</span>
         <span className="ml-auto min-w-0 truncate text-right text-[12px] text-muted">
           {item.summary}
         </span>
