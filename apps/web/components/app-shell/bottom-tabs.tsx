@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CaptureTab } from "./capture-tab";
 import { NavIcon, type NavIconName } from "./icons";
+import { NavPendingHint } from "./nav-pending-hint";
 import { BOTTOM_TAB_ITEMS, isActivePath, isMorePath, VIEWER_NAV_ITEMS } from "./nav-items";
 
 interface TabItem {
@@ -20,7 +21,7 @@ function Tab({ item, active }: { item: TabItem; active: boolean }) {
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`group flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] ${
+      className={`group relative flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] ${
         active ? "font-bold text-text" : "font-medium text-muted"
       }`}
     >
@@ -32,6 +33,7 @@ function Tab({ item, active }: { item: TabItem; active: boolean }) {
         <NavIcon name={item.key} className="size-[22px]" />
       </span>
       {item.label}
+      <NavPendingHint className="absolute right-1.5 top-1.5" />
     </Link>
   );
 }
