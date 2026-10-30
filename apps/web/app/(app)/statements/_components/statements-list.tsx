@@ -62,6 +62,13 @@ type DialogState =
 
 const UNDO_REASON = "登録直後の取消";
 
+/** The request did not come back (the network failed): the row may or may not be settled (15 §5). */
+const UNCERTAIN_RESULT: ActionResult<SettledStatement> = {
+  ok: false,
+  error: "処理結果を確認できません。画面を再読み込みして明細の状態を確認してください。",
+  fieldErrors: {},
+};
+
 function without<T>(record: Record<string, T>, ids: Iterable<string>): Record<string, T> {
   const next = { ...record };
   for (const id of ids) delete next[id];
@@ -212,11 +219,12 @@ export function StatementsList({
     hide(ids);
     focusRow(next);
     enqueue(async () => {
-      const result = await run();
+      const result = await run().catch(() => UNCERTAIN_RESULT);
       if (!result.ok) {
         unhide(ids);
         setErrors((current) => ({ ...current, [row.id]: result }));
-        focusRow(row.id);
+        // Back to the row with the reason, unless the user went on to another one meanwhile.
+        if (!focusMovedFrom(next)) focusRow(row.id);
         return;
       }
       hide(result.data.transactionIds);
@@ -503,11 +511,7 @@ export function StatementsList({
             }
           } catch {
             uncertain = true;
-            result = {
-              ok: false,
-              error: "処理結果を確認できません。画面を再読み込みして明細の状態を確認してください。",
-              fieldErrors: {},
-            };
+            result = UNCERTAIN_RESULT;
           }
           if (result.ok) {
             for (const id of result.data.transactionIds) done.add(id);
