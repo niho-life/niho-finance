@@ -145,6 +145,13 @@ export function StatementsList({
     }
   }
 
+  /** Whether the user moved the focus off `rowId`, where a background task left it. */
+  function focusMovedFrom(rowId: string | null): boolean {
+    const active = document.activeElement;
+    if (!active || active === document.body) return false;
+    return active !== (rowId ? rowRefs.current.get(rowId) : undefined);
+  }
+
   function enqueue(task: () => Promise<void>) {
     queue.current = queue.current.then(task, task);
   }
@@ -527,7 +534,8 @@ export function StatementsList({
         else if (note) toast(`科目のない ${skippedCount} 件は登録しませんでした`);
         const firstFailed = failed[0]?.[0];
         const remaining = rows.find((row) => !hiddenRef.current.has(row.id));
-        focusRow(firstFailed ?? remaining?.id ?? null);
+        // The rows stay usable while they are processed: keep the focus the user moved meanwhile.
+        if (!focusMovedFrom(next)) focusRow(firstFailed ?? remaining?.id ?? null);
         router.refresh();
       }
     });
