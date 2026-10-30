@@ -8,6 +8,8 @@ import {
   buildInvoicePaymentEntry,
   computeInvoiceTotals,
   defaultDueDate,
+  defaultReceiptProviso,
+  formatReceiptNumber,
   draftInvoiceNumber,
   formatInvoiceNumber,
   formatQuantity,
@@ -24,6 +26,11 @@ import {
   overdueDays,
   parseInvoiceSequence,
   parseQuantity,
+  RECEIPT_PROVISO_MAX,
+  RECEIPT_STAMP_NOTE,
+  receiptDateProblem,
+  receiptNumberPrefix,
+  receiptStampNote,
   STANDARD_TAX_RATE_RULES,
   validateEntry,
   type AccountingMethod,
@@ -662,5 +669,52 @@ describe("a payment: 普通預金 / 売掛金, the fee as 支払手数料", () =
       "amount",
       "walletId",
     ]);
+  });
+});
+
+describe("receipts (領収書, 18 §15)", () => {
+  it("numbers RC-<期>-<連番> like the documents", () => {
+    expect(receiptNumberPrefix("2026-11-02")).toBe("RC-2026-");
+    expect(formatReceiptNumber("2026-11-02", 1)).toBe("RC-2026-0001");
+    expect(formatReceiptNumber("2027-04-01", 12_345)).toBe("RC-2027-12345");
+    expect(nextInvoiceSequence(["RC-2026-0001", "RC-2026-0002", "INV-2026-0007"], "RC-2026-")).toBe(
+      3,
+    );
+    expect(() => formatReceiptNumber("2026-11-02", 0)).toThrow(RangeError);
+  });
+
+  it("says 「<件名> の代金として」, or 「お品代として」 without a title", () => {
+    expect(defaultReceiptProviso("架空サイトの開発")).toBe("架空サイトの開発 の代金として");
+    expect(defaultReceiptProviso(null)).toBe("お品代として");
+    expect(defaultReceiptProviso("  ")).toBe("お品代として");
+    const long = defaultReceiptProviso("あ".repeat(200));
+    expect([...long]).toHaveLength(RECEIPT_PROVISO_MAX);
+    expect(long.endsWith("… の代金として")).toBe(true);
+  });
+
+  it("notes the stamp duty from 50,000 円 without the tax", () => {
+    const totals = computeInvoiceTotals(FIXTURE_LINES, {
+      pricesIncludeTax: false,
+      issueDate: ISSUE_DATE,
+      taxRules: STANDARD_TAX_RATE_RULES,
+    });
+    expect(receiptStampNote(totals.rates)).toBe(RECEIPT_STAMP_NOTE);
+    // 54,999 円 with the tax is 49,999 円 without it: no note.
+    expect(receiptStampNote([{ amountExclusive: 49_999n }])).toBeNull();
+    expect(receiptStampNote([{ amountExclusive: 45_000n }, { amountExclusive: 5_000n }])).toBe(
+      RECEIPT_STAMP_NOTE,
+    );
+    expect(receiptStampNote([])).toBeNull();
+  });
+
+  it("issues on or after the last payment and not after today", () => {
+    expect(receiptDateProblem("2026-12-15", "2026-12-10", "2026-12-20")).toBeNull();
+    expect(receiptDateProblem("2026-12-10", "2026-12-10", "2026-12-10")).toBeNull();
+    expect(receiptDateProblem("2026-12-09", "2026-12-10", "2026-12-20")).toBe(
+      "発行日は入金日（2026/12/10）以後にしてください",
+    );
+    expect(receiptDateProblem("2026-12-21", "2026-12-10", "2026-12-20")).toBe(
+      "発行日は今日以前にしてください",
+    );
   });
 });

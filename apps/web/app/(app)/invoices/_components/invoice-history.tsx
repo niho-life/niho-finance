@@ -2,7 +2,10 @@ import type { InvoiceHistoryRow } from "@niho-finance/db";
 import { JsonPair } from "@/components/ui/json-pair";
 import { formatDateTime } from "@/lib/format";
 
-/** The operations of the document's history (18 §9.5). */
+/**
+ * The operations of the history (18 §9.5): a document's, its receipts' (§15.4) and a 定期請求's
+ * (§14.6).
+ */
 const OPERATIONS: Readonly<Record<string, string>> = {
   "invoice.create": "作成",
   "invoice.update": "変更",
@@ -13,12 +16,19 @@ const OPERATIONS: Readonly<Record<string, string>> = {
   "invoice.void": "無効",
   "invoice.discard": "破棄",
   "invoice.attach_pdf": "PDF の保存",
+  "receipt.issue": "領収書の発行",
+  "receipt.attach_pdf": "領収書の PDF の保存",
+  "receipt.void": "領収書の無効",
+  "recurring_invoice.create": "追加",
+  "recurring_invoice.update": "編集",
+  "recurring_invoice.pause": "停止",
+  "recurring_invoice.resume": "再開",
 };
 
 const GRID =
-  "grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 md:grid-cols-[136px_120px_minmax(0,0.8fr)_minmax(0,1.2fr)]";
+  "grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 md:grid-cols-[136px_156px_minmax(0,0.8fr)_minmax(0,1.2fr)]";
 
-/** 履歴 (18 §9.5): the audit log of the document, oldest first. A row opens to its before / after. */
+/** 履歴 (18 §9.5): the audit log, oldest first. A row opens to its before / after. */
 export function InvoiceHistory({ rows }: { rows: readonly InvoiceHistoryRow[] }) {
   return (
     <section aria-labelledby="invoice-history" className="mt-8">

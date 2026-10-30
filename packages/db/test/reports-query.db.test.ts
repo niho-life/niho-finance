@@ -25,6 +25,7 @@ import {
   pendingStatementsTodo,
   recordExport,
   recurringDueTodo,
+  recurringInvoicesDueTodo,
   toDbDate,
   TRANSACTION_OPTIONS,
   payablesDueSoonTodo,
@@ -157,6 +158,7 @@ describe.skipIf(!hasTestDatabase)("reports queries (seeded book)", () => {
       bankReconnectTodo,
       upcomingDeadlinesTodo,
       payablesDueSoonTodo,
+      recurringInvoicesDueTodo,
       draftInvoicesTodo,
       recurringDueTodo,
     ]);

@@ -30,7 +30,9 @@ import {
   isDraftInvoiceNumber,
   isInvoiceOverdue,
   isLocked,
+  invoiceMonthLabel,
   isQualifiedInvoice,
+  isRecurringMonth,
   LedgerValidationError,
   nextInvoiceSequence,
   overdueDays,
@@ -54,11 +56,12 @@ import {
   type LedgerErrorCode,
   type Money,
   type PartnerKind,
+  type RecurringMonth,
   type SalesTaxCategoryCode,
   type TaxRateRule,
   type WalletKind,
 } from "@niho-finance/ledger";
-import { Prisma, type Account, type FiscalYear, type Invoice } from "@prisma/client";
+import { Prisma, type Account, type FiscalYear, type Invoice, type Partner } from "@prisma/client";
 import { appendAuditLog, toAuditJson, type Db } from "./audit";
 import { fromDbDate, fromDbDateOrNull, toDbDate } from "./dates";
 import { linkDocument } from "./documents";
@@ -89,6 +92,7 @@ import {
   type InvoiceSettingsInput,
   type InvoiceStatusFilter,
   type InvoiceVoidInput,
+  type ParsedInvoiceDraft,
   type ParsedInvoiceLine,
 } from "./schemas";
 import { requireCompanyRow } from "./settings";
@@ -209,7 +213,8 @@ export interface InvoiceRecipientSnapshot {
   address: string | null;
 }
 
-function json(value: unknown): Prisma.InputJsonValue {
+/** Internal (recurring invoices and receipts): the JSON of a column. */
+export function json(value: unknown): Prisma.InputJsonValue {
   return toAuditJson(value);
 }
 
@@ -218,7 +223,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** JSON with sorted keys: jsonb does not keep the key order, so compare through this. */
-function stableJson(value: unknown): string {
+export function stableJson(value: unknown): string {
   const sort = (item: unknown): unknown => {
     if (Array.isArray(item)) return item.map(sort);
     if (item instanceof Date) return item.toISOString();
@@ -237,15 +242,17 @@ function readLines(value: Prisma.JsonValue): StoredInvoiceLine[] {
   return Array.isArray(value) ? (value as unknown as StoredInvoiceLine[]) : [];
 }
 
-function readPayments(value: Prisma.JsonValue | null): StoredInvoicePayment[] {
+export function readPayments(value: Prisma.JsonValue | null): StoredInvoicePayment[] {
   return Array.isArray(value) ? (value as unknown as StoredInvoicePayment[]) : [];
 }
 
-function readIssuerSnapshot(value: Prisma.JsonValue | null): InvoiceIssuerSnapshot | null {
+export function readIssuerSnapshot(value: Prisma.JsonValue | null): InvoiceIssuerSnapshot | null {
   return isRecord(value) ? (value as unknown as InvoiceIssuerSnapshot) : null;
 }
 
-function readRecipientSnapshot(value: Prisma.JsonValue | null): InvoiceRecipientSnapshot | null {
+export function readRecipientSnapshot(
+  value: Prisma.JsonValue | null,
+): InvoiceRecipientSnapshot | null {
   return isRecord(value) ? (value as unknown as InvoiceRecipientSnapshot) : null;
 }
 
@@ -275,7 +282,7 @@ const SALES_ORDER = new Map<string, number>(
 );
 
 /** The rows per tax category as stored (never recomputed: 18 §3.3), in the order of the totals. */
-function storedRates(row: Pick<Invoice, "subtotalByRate" | "taxByRate">): InvoiceRateRow[] {
+export function storedRates(row: Pick<Invoice, "subtotalByRate" | "taxByRate">): InvoiceRateRow[] {
   const subtotals = isRecord(row.subtotalByRate)
     ? (row.subtotalByRate as unknown as Record<string, StoredRateTotal>)
     : {};
@@ -447,7 +454,7 @@ function overdueOf(
 // ---------------------------------------------------------------------------
 
 /** Locks the document's row until the transaction ends, then reads it. */
-async function lockInvoice(tx: Tx, id: string): Promise<Invoice> {
+export async function lockInvoice(tx: Tx, id: string): Promise<Invoice> {
   const locked = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "invoice" WHERE "id" = ${id} FOR UPDATE`;
   if (locked.length === 0) throw new SettingsError(NOT_FOUND);
@@ -490,7 +497,7 @@ async function nextNumber(
 }
 
 /** The fiscal year containing `date` when there is exactly one (read, not locked). */
-async function fiscalYearOn(db: Db, date: CalendarDate): Promise<FiscalYear | null> {
+export async function fiscalYearOn(db: Db, date: CalendarDate): Promise<FiscalYear | null> {
   const day = toDbDate(date);
   const years = await db.fiscalYear.findMany({
     where: { startDate: { lte: day }, endDate: { gte: day } },
@@ -499,7 +506,7 @@ async function fiscalYearOn(db: Db, date: CalendarDate): Promise<FiscalYear | nu
   return only && years.length === 1 ? only : null;
 }
 
-function noFiscalYearMessage(date: CalendarDate): string {
+export function noFiscalYearMessage(date: CalendarDate): string {
   return `${displayDate(date)} を含む会計期間がありません。会計期間の中の日付にするか、設定 › 会計期間 で期を作ってください`;
 }
 
@@ -573,7 +580,29 @@ export interface InvoiceListRow {
   overdueDays: number;
   /** The first document converted from this one (「→ 請求書 INV-…」). */
   convertedTo: InvoiceRef | null;
+  /** Made from a 定期請求 (the 「定期」 mark, 18 §14.5). */
+  recurring: InvoiceRecurringRef | null;
+  /** The receipt in force (18 §15). */
+  receipt: InvoiceReceiptRef | null;
   createdAt: Date;
+}
+
+/** The 定期請求 a document was made from, and the month of its due date (18 §14.2). */
+export interface InvoiceRecurringRef {
+  id: string;
+  name: string;
+  /** `YYYY-MM` of the due date. */
+  month: RecurringMonth;
+  /** 「2026年11月」 */
+  monthLabel: string;
+}
+
+/** The receipt in force of an invoice (18 §15), as the list and the detail show it. */
+export interface InvoiceReceiptRef {
+  id: string;
+  number: string;
+  issueDate: CalendarDate;
+  pdfDocumentId: string | null;
 }
 
 export interface InvoicePage {
@@ -615,6 +644,13 @@ function invoicesWhere(filters: InvoiceListFilters): Prisma.InvoiceWhereInput {
   return { AND: and };
 }
 
+/** The receipt in force (at most one: the partial unique index). */
+const receiptInForce = {
+  where: { voidedAt: null },
+  take: 1,
+  select: { id: true, number: true, issueDate: true, pdfDocumentId: true },
+} as const;
+
 const listInclude = {
   partner: { select: { name: true } },
   convertedTo: {
@@ -623,7 +659,30 @@ const listInclude = {
     take: 1,
     select: refSelect,
   },
+  recurringInvoice: { select: { id: true, name: true } },
+  receipts: receiptInForce,
 } as const;
+
+function recurringRefOf(row: {
+  recurringMonth: string | null;
+  recurringInvoice: { id: string; name: string } | null;
+}): InvoiceRecurringRef | null {
+  const month = row.recurringMonth;
+  if (!row.recurringInvoice || !isRecurringMonth(month)) return null;
+  return { ...row.recurringInvoice, month, monthLabel: invoiceMonthLabel(month) };
+}
+
+function receiptRefOf(
+  receipts: readonly {
+    id: string;
+    number: string;
+    issueDate: Date;
+    pdfDocumentId: string | null;
+  }[],
+): InvoiceReceiptRef | null {
+  const [receipt] = receipts;
+  return receipt ? { ...receipt, issueDate: fromDbDate(receipt.issueDate) } : null;
+}
 
 type ListInvoiceRow = Prisma.InvoiceGetPayload<{ include: typeof listInclude }>;
 
@@ -643,6 +702,8 @@ function toListRow(row: ListInvoiceRow, today: CalendarDate): InvoiceListRow {
     status: row.status,
     ...overdueOf(row, today),
     convertedTo: row.convertedTo[0] ?? null,
+    recurring: recurringRefOf(row),
+    receipt: receiptRefOf(row.receipts),
     createdAt: row.createdAt,
   };
 }
@@ -764,6 +825,10 @@ export interface InvoiceActions {
   canSend: boolean;
   canPay: boolean;
   canVoid: boolean;
+  /** The payments in force can be cancelled (no receipt in force, 18 §15.1). */
+  canCancelPayment: boolean;
+  /** 「この内容で定期請求を作る」: an issued, sent or paid invoice (18 §14.5). */
+  canMakeRecurring: boolean;
   blocked: {
     edit: string | null;
     issue: string | null;
@@ -771,6 +836,7 @@ export interface InvoiceActions {
     send: string | null;
     pay: string | null;
     void: string | null;
+    cancelPayment: string | null;
   };
   /** The types a document can be converted into (issued 見積書 → 納品書 / 請求書, 納品書 → 請求書). */
   convertTo: InvoiceDocType[];
@@ -826,6 +892,10 @@ export interface InvoiceDetail {
   voidReason: string | null;
   /** The stored copy of the issued PDF (証憑 `invoice_out`, 18 §11); `null` until it is saved. */
   pdfDocumentId: string | null;
+  /** Made from a 定期請求: 「定期請求: <名前>（2026年11月分）」 (18 §14.5). */
+  recurring: InvoiceRecurringRef | null;
+  /** The receipt in force (18 §15.4); the whole section comes from `getInvoiceReceipts`. */
+  receipt: InvoiceReceiptRef | null;
   createdAt: Date;
   updatedAt: Date;
   actions: InvoiceActions;
@@ -844,7 +914,14 @@ const detailInclude = {
   journalEntry: {
     select: { id: true, no: true, status: true, reversal: { select: { id: true, no: true } } },
   },
+  recurringInvoice: { select: { id: true, name: true } },
+  receipts: receiptInForce,
 } as const;
+
+/** Why a payment or the invoice cannot be undone while a receipt is in force (18 §15.1). */
+function receiptInForceMessage(number: string): string {
+  return `領収書 ${number} を発行しています。先に領収書を無効にしてください`;
+}
 
 function unique<T>(values: Iterable<T>): T[] {
   return [...new Set(values)];
@@ -885,6 +962,8 @@ function invoiceActions(input: {
   issueProblem: string | null;
   /** The number of the 売掛金 entry when it was voided elsewhere (the transaction screen). */
   voidedReceivableNo: number | null;
+  /** The number of the receipt in force. */
+  receiptNumber: string | null;
 }): InvoiceActions {
   const { docType, status } = input;
   const draft = status === "draft";
@@ -906,11 +985,18 @@ function invoiceActions(input: {
     pay = voidedReceivableMessage(input.voidedReceivableNo);
   else if (status === "paid" || (input.balance ?? 0n) <= 0n) pay = "入金済みのため残高はありません";
 
+  const receiptBlocked =
+    input.receiptNumber === null ? null : receiptInForceMessage(input.receiptNumber);
   let voidBlocked: string | null = null;
   if (draft) voidBlocked = "下書きは無効にできません。破棄してください";
   else if (isVoid) voidBlocked = "この書類はすでに無効です";
+  else if (receiptBlocked) voidBlocked = receiptBlocked;
   else if (input.activePayments > 0)
     voidBlocked = "入金が残っています。先に入金を取り消してください";
+
+  let cancelPayment: string | null = null;
+  if (input.activePayments === 0) cancelPayment = "取り消せる入金はありません";
+  else if (receiptBlocked) cancelPayment = receiptBlocked;
 
   return {
     canEdit: draft,
@@ -919,6 +1005,8 @@ function invoiceActions(input: {
     canSend,
     canPay: pay === null,
     canVoid: voidBlocked === null,
+    canCancelPayment: cancelPayment === null,
+    canMakeRecurring: docType === "invoice" && ISSUED_STATUSES.includes(status),
     blocked: {
       edit: draft ? null : notEditable,
       issue: draft ? input.issueProblem : null,
@@ -926,6 +1014,7 @@ function invoiceActions(input: {
       send,
       pay,
       void: voidBlocked,
+      cancelPayment,
     },
     convertTo: ISSUED_STATUSES.includes(status) ? [...INVOICE_CONVERSIONS[docType]] : [],
   };
@@ -1103,6 +1192,8 @@ export async function getInvoiceDetail(
     voidedAt: row.voidedAt,
     voidReason: row.voidReason,
     pdfDocumentId: row.pdfDocumentId,
+    recurring: recurringRefOf(row),
+    receipt: receiptRefOf(row.receipts),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     actions: invoiceActions({
@@ -1113,6 +1204,7 @@ export async function getInvoiceDetail(
       activePayments: inForce.length,
       issueProblem,
       voidedReceivableNo: row.journalEntry?.status === "voided" ? row.journalEntry.no : null,
+      receiptNumber: row.receipts[0]?.number ?? null,
     }),
   };
 }
@@ -1318,6 +1410,7 @@ export interface InvoiceDraftSource extends InvoiceRef {
 /**
  * The body of a document as the form's initial values (18 §8): the edit form takes them as they
  * are; a conversion or a copy changes the type, the dates and the source as the screen decides.
+ * The 定期請求 and its month are not values: a copy is never tied to the recurring invoice (§14.2).
  */
 export async function loadInvoiceDraftInput(
   db: Db,
@@ -1524,6 +1617,8 @@ export async function loadInvoicesForDeposit(
 
 export interface InvoiceHistoryRow {
   id: string;
+  /** `invoice`, or `receipt` for the operations of its receipts (18 §15.4). */
+  entity: string;
   at: Date;
   actor: string;
   action: string;
@@ -1532,14 +1627,26 @@ export interface InvoiceHistoryRow {
   reason: string | null;
 }
 
-/** The audit log of the document (`entity = invoice`), oldest first (18 §9.5). Read only. */
+/**
+ * The audit log of the document (`entity = invoice`) with the operations of its receipts
+ * (`entity = receipt`, 18 §15.4), oldest first (18 §9.5). Read only.
+ */
 export async function loadInvoiceHistory(db: Db, invoiceId: string): Promise<InvoiceHistoryRow[]> {
+  const receipts = await db.receipt.findMany({ where: { invoiceId }, select: { id: true } });
   const rows = await db.auditLog.findMany({
-    where: { entity: "invoice", entityId: invoiceId },
+    where: {
+      OR: [
+        { entity: "invoice", entityId: invoiceId },
+        ...(receipts.length > 0
+          ? [{ entity: "receipt", entityId: { in: receipts.map((receipt) => receipt.id) } }]
+          : []),
+      ],
+    },
     orderBy: [{ at: "asc" }, { id: "asc" }],
   });
   return rows.map((row) => ({
     id: row.id,
+    entity: row.entity,
     at: row.at,
     actor: row.actor,
     action: row.action,
@@ -1584,7 +1691,7 @@ function usableRevenueAccount(account: Account | null): account is Account {
 }
 
 /** The chosen revenue account, or the partner's default revenue account, or 4040 (18 §8). */
-async function resolveRevenueAccount(
+export async function resolveRevenueAccount(
   tx: Tx,
   accountId: string | null,
   partnerDefaultId: string | null,
@@ -1620,7 +1727,7 @@ async function resolveRevenueAccount(
 }
 
 /** The chosen segment, or the first active default (account, partner), or 受託 (18 §8). */
-async function resolveSegment(
+export async function resolveSegment(
   tx: Tx,
   segmentId: string | null,
   defaults: readonly (string | null)[],
@@ -1681,12 +1788,9 @@ async function assertConvertible(tx: Tx, sourceId: string, docType: InvoiceDocTy
   }
 }
 
-/**
- * The body of a draft: the partner (active), the revenue account and the segment (請求書 only,
- * defaulted), and the lines with their totals on the issue date's rules (18 §3).
- */
-async function draftBody(tx: Tx, docType: InvoiceDocType, data: DraftFields) {
-  const partner = await tx.partner.findUnique({ where: { id: data.partnerId } });
+/** The partner of a document (or of a recurring invoice's template): it must exist and be active. */
+export async function requireInvoicePartner(tx: Tx, partnerId: string): Promise<Partner> {
+  const partner = await tx.partner.findUnique({ where: { id: partnerId } });
   if (!partner) {
     throw new SettingsError("取引先が見つかりません。一覧から選んでください", {
       field: "partnerId",
@@ -1698,6 +1802,15 @@ async function draftBody(tx: Tx, docType: InvoiceDocType, data: DraftFields) {
       { field: "partnerId" },
     );
   }
+  return partner;
+}
+
+/**
+ * The body of a draft: the partner (active), the revenue account and the segment (請求書 only,
+ * defaulted), and the lines with their totals on the issue date's rules (18 §3).
+ */
+async function draftBody(tx: Tx, docType: InvoiceDocType, data: DraftFields) {
+  const partner = await requireInvoicePartner(tx, data.partnerId);
   let revenueAccountId: string | null = null;
   let segmentId: string | null = null;
   if (docType === "invoice") {
@@ -1741,29 +1854,43 @@ export async function createInvoiceDraft(
   options: ActorOptions,
 ): Promise<InvoiceRecord> {
   const data = invoiceDraftSchema.parse(input);
-  return runInTransaction(db, async (tx) => {
-    if (data.sourceInvoiceId) await assertConvertible(tx, data.sourceInvoiceId, data.docType);
-    const body = await draftBody(tx, data.docType, data);
-    const id = newId();
-    const row = await tx.invoice.create({
-      data: {
-        id,
-        docType: data.docType,
-        number: draftInvoiceNumber(data.docType, id),
-        status: "draft",
-        sourceInvoiceId: data.sourceInvoiceId,
-        ...body,
-      },
-    });
-    await appendAuditLog(tx, {
-      actor: options.actor,
-      action: "invoice.create",
-      entity: "invoice",
-      entityId: id,
-      after: row,
-    });
-    return toRecord(row);
+  return runInTransaction(db, async (tx) => insertInvoiceDraft(tx, data, options));
+}
+
+/**
+ * Internal (定期請求, 18 §14.3): saves a parsed draft in the caller's transaction with the checks and
+ * the audit log (`invoice.create`) of `createInvoiceDraft`. `recurring` ties an invoice to the
+ * recurring invoice and the month it was made for (the row in the audit log has both); the partial
+ * unique index refuses a second invoice of the month. A copy never passes it (18 §14.2).
+ */
+export async function insertInvoiceDraft(
+  tx: Tx,
+  data: ParsedInvoiceDraft,
+  options: ActorOptions,
+  recurring: { recurringInvoiceId: string; recurringMonth: RecurringMonth } | null = null,
+): Promise<InvoiceRecord> {
+  if (data.sourceInvoiceId) await assertConvertible(tx, data.sourceInvoiceId, data.docType);
+  const body = await draftBody(tx, data.docType, data);
+  const id = newId();
+  const row = await tx.invoice.create({
+    data: {
+      id,
+      docType: data.docType,
+      number: draftInvoiceNumber(data.docType, id),
+      status: "draft",
+      sourceInvoiceId: data.sourceInvoiceId,
+      ...(recurring ?? {}),
+      ...body,
+    },
   });
+  await appendAuditLog(tx, {
+    actor: options.actor,
+    action: "invoice.create",
+    entity: "invoice",
+    entityId: id,
+    after: row,
+  });
+  return toRecord(row);
 }
 
 function assertDraft(row: Invoice, notDraft: { issued: string; void: string }): void {
@@ -2068,6 +2195,18 @@ export async function markInvoiceSent(
   });
 }
 
+/**
+ * 入金の取消 and 無効 are refused while a receipt is in force (18 §15.1). The invoice's row is locked
+ * by the caller, and a receipt is only issued or voided under that lock, so the check holds.
+ */
+async function assertNoReceiptInForce(tx: Tx, invoiceId: string): Promise<void> {
+  const receipt = await tx.receipt.findFirst({
+    where: { invoiceId, voidedAt: null },
+    select: { number: true },
+  });
+  if (receipt) throw new SettingsError(receiptInForceMessage(receipt.number));
+}
+
 /** The reversal of an entry that was already voided elsewhere (e.g. on the transaction screen). */
 async function existingReversal(
   tx: Tx,
@@ -2100,6 +2239,7 @@ export async function voidInvoice(
     if (current.status === "void") {
       throw new SettingsError("この書類はすでに無効です。画面を読み込み直してください");
     }
+    await assertNoReceiptInForce(tx, id);
     const inForce = readPayments(current.payments).filter((payment) => !payment.cancelledAt);
     if (inForce.length > 0) {
       throw new SettingsError("入金が残っています。先に入金を取り消してください");
@@ -2333,6 +2473,7 @@ export async function cancelInvoicePayment(
         field: "paymentId",
       });
     }
+    await assertNoReceiptInForce(tx, id);
     const line = payment.walletTransactionId
       ? await lockWalletTransaction(tx, payment.walletTransactionId)
       : null;

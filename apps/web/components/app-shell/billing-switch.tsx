@@ -2,14 +2,16 @@ import Link from "next/link";
 
 const SECTIONS = [
   { key: "invoices", label: "請求書", href: "/invoices" },
+  { key: "recurring", label: "定期請求", href: "/invoices/recurring" },
   { key: "payables", label: "支払", href: "/payables" },
 ] as const;
 
 export type BillingSection = (typeof SECTIONS)[number]["key"];
 
 /**
- * 請求書 / 支払 above the lists of 請求 (25 §5): both live under 請求 in the navigation, so this
- * switch moves between them (links, the URL is the truth).
+ * 請求書 / 定期請求 / 支払 above the lists of 請求 (25 §5, 18 §14.5): all live under 請求 in the
+ * navigation, so this switch moves between them (links, the URL is the truth). 請求書 is
+ * `/invoices` but its `recurring` pages, which are 定期請求.
  */
 export function BillingSwitch({ current }: { current: BillingSection }) {
   return (
