@@ -1,5 +1,5 @@
 import { listWallets, loadBonusDraft, todayInJapan } from "@niho-finance/db";
-import { formatYen, formatYenInput } from "@niho-finance/ledger";
+import { formatYenInput } from "@niho-finance/ledger";
 import { isYearMonth, yearMonthLabel, yearMonthOf } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -7,7 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { walletLabel } from "@/lib/format";
+import { formatYenDisplay, walletLabel } from "@/lib/format";
 import { taxColumnText } from "../../_lib/labels";
 import { coverageNotes } from "../../_lib/views";
 import { BonusForm, type BonusDraftView, type BonusEmployee } from "./bonus-form";
@@ -65,7 +65,7 @@ export default async function NewBonusRunPage({
         taxColumn.column === "kou" ? taxColumn.dependents : (taxColumn.secondaryDependents ?? 0),
       ),
       previousMonthSource: previousMonth
-        ? `${previousLabel}の支給から（${formatYen(previousMonth.pay)} 円・税額 ${formatYen(previousMonth.incomeTax)} 円）`
+        ? `${previousLabel}の支給から（${formatYenDisplay(previousMonth.pay)} 円・税額 ${formatYenDisplay(previousMonth.incomeTax)} 円）`
         : `${previousLabel}の支給にこの人はいません`,
     }),
   );

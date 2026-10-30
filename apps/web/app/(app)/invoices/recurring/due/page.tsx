@@ -27,7 +27,7 @@ export default async function DueRecurringInvoicesPage() {
           description="予定日が来ると、こことホームの「やること」に出ます"
           action={
             <ButtonLink href="/invoices/recurring" size="sm">
-              定期請求の一覧
+              定期請求の一覧を開く
             </ButtonLink>
           }
         />

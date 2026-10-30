@@ -5,7 +5,7 @@ import {
   type FeeReportsOverview,
   type StatementsOverview,
 } from "@niho-finance/db";
-import { dateParts, displayDate, formatYen } from "@niho-finance/ledger";
+import { dateParts, displayDate } from "@niho-finance/ledger";
 import {
   annualReportDueDate,
   FEE_CATEGORIES,
@@ -17,13 +17,13 @@ import {
 } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { buttonClass } from "@/components/ui/button";
+import { buttonClass, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { TABLE_MISSING_HINT, WORKER_KIND_LABELS } from "../_lib/labels";
 import { PartnerKindSelect } from "./_components/partner-kind-select";
 import { categoryQuery, readCategories, readYear, searchEntries } from "./_lib/params";
@@ -96,6 +96,11 @@ function Recipients({ overview }: { overview: StatementsOverview }) {
       <EmptyState
         title={`${year} 年に支給した人がいません`}
         description="その年に確定した給与・賞与を受けた人が並びます。"
+        action={
+          <ButtonLink href="/payroll" size="sm">
+            給与を開く
+          </ButtonLink>
+        }
       />
     );
   }
@@ -136,10 +141,10 @@ function Recipients({ overview }: { overview: StatementsOverview }) {
               ) : null}
             </Td>
             <Td align="right" sm="hide">
-              {formatYen(recipient.slip.paid)}
+              {formatYenDisplay(recipient.slip.paid)}
             </Td>
             <Td align="right" sm="hide">
-              {formatYen(recipient.slip.withheld)}
+              {formatYenDisplay(recipient.slip.withheld)}
             </Td>
             <Td sm="hide" className="text-[13px]">
               {recipient.inSalaryReport ? "出す" : "出さない（年の中途の退職・30 万円以下）"}
@@ -256,9 +261,9 @@ function FeeReports({ fees, year }: { fees: FeeReportsOverview; year: number }) 
                   </label>
                 ))}
               </Td>
-              <Td align="right">{formatYen(payee.paid)}</Td>
+              <Td align="right">{formatYenDisplay(payee.paid)}</Td>
               <Td align="right" sm="hide">
-                {formatYen(payee.withheld)}
+                {formatYenDisplay(payee.withheld)}
               </Td>
               <Td sm="hide" className="text-[13px]">
                 {payee.reportable
@@ -267,7 +272,7 @@ function FeeReports({ fees, year }: { fees: FeeReportsOverview; year: number }) 
                     ? "出さない（法人）"
                     : payee.partner.isIndividual === null
                       ? "個人か法人かを決めます"
-                      : `出さない（${formatYen(FEE_REPORT_THRESHOLD)} 円以下）`}
+                      : `出さない（${formatYenDisplay(FEE_REPORT_THRESHOLD)} 円以下）`}
               </Td>
             </TableRow>
           ))}
@@ -381,7 +386,7 @@ export default async function StatementsPage({
                   href={`/payroll/statements/${year}/summary/pdf`}
                   className={buttonClass({ size: "sm" })}
                 >
-                  総括表の PDF
+                  総括表の PDF を書き出す
                 </a>
               </div>
             </div>
@@ -412,7 +417,7 @@ export default async function StatementsPage({
                 href={withQuery(`/payroll/statements/${year}/totals/pdf`)}
                 className={buttonClass({ size: "sm" })}
               >
-                合計表の元データの PDF
+                合計表の元データの PDF を書き出す
               </a>
             </div>
             <div className="flex flex-col gap-4 rounded-card border border-border bg-surface p-4">
@@ -431,8 +436,8 @@ export default async function StatementsPage({
                     key: key as string,
                     label: label as string,
                     people: `${data.people} 人`,
-                    paid: formatYen(data.paid),
-                    withheld: formatYen(data.withheld),
+                    paid: formatYenDisplay(data.paid),
+                    withheld: formatYenDisplay(data.withheld),
                   };
                 })}
               />
@@ -443,15 +448,15 @@ export default async function StatementsPage({
                     key: `item-${item.item}`,
                     label: `${FEE_ITEM_LABELS[item.item]}（うち提出 ${item.row.reported.people} 人）`,
                     people: `${item.row.people} 人`,
-                    paid: formatYen(item.row.paid),
-                    withheld: formatYen(item.row.withheld),
+                    paid: formatYenDisplay(item.row.paid),
+                    withheld: formatYenDisplay(item.row.withheld),
                   })),
                   {
                     key: "total",
                     label: `報酬の計（うち提出 ${feeTotals.total.reported.people} 人）`,
                     people: `${feeTotals.total.people} 人`,
-                    paid: formatYen(feeTotals.total.paid),
-                    withheld: formatYen(feeTotals.total.withheld),
+                    paid: formatYenDisplay(feeTotals.total.paid),
+                    withheld: formatYenDisplay(feeTotals.total.withheld),
                   },
                 ]}
               />
@@ -466,7 +471,7 @@ export default async function StatementsPage({
               <p className="text-[13px] text-muted">
                 支払報酬料・業務委託費
                 の仕訳（取消した仕訳を除く）を取引先ごとに集計します。個人の取引先で、年間{" "}
-                {formatYen(FEE_REPORT_THRESHOLD)} 円を超える人に出します。
+                {formatYenDisplay(FEE_REPORT_THRESHOLD)} 円を超える人に出します。
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -480,7 +485,7 @@ export default async function StatementsPage({
                 href={withQuery(`/payroll/statements/${year}/fees/pdf`)}
                 className={buttonClass({ size: "sm" })}
               >
-                支払調書の PDF
+                支払調書の PDF を書き出す
               </a>
             </div>
           </div>

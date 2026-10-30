@@ -17,7 +17,7 @@ import {
   type YearEndDeclaration,
   type YearEndResult,
 } from "@niho-finance/payroll";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatYenDisplay } from "@/lib/format";
 import type { DeclarationDraft, YearEndOptions } from "./year-end-draft";
 import { toEntryView, type EntryView } from "./views";
 
@@ -60,7 +60,11 @@ const parts = (items: readonly (readonly [string, Money])[]) =>
     .map(([label, amount]) => `${label} ${formatYen(amount)}`)
     .join(" · ") || null;
 
-/** Every step of §11.2 with the deductions' parts. */
+/**
+ * Every step of §11.2 with the deductions' parts. Shared with the 源泉徴収簿 (page and PDF), so the
+ * amounts keep `formatYen` (the ASCII `-`; none of them is negative). The views below, only for the
+ * screen, use `formatYenDisplay`.
+ */
 export function yearEndSteps(result: YearEndResult): YearEndStepView[] {
   const { deductions } = result;
   const life = deductions.lifeInsurance;
@@ -180,23 +184,23 @@ export function toYearEndPreviewView(preview: YearEndPreview): YearEndPreviewVie
   return {
     steps: yearEndSteps(result),
     totals: {
-      pay: formatYen(totals.pay),
-      bonus: formatYen(totals.bonus),
-      socialInsurance: formatYen(totals.socialInsurance),
-      withheld: formatYen(totals.withheld),
+      pay: formatYenDisplay(totals.pay),
+      bonus: formatYenDisplay(totals.bonus),
+      socialInsurance: formatYenDisplay(totals.socialInsurance),
+      withheld: formatYenDisplay(totals.withheld),
     },
     runs: runs.map((line) => ({
       key: `${line.kind}-${line.runId}`,
       label: line.label,
       paymentDate: displayDate(line.paymentDate),
-      pay: formatYen(line.pay),
-      socialInsurance: formatYen(line.socialInsurance),
-      withheld: formatYen(line.withheld),
+      pay: formatYenDisplay(line.pay),
+      socialInsurance: formatYenDisplay(line.socialInsurance),
+      withheld: formatYenDisplay(line.withheld),
     })),
     eligible: result.eligible,
     ineligible: result.ineligible.map((reason) => reason.message),
     warnings: result.warnings.map((warning) => warning.message),
-    annualTax: formatYen(result.annualTax),
+    annualTax: formatYenDisplay(result.annualTax),
     settlement: { kind: result.settlement.kind, text: settlementText(result) },
     blockers: preview.blockers,
     entry: preview.settlement?.entry ? toEntryView(preview.settlement.entry) : null,

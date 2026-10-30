@@ -17,7 +17,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { cancelInvoicePaymentAction, recordInvoicePaymentAction } from "../actions";
 
 /** An unhandled deposit that can pay the invoice (amounts as decimal text). */
@@ -142,7 +142,7 @@ export function RecordPaymentButton({ model }: { model: PaymentSheetModel }) {
       toast(
         result.data.status === "paid"
           ? `入金を登録しました。${model.name} は入金済みです`
-          : `入金を登録しました（残高 ${formatYen(BigInt(result.data.balance ?? "0"))} 円）`,
+          : `入金を登録しました（残高 ${formatYenDisplay(BigInt(result.data.balance ?? "0"))} 円）`,
       );
       router.refresh();
     });
@@ -182,7 +182,7 @@ export function RecordPaymentButton({ model }: { model: PaymentSheetModel }) {
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-[12px] font-bold text-muted">残高</p>
-            <p className="num text-[24px] font-extrabold">{formatYen(balance)} 円</p>
+            <p className="num text-[24px] font-extrabold">{formatYenDisplay(balance)} 円</p>
           </div>
 
           {alerts.length > 0 ? (
@@ -220,7 +220,9 @@ export function RecordPaymentButton({ model }: { model: PaymentSheetModel }) {
                         <span className="num text-[13px] text-muted">
                           {displayDate(candidate.txnDate)} · {candidate.walletName}
                         </span>
-                        <span className="num font-bold">{formatYen(BigInt(candidate.amount))}</span>
+                        <span className="num font-bold">
+                          {formatYenDisplay(BigInt(candidate.amount))}
+                        </span>
                       </span>
                       <span className="truncate text-[13px]">{candidate.description}</span>
                     </span>
@@ -296,7 +298,7 @@ export function RecordPaymentButton({ model }: { model: PaymentSheetModel }) {
             <div className="flex flex-col gap-1">
               <Checkbox
                 id={`${id}-fee`}
-                label={`差額 ${formatYen(difference)} 円を振込手数料にする`}
+                label={`差額 ${formatYenDisplay(difference)} 円を振込手数料にする`}
                 checked={feeOn}
                 onChange={(event) =>
                   setDraft({ ...draft, feeChecked: event.currentTarget.checked })
@@ -315,15 +317,16 @@ export function RecordPaymentButton({ model }: { model: PaymentSheetModel }) {
 
           {applied !== null ? (
             <p aria-live="polite" className="text-[14px]">
-              充当額 <span className="num font-bold">{formatYen(applied)}</span> 円
+              充当額 <span className="num font-bold">{formatYenDisplay(applied)}</span> 円
               {fee > 0n ? (
                 <span className="text-muted">
-                  （入金額 {formatYen(applied - fee)} 円 ＋ 手数料 {formatYen(fee)} 円）
+                  （入金額 {formatYenDisplay(applied - fee)} 円 ＋ 手数料 {formatYenDisplay(fee)}{" "}
+                  円）
                 </span>
               ) : null}
               。登録後の残高{" "}
               <span className="num font-bold">
-                {applied > balance ? "—" : formatYen(balance - applied)}
+                {applied > balance ? "—" : formatYenDisplay(balance - applied)}
               </span>{" "}
               円
               {applied > balance ? (

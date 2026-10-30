@@ -17,7 +17,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { differenceText, paymentOutcome } from "../_lib/view";
 import { cancelPayablePaymentAction, payPayableAction } from "../actions";
 
@@ -142,7 +142,7 @@ export function PayPayableButton({ model }: { model: PaySheetModel }) {
       toast(
         result.data.state === "paid"
           ? `支払を登録しました（${entryNo(result.data.entryNo)}）。${model.name} は支払済みです`
-          : `支払を登録しました（${entryNo(result.data.entryNo)}・残り ${formatYen(BigInt(result.data.remaining))} 円）`,
+          : `支払を登録しました（${entryNo(result.data.entryNo)}・残り ${formatYenDisplay(BigInt(result.data.remaining))} 円）`,
       );
       router.refresh();
     });
@@ -179,7 +179,7 @@ export function PayPayableButton({ model }: { model: PaySheetModel }) {
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-[12px] font-bold text-muted">残り</p>
-            <p className="num text-[24px] font-extrabold">{formatYen(remaining)} 円</p>
+            <p className="num text-[24px] font-extrabold">{formatYenDisplay(remaining)} 円</p>
           </div>
 
           {alerts.length > 0 ? (
@@ -217,7 +217,9 @@ export function PayPayableButton({ model }: { model: PaySheetModel }) {
                         <span className="num min-w-0 truncate text-[13px] text-muted">
                           {displayDate(candidate.txnDate)} · {candidate.walletName}
                         </span>
-                        <span className="num font-bold">{formatYen(BigInt(candidate.amount))}</span>
+                        <span className="num font-bold">
+                          {formatYenDisplay(BigInt(candidate.amount))}
+                        </span>
                       </span>
                       <span className="flex items-baseline justify-between gap-3 text-[13px]">
                         <span className="min-w-0 truncate">{candidate.description}</span>
@@ -301,7 +303,8 @@ export function PayPayableButton({ model }: { model: PaySheetModel }) {
             </p>
           ) : outcome.text ? (
             <p aria-live="polite" className="text-[14px]">
-              充当額 <span className="num font-bold">{formatYen(outcome.applied ?? 0n)}</span> 円。
+              充当額{" "}
+              <span className="num font-bold">{formatYenDisplay(outcome.applied ?? 0n)}</span> 円。
               {outcome.text}
             </p>
           ) : null}

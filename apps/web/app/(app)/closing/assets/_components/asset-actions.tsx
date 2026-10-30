@@ -5,7 +5,6 @@ import {
   allowedDepreciationMethods,
   checkDepreciationChoice,
   depreciationWarnings,
-  formatYen,
   isCalendarDate,
   parseYenInput,
   splitTaxInclusive,
@@ -22,7 +21,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { ReasonAction } from "../../_components/reason-action";
 import {
   disposeFixedAssetAction,
@@ -673,22 +672,24 @@ export function DisposeAssetSheet({
         >
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
             <dt className="text-muted">帳簿価額（円）</dt>
-            <dd className="num text-right">{formatYen(book)}</dd>
+            <dd className="num text-right">{formatYenDisplay(book)}</dd>
             {selling ? (
               <>
                 <dt className="text-muted">
                   売却額{saleAmount !== proceeds ? "（税抜）" : ""}（円）
                 </dt>
-                <dd className="num text-right">{formatYen(saleAmount)}</dd>
+                <dd className="num text-right">{formatYenDisplay(saleAmount)}</dd>
                 <dt className="text-muted">
                   {gain >= 0n ? "売却益（雑収入）" : "売却損（雑損失）"}（円）
                 </dt>
-                <dd className="num text-right font-bold">{formatYen(gain >= 0n ? gain : -gain)}</dd>
+                <dd className="num text-right font-bold">
+                  {formatYenDisplay(gain >= 0n ? gain : -gain)}
+                </dd>
               </>
             ) : (
               <>
                 <dt className="text-muted">除却損（雑損失）（円）</dt>
-                <dd className="num text-right font-bold">{formatYen(book)}</dd>
+                <dd className="num text-right font-bold">{formatYenDisplay(book)}</dd>
               </>
             )}
           </dl>

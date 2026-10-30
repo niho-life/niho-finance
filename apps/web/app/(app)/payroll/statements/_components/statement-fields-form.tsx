@@ -322,7 +322,7 @@ export function StatementFieldsForm({
           </FormField>
         </Group>
       ) : null}
-      <p className="text-[12px] text-muted-2">
+      <p className="text-[12px] text-muted">
         マイナンバーはここに入れません。統一 CSV を作る画面で、その 1 回の書き出しにだけ入れます。
       </p>
       <div>

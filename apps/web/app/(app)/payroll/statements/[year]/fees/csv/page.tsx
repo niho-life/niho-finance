@@ -1,5 +1,4 @@
 import { loadFeeReports } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import { FEE_CATEGORIES } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -7,6 +6,7 @@ import { buttonClass } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
+import { formatYenDisplay } from "@/lib/format";
 import { pathYear, readCategories, searchEntries } from "../../../_lib/params";
 
 export const metadata: Metadata = { title: "支払調書の CSV" };
@@ -72,7 +72,7 @@ export default async function FeeReportCsvPage({
                 {payee.items
                   .map(
                     (item) =>
-                      `${FEE_CATEGORIES[item.category].label} ${formatYen(item.paid)} 円・源泉 ${formatYen(item.withheld)} 円`,
+                      `${FEE_CATEGORIES[item.category].label} ${formatYenDisplay(item.paid)} 円・源泉 ${formatYenDisplay(item.withheld)} 円`,
                   )
                   .join("、")}
                 ）

@@ -5,7 +5,6 @@ import {
 } from "@niho-finance/db";
 import {
   displayDate,
-  formatYen,
   INVOICE_STATUS_LABELS,
   invoiceNumberLabel,
   recurringInvoiceDueDate,
@@ -18,7 +17,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { InvoiceHistory } from "../../_components/invoice-history";
 import { PauseButton } from "../_components/pause-button";
 
@@ -185,14 +184,14 @@ export default async function RecurringInvoiceDetailPage({
                     </span>
                     <span className="block text-[12px] text-muted md:hidden">
                       {line.unit ? `${line.quantity} ${line.unit}` : line.quantity} ×{" "}
-                      {formatYen(line.unitPrice)} 円
+                      {formatYenDisplay(line.unitPrice)} 円
                     </span>
                   </Td>
                   <Td sm="hide" align="right" className="num">
                     {line.unit ? `${line.quantity} ${line.unit}` : line.quantity}
                   </Td>
                   <Td sm="hide" align="right">
-                    {formatYen(line.unitPrice)}
+                    {formatYenDisplay(line.unitPrice)}
                   </Td>
                   <Td sm="hide" className="text-[13px]">
                     {detail.totals?.rates.find(
@@ -200,7 +199,7 @@ export default async function RecurringInvoiceDetailPage({
                     )?.label ?? "—"}
                   </Td>
                   <Td align="right" className="font-bold">
-                    {formatYen(line.amount)}
+                    {formatYenDisplay(line.amount)}
                   </Td>
                 </TableRow>
               ))}
@@ -218,12 +217,14 @@ export default async function RecurringInvoiceDetailPage({
                     {rate.taxable ? ` 対象${detail.pricesIncludeTax ? "（税込）" : ""}` : ""}
                   </span>
                   <span className="num">
-                    {formatYen(
+                    {formatYenDisplay(
                       detail.pricesIncludeTax ? rate.amountInclusive : rate.amountExclusive,
                     )}{" "}
                     円
                     {rate.taxable ? (
-                      <span className="ml-3 text-muted">消費税 {formatYen(rate.taxAmount)} 円</span>
+                      <span className="ml-3 text-muted">
+                        消費税 {formatYenDisplay(rate.taxAmount)} 円
+                      </span>
                     ) : null}
                   </span>
                 </div>
@@ -231,7 +232,7 @@ export default async function RecurringInvoiceDetailPage({
               <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2">
                 <span className="font-bold">合計</span>
                 <span className="num text-[20px] font-extrabold">
-                  {formatYen(detail.totals.total)} 円
+                  {formatYenDisplay(detail.totals.total)} 円
                 </span>
               </div>
             </div>
@@ -295,7 +296,7 @@ export default async function RecurringInvoiceDetailPage({
                   {formatDate(invoice.issueDate)}
                 </Td>
                 <Td sm="hide" align="right" className="font-bold">
-                  {formatYen(invoice.total)}
+                  {formatYenDisplay(invoice.total)}
                 </Td>
                 <Td className="text-[13px]">{INVOICE_STATUS_LABELS[invoice.status]}</Td>
               </TableRow>

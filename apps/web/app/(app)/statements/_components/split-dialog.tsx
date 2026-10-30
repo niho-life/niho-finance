@@ -1,11 +1,12 @@
 "use client";
 
-import { ACCOUNT_KIND_LABELS, formatYen, parseYenInput } from "@niho-finance/ledger";
+import { ACCOUNT_KIND_LABELS, parseYenInput } from "@niho-finance/ledger";
 import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { formLevelErrors, type ActionError, type ActionResult } from "@/lib/action-types";
+import { formatYenDisplay } from "@/lib/format";
 import { TaxCategoryOptions } from "../../entries/_components/form-kit";
 import type { SettledStatement } from "../actions";
 import { DialogAlert, Modal } from "./modal";
@@ -207,7 +208,7 @@ export function SplitDialog({
       <div role="table" aria-label="分割の行" className="flex flex-col gap-2">
         <div
           role="row"
-          className="hidden gap-2 text-[11px] font-bold text-muted-2 md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_112px_minmax(0,1fr)_minmax(0,1fr)_32px]"
+          className="hidden gap-2 text-[11px] font-bold text-muted md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_112px_minmax(0,1fr)_minmax(0,1fr)_32px]"
         >
           <span role="columnheader">科目</span>
           <span role="columnheader">税区分</span>
@@ -347,9 +348,9 @@ export function SplitDialog({
       </div>
       <dl className="num ml-auto grid w-full max-w-72 grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[14px]">
         <dt className="text-muted">合計</dt>
-        <dd className="text-right">{formatYen(total)}</dd>
+        <dd className="text-right">{formatYenDisplay(total)}</dd>
         <dt className="text-muted">明細の金額</dt>
-        <dd className="text-right">{formatYen(size)}</dd>
+        <dd className="text-right">{formatYenDisplay(size)}</dd>
         <dt className="font-bold">差額</dt>
         <dd className="text-right font-bold" aria-live="polite">
           {signedAmount(difference)}

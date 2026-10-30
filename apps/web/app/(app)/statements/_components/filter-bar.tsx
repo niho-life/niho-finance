@@ -34,9 +34,7 @@ export function FilterBar({
       active ? "border-text text-text" : "border-border text-muted hover:text-text",
     ].join(" ");
   const count = (value: number) => (
-    <span className="num text-[12px] font-normal text-muted-2">
-      {value.toLocaleString("ja-JP")}
-    </span>
+    <span className="num text-[12px] font-normal text-muted">{value.toLocaleString("ja-JP")}</span>
   );
 
   return (

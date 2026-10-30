@@ -24,7 +24,7 @@ export function DocumentHistory({ rows }: { rows: readonly DocumentHistoryEntry[
         <ul className="overflow-hidden rounded-card border border-border">
           <li
             aria-hidden="true"
-            className={`${GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted-2 md:grid`}
+            className={`${GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted md:grid`}
           >
             <span>日時</span>
             <span>操作</span>

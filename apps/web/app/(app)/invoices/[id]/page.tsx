@@ -17,7 +17,7 @@ import { buttonClass } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { invoicePdfFileNames } from "@/lib/pdf/invoice";
-import { entryNo, formatDate } from "@/lib/format";
+import { entryNo, formatDate, formatYenDisplay } from "@/lib/format";
 import { InvoiceChecklistView } from "../_components/invoice-checklist";
 import { InvoiceDocument } from "../_components/invoice-document";
 import { InvoiceHistory } from "../_components/invoice-history";
@@ -73,7 +73,7 @@ function receiptRow(receipt: {
     id: receipt.id,
     number: receipt.number,
     issueDate: receipt.issueDate,
-    amountText: formatYen(receipt.amount),
+    amountText: formatYenDisplay(receipt.amount),
     proviso: receipt.proviso,
     pdfDocumentId: receipt.pdfDocumentId,
     voidReason: receipt.voidReason,
@@ -270,7 +270,7 @@ export default async function InvoiceDetailPage({
     partnerName: detail.recipient.name,
     partnerEmail: detail.recipient.email,
     sentTo: detail.sentTo,
-    totalText: formatYen(detail.total),
+    totalText: formatYenDisplay(detail.total),
     issueDate: detail.issueDate,
     plannedNumber: detail.plannedNumber,
     qualified: detail.qualified,
@@ -308,6 +308,7 @@ export default async function InvoiceDetailPage({
         defaults: {
           proviso: receipts.defaults.proviso,
           receivedOn: receipts.defaults.receivedOn,
+          // The 見本 in the sheet repeats the PDF's 「¥ … -」, so the ASCII `-` stays (05-ui-ux §3.1).
           amountText: formatYen(receipts.defaults.amount),
           recipientName: receipts.defaults.recipientName,
           stampHelp: receipts.defaults.stampHelp,
@@ -338,7 +339,7 @@ export default async function InvoiceDetailPage({
               rel="noopener"
               className={buttonClass({ size: "sm", variant: "ghost" })}
             >
-              PDF
+              PDF を開く
             </a>
           </>
         }

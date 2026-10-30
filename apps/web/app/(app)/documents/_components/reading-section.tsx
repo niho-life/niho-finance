@@ -5,19 +5,14 @@ import {
   type ReadingProposal,
   type ReadingProposalField,
 } from "@niho-finance/db";
-import {
-  addDays,
-  formatYen,
-  getTaxCategory,
-  isValidInvoiceRegistrationNumber,
-} from "@niho-finance/ledger";
+import { addDays, getTaxCategory, isValidInvoiceRegistrationNumber } from "@niho-finance/ledger";
 import {
   isReadableMime,
   READER_ERROR_MESSAGES,
   type ReadingIssue,
   type ReadingIssueField,
 } from "@niho-finance/reader";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatDateTime, formatYenDisplay } from "@/lib/format";
 import type { ReaderStatus } from "@/lib/reader/config";
 import {
   ReadingProposalPanel,
@@ -95,8 +90,8 @@ function categoryName(rate: ProposalRate): string {
 function rateView(rate: ProposalRate): ReadingRateView {
   return {
     rate: `${rate.ratePercent}%`,
-    amount: formatYen(rate.inclusiveAmount),
-    tax: rate.taxAmount === null ? "—" : formatYen(rate.taxAmount),
+    amount: formatYenDisplay(rate.inclusiveAmount),
+    tax: formatAmountDisplay(rate.taxAmount),
     category: categoryName(rate),
   };
 }

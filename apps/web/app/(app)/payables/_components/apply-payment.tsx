@@ -1,12 +1,12 @@
 "use client";
 
-import { formatYen } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
+import { formatYenDisplay } from "@/lib/format";
 import { payableName, paymentOutcome } from "../_lib/view";
 import { payPayableAction } from "../actions";
 
@@ -84,13 +84,13 @@ export function ApplyPaymentButton({
       >
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[14px]">
           <dt className="text-muted">出金額</dt>
-          <dd className="num">{formatYen(amount)} 円</dd>
+          <dd className="num">{formatYenDisplay(amount)} 円</dd>
           <dt className="text-muted">残り</dt>
-          <dd className="num">{formatYen(remaining)} 円</dd>
+          <dd className="num">{formatYenDisplay(remaining)} 円</dd>
           {outcome.applied !== null ? (
             <>
               <dt className="text-muted">充当額</dt>
-              <dd className="num">{formatYen(outcome.applied)} 円</dd>
+              <dd className="num">{formatYenDisplay(outcome.applied)} 円</dd>
             </>
           ) : null}
         </dl>

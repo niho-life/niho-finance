@@ -1,7 +1,6 @@
 import type { PayablesFilter } from "@niho-finance/db";
 import {
   describePaymentTerms,
-  formatYen,
   PAYABLE_FEE_LIMIT,
   PAYABLE_STATE_LABELS,
   splitPayablePayment,
@@ -9,6 +8,7 @@ import {
   type PayableState,
   type PaymentTerms,
 } from "@niho-finance/ledger";
+import { formatYenDisplay } from "@/lib/format";
 
 /*
  * What the payables screens (25 §6, §7) say about a payable, shared by the server pages and the
@@ -93,10 +93,10 @@ export function paymentOutcome(amount: Money | null, remaining: Money): PaymentO
   if (split.problem) {
     return { applied: null, fee: 0n, remainingAfter: null, text: null, problem: split.problem };
   }
-  const after = `支払後の残りは ${formatYen(split.remainingAfter)} 円です`;
+  const after = `支払後の残りは ${formatYenDisplay(split.remainingAfter)} 円です`;
   const text =
     split.fee > 0n
-      ? `差額 ${formatYen(split.fee)} 円は振込手数料（支払手数料）にします。${after}`
+      ? `差額 ${formatYenDisplay(split.fee)} 円は振込手数料（支払手数料）にします。${after}`
       : split.remainingAfter > 0n
         ? `一部支払です。${after}`
         : `${after}（支払済み）`;
@@ -114,9 +114,11 @@ export function differenceText(amount: Money, remaining: Money): string {
   if (amount === remaining) return "一致";
   if (amount > remaining) {
     const fee = amount - remaining;
-    return fee <= PAYABLE_FEE_LIMIT ? `手数料 ${formatYen(fee)}` : `超過 ${formatYen(fee)}`;
+    return fee <= PAYABLE_FEE_LIMIT
+      ? `手数料 ${formatYenDisplay(fee)}`
+      : `超過 ${formatYenDisplay(fee)}`;
   }
-  return `一部 残り ${formatYen(remaining - amount)}`;
+  return `一部 残り ${formatYenDisplay(remaining - amount)}`;
 }
 
 /** The help of 支払期日 (25 §3): the partner's terms, or how to make them the default. */

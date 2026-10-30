@@ -9,7 +9,7 @@ import {
   type PayrollScheduleRow,
   type PrismaClient,
 } from "@niho-finance/db";
-import { displayDate, formatYen, getTaxCategory, type Money } from "@niho-finance/ledger";
+import { displayDate, getTaxCategory, type Money } from "@niho-finance/ledger";
 import {
   compareYearMonths,
   lossMonthOf,
@@ -22,10 +22,12 @@ import {
   type WorkerKind,
   type YearMonth,
 } from "@niho-finance/payroll";
+import { formatYenDisplay } from "@/lib/format";
 
 /*
- * What the payroll screens show, as text (amounts formatted with `formatYen`): bigint stays on the
- * server, client components get these views. Server-only (it reads the repository).
+ * What the payroll screens show, as text (amounts formatted with `formatYenDisplay`, a negative with
+ * 「−」, 05-ui-ux §3.1): bigint stays on the server, client components get these views. Server-only
+ * (it reads the repository).
  */
 
 export interface EntryLineView {
@@ -62,17 +64,17 @@ export function toEntryView(entry: PayrollEntryPreview): EntryView {
         side: line.side,
         account: `${line.accountCode} ${line.accountName}`,
         sub: line.subAccountName,
-        amount: formatYen(line.amount),
+        amount: formatYenDisplay(line.amount),
         tax:
           category === null
             ? null
             : line.taxAmount > 0n
-              ? `${category} · 税額 ${formatYen(line.taxAmount)}`
+              ? `${category} · 税額 ${formatYenDisplay(line.taxAmount)}`
               : category,
       };
     }),
-    debitTotal: formatYen(entry.debitTotal),
-    creditTotal: formatYen(entry.creditTotal),
+    debitTotal: formatYenDisplay(entry.debitTotal),
+    creditTotal: formatYenDisplay(entry.creditTotal),
   };
 }
 
@@ -127,14 +129,14 @@ export interface RunItemResultView {
   grossPay: string;
   /** 健保・厚年の本人分（調整後） */
   socialInsurance: string;
-  /** 「健保 12,345 · 厚年 23,456 · 調整 -100」 */
+  /** 「健保 12,345 · 厚年 23,456 · 調整 −100」 */
   socialInsuranceDetail: string;
   /** `null`: not insured. */
   employmentInsurance: string | null;
   withholdingBase: string;
   /** 源泉所得税（調整後） */
   incomeTax: string;
-  /** 「税額表 5,000 · 調整 -300」 when adjusted. */
+  /** 「税額表 5,000 · 調整 −300」 when adjusted. */
   incomeTaxDetail: string | null;
   residentTax: string;
   totalDeductions: string;
@@ -143,7 +145,7 @@ export interface RunItemResultView {
 }
 
 function adjustmentText(amount: Money): string {
-  return amount > 0n ? `+${formatYen(amount)}` : formatYen(amount);
+  return amount > 0n ? `+${formatYenDisplay(amount)}` : formatYenDisplay(amount);
 }
 
 export function toItemResultView(item: PayrollRunItem, notes: string[]): RunItemResultView {
@@ -156,30 +158,30 @@ export function toItemResultView(item: PayrollRunItem, notes: string[]): RunItem
     employeeId: item.employeeId,
     name: item.name,
     kind: item.kind,
-    grossPay: formatYen(result.grossPay),
-    socialInsurance: formatYen(result.socialInsuranceEmployeeTotal),
+    grossPay: formatYenDisplay(result.grossPay),
+    socialInsurance: formatYenDisplay(result.socialInsuranceEmployeeTotal),
     socialInsuranceDetail: [
-      `健保 ${formatYen(health)}`,
-      `厚年 ${formatYen(pension)}`,
+      `健保 ${formatYenDisplay(health)}`,
+      `厚年 ${formatYenDisplay(pension)}`,
       result.extraPremium
-        ? `${yearMonthLabel(result.extraPremium.premiumMonth)}分（退職月） ${formatYen(result.extraPremium.socialInsurance.employeeTotal)}`
+        ? `${yearMonthLabel(result.extraPremium.premiumMonth)}分（退職月） ${formatYenDisplay(result.extraPremium.socialInsurance.employeeTotal)}`
         : null,
       socialAdjustment !== 0n ? `調整 ${adjustmentText(socialAdjustment)}` : null,
     ]
       .filter(Boolean)
       .join(" · "),
     employmentInsurance: result.employmentInsurance
-      ? formatYen(result.employmentInsurance.employee)
+      ? formatYenDisplay(result.employmentInsurance.employee)
       : null,
-    withholdingBase: formatYen(result.withholdingBase),
-    incomeTax: formatYen(result.incomeTaxTotal),
+    withholdingBase: formatYenDisplay(result.withholdingBase),
+    incomeTax: formatYenDisplay(result.incomeTaxTotal),
     incomeTaxDetail:
       taxAdjustment !== 0n
-        ? `税額表 ${formatYen(result.incomeTax)} · 調整 ${adjustmentText(taxAdjustment)}`
+        ? `税額表 ${formatYenDisplay(result.incomeTax)} · 調整 ${adjustmentText(taxAdjustment)}`
         : null,
-    residentTax: formatYen(result.residentTax),
-    totalDeductions: formatYen(result.totalDeductions),
-    netPay: formatYen(result.netPay),
+    residentTax: formatYenDisplay(result.residentTax),
+    totalDeductions: formatYenDisplay(result.totalDeductions),
+    netPay: formatYenDisplay(result.netPay),
     coverageNotes: notes,
   };
 }
@@ -252,10 +254,10 @@ export async function loadRunPreview(
     tableTitles: tableTitles(preview.tables),
     totals: {
       headcount: preview.totals.headcount,
-      grossPay: formatYen(preview.totals.grossPay),
-      totalDeductions: formatYen(preview.totals.totalDeductions),
-      netPay: formatYen(preview.totals.netPay),
-      employerTotal: formatYen(preview.totals.employerTotal),
+      grossPay: formatYenDisplay(preview.totals.grossPay),
+      totalDeductions: formatYenDisplay(preview.totals.totalDeductions),
+      netPay: formatYenDisplay(preview.totals.netPay),
+      employerTotal: formatYenDisplay(preview.totals.employerTotal),
     },
     entries: {
       pay: toEntryView(preview.entries.pay),
@@ -266,8 +268,9 @@ export async function loadRunPreview(
       categoryLabel: row.categoryLabel,
       title: row.title,
       dueDate: displayDate(row.dueDate),
-      amount: formatYen(row.amount),
-      scheduledTotal: row.scheduledTotal !== row.amount ? formatYen(row.scheduledTotal) : null,
+      amount: formatYenDisplay(row.amount),
+      scheduledTotal:
+        row.scheduledTotal !== row.amount ? formatYenDisplay(row.scheduledTotal) : null,
     })),
     tableIds: preview.tableIds,
     expected: {
@@ -310,9 +313,11 @@ function withholdingNote(row: PayrollScheduleRow): string | null {
   if (row.category !== "withholding") return null;
   const notes: string[] = [];
   if (row.refundCarried > 0n) {
-    notes.push(`納付なし。過納 ${formatYen(row.refundCarried)} 円は翌月以降の源泉所得税から充当`);
+    notes.push(
+      `納付なし。過納 ${formatYenDisplay(row.refundCarried)} 円は翌月以降の源泉所得税から充当`,
+    );
   } else if (row.refundApplied > 0n) {
-    notes.push(`前の納付の過納 ${formatYen(row.refundApplied)} 円を充当`);
+    notes.push(`前の納付の過納 ${formatYenDisplay(row.refundApplied)} 円を充当`);
   }
   if (row.yearEndMonths.length > 0) notes.push("年末調整の精算を含む");
   return notes.length > 0 ? notes.join(" · ") : null;
@@ -330,10 +335,10 @@ export function toScheduleRowView(
     target: scheduleTarget(row.title),
     dueDate: displayDate(row.dueDate),
     dueDateValue: row.dueDate,
-    amount: formatYen(row.amount),
+    amount: formatYenDisplay(row.amount),
     breakdown:
       row.category === "social_insurance"
-        ? `本人分 ${formatYen(row.withheld)} · 会社分 ${formatYen(row.employer)}`
+        ? `本人分 ${formatYenDisplay(row.withheld)} · 会社分 ${formatYenDisplay(row.employer)}`
         : withholdingNote(row),
     completed: row.completedAt !== null,
     completedAt: row.completedAt ? formatTime(row.completedAt) : null,
@@ -356,8 +361,8 @@ export async function loadPaymentPreview(
 ): Promise<PaymentPreviewView> {
   const preview = await previewPayrollPayment(db, input);
   return {
-    scheduled: formatYen(preview.item.amount),
-    paid: formatYen(preview.paid),
+    scheduled: formatYenDisplay(preview.item.amount),
+    paid: formatYenDisplay(preview.paid),
     difference: preview.difference !== 0n ? adjustmentText(preview.difference) : null,
     entry: toEntryView(preview.entry),
   };

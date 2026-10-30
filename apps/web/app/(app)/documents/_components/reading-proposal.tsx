@@ -128,7 +128,7 @@ function RateLines({ rates }: { rates: readonly ReadingRateView[] }) {
       <div role="table" aria-label="税率別の内訳">
         <div
           role="row"
-          className="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-border pb-1 text-[11px] font-bold text-muted-2"
+          className="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-border pb-1 text-[11px] font-bold text-muted"
         >
           <span role="columnheader">税率</span>
           <span role="columnheader" className="text-right">

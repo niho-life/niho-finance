@@ -1,12 +1,13 @@
 "use client";
 
-import { displayDate, formatYen, type CalendarDate } from "@niho-finance/ledger";
+import { displayDate, type CalendarDate } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { formatYenDisplay } from "@/lib/format";
 import { createRecurringInvoiceDraftAction, createRecurringInvoiceDraftsAction } from "../actions";
 
 /** A due date without a draft (amounts as decimal text). */
@@ -133,7 +134,7 @@ export function DueList({ rows }: { rows: readonly DueRowModel[] }) {
                 <span className="block text-[12px] md:hidden">
                   <span className="text-muted">{row.partnerName}</span>
                   <span className="num ml-2 font-bold">
-                    {row.total === null ? "—" : `${formatYen(BigInt(row.total))} 円`}
+                    {row.total === null ? "—" : `${formatYenDisplay(BigInt(row.total))} 円`}
                   </span>
                 </span>
                 {reason ? (
@@ -146,7 +147,7 @@ export function DueList({ rows }: { rows: readonly DueRowModel[] }) {
                 {row.partnerName}
               </Td>
               <Td sm="hide" align="right" className="font-bold">
-                {row.total === null ? "—" : formatYen(BigInt(row.total))}
+                {row.total === null ? "—" : formatYenDisplay(BigInt(row.total))}
               </Td>
               <Td align="right">
                 <Button variant="primary" size="sm" onClick={() => makeOne(row)} disabled={pending}>
@@ -170,7 +171,7 @@ export function DueList({ rows }: { rows: readonly DueRowModel[] }) {
         onConfirm={makeAll}
       >
         <p>
-          合計 <span className="num font-bold">{formatYen(sum)}</span> 円（税込）
+          合計 <span className="num font-bold">{formatYenDisplay(sum)}</span> 円（税込）
           {known.length < rows.length ? "。税率の規則がなく金額を出せない行を除きます" : ""}
           。発行はしません。作った下書きは請求の一覧で確かめて発行します
         </p>

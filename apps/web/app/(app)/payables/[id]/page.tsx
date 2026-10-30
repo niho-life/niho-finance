@@ -6,7 +6,7 @@ import {
   todayInJapan,
   type PayableDetail,
 } from "@niho-finance/db";
-import { describePaymentTerms, formatYen, PAYABLE_STATE_LABELS } from "@niho-finance/ledger";
+import { describePaymentTerms, PAYABLE_STATE_LABELS } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,7 +15,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo, formatDate, walletLabel } from "@/lib/format";
+import { entryNo, formatDate, formatYenDisplay, walletLabel } from "@/lib/format";
 import { PayableHistory } from "../_components/payable-history";
 import { CancelPayableButton, ChangeScheduleButton } from "../_components/payable-operations";
 import {
@@ -85,7 +85,8 @@ function Bands({ detail }: { detail: PayableDetail }) {
   if (detail.state === "partial") {
     bands.push(
       <Band key="partial">
-        一部支払（支払済み {formatYen(detail.paid)} 円 / 残り {formatYen(detail.remaining)} 円）
+        一部支払（支払済み {formatYenDisplay(detail.paid)} 円 / 残り{" "}
+        {formatYenDisplay(detail.remaining)} 円）
       </Band>,
     );
   }
@@ -143,11 +144,11 @@ function Facts({ detail }: { detail: PayableDetail }) {
         <span className="num">{detail.dueDate ? formatDate(detail.dueDate) : "期日なし"}</span>
       </Fact>
       <Fact label="金額（計上額）">
-        <span className="num">{formatYen(detail.amount)} 円</span>
+        <span className="num">{formatYenDisplay(detail.amount)} 円</span>
       </Fact>
       <Fact label="残り">
         <span className="num text-[20px] font-extrabold">
-          {formatYen(detail.remaining > 0n ? detail.remaining : 0n)}
+          {formatYenDisplay(detail.remaining > 0n ? detail.remaining : 0n)}
         </span>{" "}
         円
       </Fact>
@@ -185,7 +186,7 @@ function Facts({ detail }: { detail: PayableDetail }) {
           href={`/documents/${detail.document.id}`}
           className="text-[13px] text-muted underline underline-offset-4"
         >
-          証憑の詳細
+          証憑の詳細を開く
         </Link>
       </Fact>
     </dl>
@@ -234,19 +235,19 @@ function Payments({ detail }: { detail: PayableDetail }) {
                 ) : null}
               </Td>
               <Td sm="hide" align="right">
-                {formatYen(payment.amount)}
+                {formatYenDisplay(payment.amount)}
               </Td>
               <span role="cell" className="min-w-0 text-[12px] md:hidden">
                 <EntryLink entry={{ id: payment.entryId, no: payment.no }} />
                 {payment.fee > 0n ? (
-                  <span className="ml-2 text-muted">手数料 {formatYen(payment.fee)}</span>
+                  <span className="ml-2 text-muted">手数料 {formatYenDisplay(payment.fee)}</span>
                 ) : null}
               </span>
               <Td align="right" className="font-bold">
-                {formatYen(payment.applied)}
+                {formatYenDisplay(payment.applied)}
               </Td>
               <Td sm="hide" align="right">
-                {payment.fee === 0n ? "—" : formatYen(payment.fee)}
+                {payment.fee === 0n ? "—" : formatYenDisplay(payment.fee)}
               </Td>
               <Td sm="hide" className="text-[13px]">
                 <EntryLink entry={{ id: payment.entryId, no: payment.no }} />
@@ -258,7 +259,7 @@ function Payments({ detail }: { detail: PayableDetail }) {
                     entryId={payment.entryId}
                     entryNoValue={payment.no}
                     fromStatement={payment.walletTransactionId !== null}
-                    remainingAfter={formatYen(
+                    remainingAfter={formatYenDisplay(
                       (detail.remaining > 0n ? detail.remaining : 0n) + payment.applied,
                     )}
                   />
@@ -319,7 +320,7 @@ export default async function PayableDetailPage({
   const meta = [
     detail.overdue ? `期限超過（${detail.overdueDays} 日）` : PAYABLE_STATE_LABELS[detail.state],
     detail.dueDate ? `期日 ${formatDate(detail.dueDate)}` : "期日なし",
-    `残り ${formatYen(detail.remaining > 0n ? detail.remaining : 0n)} 円`,
+    `残り ${formatYenDisplay(detail.remaining > 0n ? detail.remaining : 0n)} 円`,
   ].join(" · ");
 
   return (

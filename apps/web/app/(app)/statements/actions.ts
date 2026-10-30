@@ -18,7 +18,6 @@ import {
 import {
   DOCUMENT_KIND_LABELS,
   DOCUMENT_STATUS_LABELS,
-  formatYen,
   type CalendarDate,
   type DocumentKind,
   type DocumentStatus,
@@ -30,7 +29,7 @@ import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { authorizeAction } from "@/lib/authz";
-import { formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 
 /*
  * Server Actions of /statements (15 §5, §7). The repository validates every input with its Zod
@@ -215,7 +214,7 @@ function documentItem(document: {
     title: document.originalName ?? DOCUMENT_KIND_LABELS[document.kind],
     kind: DOCUMENT_KIND_LABELS[document.kind],
     date: document.txnDate ? formatDate(document.txnDate) : null,
-    amount: document.amount === null ? null : formatYen(document.amount),
+    amount: document.amount === null ? null : formatAmountDisplay(document.amount),
     partner: document.partnerName,
     status:
       voided && document.voidReason

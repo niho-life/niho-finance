@@ -5,7 +5,7 @@ import {
   type PayrollBonusRunInput,
   type PrismaClient,
 } from "@niho-finance/db";
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import {
   BONUS_WITHHOLDING_METHOD_LABELS,
   type PayrollBonusItem,
@@ -13,6 +13,7 @@ import {
   type WorkerKind,
   type YearMonth,
 } from "@niho-finance/payroll";
+import { formatAmountDisplay, formatYenDisplay } from "@/lib/format";
 import {
   coverageNotes,
   toEntryView,
@@ -60,7 +61,7 @@ export function toBonusItemView(item: PayrollBonusItem, notes: string[]): BonusI
   const capped =
     (item.input.coverage.health && standardBonus.health !== standardBonus.amount) ||
     (item.input.coverage.pension && standardBonus.pension !== standardBonus.amount);
-  const yen = (amount: bigint | null) => (amount === null ? "—" : formatYen(amount));
+  const yen = formatAmountDisplay;
   let methodDetail: string;
   switch (withholding.method) {
     case "rate":
@@ -77,30 +78,30 @@ export function toBonusItemView(item: PayrollBonusItem, notes: string[]): BonusI
     employeeId: item.employeeId,
     name: item.name,
     kind: item.kind,
-    bonus: formatYen(result.bonus),
-    standardBonus: formatYen(standardBonus.amount),
+    bonus: formatYenDisplay(result.bonus),
+    standardBonus: formatYenDisplay(standardBonus.amount),
     standardBonusDetail: capped
       ? [
-          item.input.coverage.health ? `健保 ${formatYen(standardBonus.health)}` : null,
-          item.input.coverage.pension ? `厚年 ${formatYen(standardBonus.pension)}` : null,
+          item.input.coverage.health ? `健保 ${formatYenDisplay(standardBonus.health)}` : null,
+          item.input.coverage.pension ? `厚年 ${formatYenDisplay(standardBonus.pension)}` : null,
         ]
           .filter(Boolean)
           .join(" · ")
       : null,
-    socialInsurance: formatYen(result.socialInsurance.employeeTotal),
-    socialInsuranceDetail: `健保 ${formatYen(result.socialInsurance.health.employee)} · 厚年 ${formatYen(result.socialInsurance.pension.employee)}`,
+    socialInsurance: formatYenDisplay(result.socialInsurance.employeeTotal),
+    socialInsuranceDetail: `健保 ${formatYenDisplay(result.socialInsurance.health.employee)} · 厚年 ${formatYenDisplay(result.socialInsurance.pension.employee)}`,
     employmentInsurance: result.employmentInsurance
-      ? formatYen(result.employmentInsurance.employee)
+      ? formatYenDisplay(result.employmentInsurance.employee)
       : null,
-    withholdingBase: formatYen(result.withholdingBase),
+    withholdingBase: formatYenDisplay(result.withholdingBase),
     method:
       withholding.method === "rate"
         ? `${BONUS_WITHHOLDING_METHOD_LABELS.rate} ${withholding.ratePercent ?? ""}%`
         : BONUS_WITHHOLDING_METHOD_LABELS[withholding.method],
     methodDetail,
-    incomeTax: formatYen(result.incomeTax),
-    totalDeductions: formatYen(result.totalDeductions),
-    netPay: formatYen(result.netPay),
+    incomeTax: formatYenDisplay(result.incomeTax),
+    totalDeductions: formatYenDisplay(result.totalDeductions),
+    netPay: formatYenDisplay(result.netPay),
     coverageNotes: notes,
   };
 }
@@ -158,10 +159,10 @@ export async function loadBonusPreview(
     tableTitles: bonusTableTitles(preview.tables),
     totals: {
       headcount: preview.totals.headcount,
-      grossPay: formatYen(preview.totals.grossPay),
-      totalDeductions: formatYen(preview.totals.totalDeductions),
-      netPay: formatYen(preview.totals.netPay),
-      employerTotal: formatYen(preview.totals.employerTotal),
+      grossPay: formatYenDisplay(preview.totals.grossPay),
+      totalDeductions: formatYenDisplay(preview.totals.totalDeductions),
+      netPay: formatYenDisplay(preview.totals.netPay),
+      employerTotal: formatYenDisplay(preview.totals.employerTotal),
     },
     entries: {
       pay: toEntryView(preview.entries.pay),
@@ -172,8 +173,9 @@ export async function loadBonusPreview(
       categoryLabel: row.categoryLabel,
       title: row.title,
       dueDate: displayDate(row.dueDate),
-      amount: formatYen(row.amount),
-      scheduledTotal: row.scheduledTotal !== row.amount ? formatYen(row.scheduledTotal) : null,
+      amount: formatYenDisplay(row.amount),
+      scheduledTotal:
+        row.scheduledTotal !== row.amount ? formatYenDisplay(row.scheduledTotal) : null,
     })),
     filing: preview.filing
       ? { title: preview.filing.title, dueDate: displayDate(preview.filing.dueDate) }

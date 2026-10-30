@@ -33,7 +33,10 @@ const BONUS_COLUMNS: WithholdingLedgerColumn[] = [
   { key: "withheld", label: "徴収税額", align: "right", width: 64 },
 ];
 
-/** 源泉徴収簿 (22-payroll §11.4) as text: the same tables on the printable page and in the PDF. */
+/**
+ * 源泉徴収簿 (22-payroll §11.4) as text: the same tables on the printable page and in the PDF, so
+ * amounts keep `formatYen` (the ASCII `-`, 05-ui-ux §3.1).
+ */
 export function withholdingLedgerData(ledger: WithholdingLedger): WithholdingLedgerData {
   const { totals } = ledger;
   const yearEnd = ledger.yearEnd;

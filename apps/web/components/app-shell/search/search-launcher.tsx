@@ -101,7 +101,7 @@ export function SearchLauncher() {
         <span className="sr-only lg:not-sr-only lg:flex-1">検索</span>
         <kbd
           aria-hidden="true"
-          className="hidden rounded border border-border px-1.5 font-sans text-[11px] leading-[18px] text-muted-2 lg:inline"
+          className="hidden rounded border border-border px-1.5 font-sans text-[11px] leading-[18px] text-muted lg:inline"
         >
           /
         </kbd>

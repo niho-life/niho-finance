@@ -3,7 +3,6 @@ import {
   listFixedAssets,
   type FixedAssetListRow,
 } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 import { methodLabel } from "./_components/asset-kit";
 
 export const metadata: Metadata = { title: "固定資産台帳" };
@@ -46,13 +45,13 @@ function AssetRow({ row }: { row: FixedAssetListRow }) {
         {formatDate(row.acquisitionDate)}
       </Td>
       <Td sm="hide" align="right">
-        {formatYen(row.cost)}
+        {formatYenDisplay(row.cost)}
       </Td>
       <Td sm="hide" className="text-[13px]">
         {methodText(row)}
       </Td>
       <Td align="right" className="font-bold">
-        {formatAmount(row.bookValue)}
+        {formatAmountDisplay(row.bookValue)}
       </Td>
       <Td sm="hide" className="text-[12px] text-muted">
         {status}
@@ -78,7 +77,7 @@ export default async function FixedAssetsPage({ searchParams }: PageProps<"/clos
   // 償却資産申告 (§14.4): a January task, entered from the ledger rather than the checklist.
   const returnLink = (
     <ButtonLink href="/closing/assets/return" variant="secondary" size="sm">
-      償却資産申告
+      償却資産申告を開く
     </ButtonLink>
   );
   const bookValueHeader = list.fiscalYear

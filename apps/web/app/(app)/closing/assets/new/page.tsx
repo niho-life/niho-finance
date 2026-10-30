@@ -1,10 +1,10 @@
 import { listAcquisitionCandidates, loadEntryFormOptions, todayInJapan } from "@niho-finance/db";
-import { displayDate, formatYen, formatYenInput } from "@niho-finance/ledger";
+import { displayDate, formatYenInput } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import {
   FixedAssetForm,
   type AssetSource,
@@ -71,10 +71,10 @@ export default async function NewFixedAssetPage({
       entryNo(row.entryNo),
       row.description,
       row.accountName,
-      `${formatYen(row.remaining)}円`,
+      `${formatYenDisplay(row.remaining)}円`,
     ].join(" · "),
     remainingInput: formatYenInput(row.remaining),
-    remainingText: formatYen(row.remaining),
+    remainingText: formatYenDisplay(row.remaining),
   }));
 
   return (

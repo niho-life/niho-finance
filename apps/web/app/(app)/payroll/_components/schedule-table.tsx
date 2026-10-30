@@ -215,7 +215,7 @@ function PaymentSheet({
               <EntryPreview entry={view.entry} />
             </>
           ) : (
-            <p className="text-[13px] text-muted-2">
+            <p className="text-[13px] text-muted">
               {shownError ? "入力を直すと、登録する仕訳を出します" : "計算中…"}
             </p>
           )}
@@ -242,7 +242,7 @@ function StateCell({ row, today }: { row: ScheduleRowView; today: string }) {
           </>
         ) : null}
         {row.completedAt ? (
-          <span className="ml-1 text-[12px] text-muted-2">{row.completedAt}</span>
+          <span className="ml-1 text-[12px] text-muted">{row.completedAt}</span>
         ) : null}
       </span>
     );
@@ -349,9 +349,7 @@ export function ScheduleTable({
               <Td align="right" className="font-bold">
                 {row.amount}
                 {row.breakdown ? (
-                  <span className="block text-[11px] font-normal text-muted-2">
-                    {row.breakdown}
-                  </span>
+                  <span className="block text-[11px] font-normal text-muted">{row.breakdown}</span>
                 ) : null}
               </Td>
               <Td sm="full">

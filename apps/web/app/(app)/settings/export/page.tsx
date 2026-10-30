@@ -199,6 +199,11 @@ export default async function ExportSettingsPage({ searchParams }: PageProps<"/s
               <EmptyState
                 title="書き出しの記録はまだありません"
                 description="報告の「CSV」「PDF」やこのページの「書き出す」で書き出すと、ここに残ります。"
+                action={
+                  <ButtonLink href="/reports" size="sm">
+                    報告を開く
+                  </ButtonLink>
+                }
               />
             ) : (
               <Table label="最近の書き出し">

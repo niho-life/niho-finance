@@ -114,7 +114,7 @@ function Result({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <dt className="text-[11px] font-bold text-muted-2">{label}</dt>
+      <dt className="text-[11px] font-bold text-muted">{label}</dt>
       <dd className={`num text-[14px] ${strong ? "text-[16px] font-extrabold" : "font-bold"}`}>
         {value ?? "—"}
         {detail ? <span className="block text-[11px] font-normal text-muted">{detail}</span> : null}
@@ -375,7 +375,7 @@ export function RunForm({
                 {fieldError("withholdingSpecialDue") ?? fieldError("residentTaxSpecialDue")}
               </p>
             ) : null}
-            <p className="text-[12px] text-muted-2">納付の期限が半年ごとにまとまります</p>
+            <p className="text-[12px] text-muted">納付の期限が半年ごとにまとまります</p>
           </fieldset>
         </div>
       </Section>
@@ -530,7 +530,7 @@ export function RunForm({
                         })}
                       />
                     </FormField>
-                    <p className="text-[12px] text-muted-2 sm:col-span-3">
+                    <p className="text-[12px] text-muted sm:col-span-3">
                       前の支給の誤りを直す額です。マイナスで控除を減らします。調整したときは、何を直したかをメモに書きます。
                     </p>
                   </div>
