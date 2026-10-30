@@ -9,11 +9,12 @@ import {
   type TaxDirection,
 } from "@niho-finance/ledger";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { Checkbox, FormField, Input } from "@/components/ui/form";
 
 /*
  * Pieces shared by the transaction forms (11 §4): the date with the state of its fiscal year, the
- * tags, the grouped tax categories and the messages above the form.
+ * tags, the grouped tax categories, the recent choices and the messages above the form.
  */
 
 export function fiscalYearOn(
@@ -46,6 +47,7 @@ export function DateField({
   fiscalYears,
   error,
   help,
+  periodHint = true,
 }: {
   id: string;
   value: string;
@@ -53,8 +55,14 @@ export function DateField({
   fiscalYears: readonly EntryFormFiscalYear[];
   error?: string | undefined;
   help?: ReactNode;
+  /**
+   * Whether to tell the problem of the date's fiscal year before sending. The new-entry forms only
+   * tell it once the date is changed: they open on a date that can take the entry, or else the
+   * server says why when the entry is sent (11 §4).
+   */
+  periodHint?: boolean;
 }) {
-  const problem = error ? null : dateProblem(value, fiscalYears);
+  const problem = error || !periodHint ? null : dateProblem(value, fiscalYears);
   return (
     <FormField label="日付" htmlFor={id} required error={error} help={problem ?? help}>
       <Input
@@ -142,6 +150,78 @@ export function TaxCategoryOptions({
 
 export function accountLabel(account: { code: string; name: string; isActive: boolean }): string {
   return `${account.code} ${account.name}${account.isActive ? "" : "（無効）"}`;
+}
+
+export function partnerLabel(partner: { name: string; isActive: boolean }): string {
+  return partner.isActive ? partner.name : `${partner.name}（無効）`;
+}
+
+export interface Choice {
+  value: string;
+  label: string;
+}
+
+/**
+ * The options of a select with its recent choices (11 §4): 「最近」 (those still offered, most recent
+ * first) above 「すべて」, or the plain list when nothing was used yet.
+ */
+export function ChoiceOptions({
+  choices,
+  recent = [],
+}: {
+  choices: readonly Choice[];
+  recent?: readonly string[];
+}) {
+  const byValue = new Map(choices.map((choice) => [choice.value, choice]));
+  const recentChoices = recent.flatMap((value) => {
+    const choice = byValue.get(value);
+    return choice ? [choice] : [];
+  });
+  const options = (list: readonly Choice[]) =>
+    list.map((choice) => (
+      <option key={choice.value} value={choice.value}>
+        {choice.label}
+      </option>
+    ));
+  if (recentChoices.length === 0) return <>{options(choices)}</>;
+  return (
+    <>
+      <optgroup label="最近">{options(recentChoices)}</optgroup>
+      <optgroup label="すべて">{options(choices)}</optgroup>
+    </>
+  );
+}
+
+/**
+ * 「登録して開く」 and 「続けて登録」 of a new entry (11 §4.5). Both register. 続けて登録 is the
+ * form's submit, marked for `entryFormKeyDown` (Cmd+Enter, Enter in the last field), and stays on
+ * the form; 登録して開く opens the entry.
+ */
+export function EntryFormActions({
+  pending,
+  disabled = false,
+  divider = true,
+  onOpen,
+}: {
+  pending: boolean;
+  /** Both buttons off (a 伝票 whose totals differ). */
+  disabled?: boolean;
+  divider?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      className={`flex flex-wrap justify-end gap-2 ${divider ? "border-t border-border pt-4" : ""}`}
+    >
+      <Button onClick={onOpen} disabled={pending || disabled}>
+        登録して開く
+      </Button>
+      {/* `data-entry-continue`: CONTINUE_ATTRIBUTE of entry-keys.ts. */}
+      <Button type="submit" variant="primary" disabled={pending || disabled} data-entry-continue="">
+        {pending ? "登録中…" : "続けて登録"}
+      </Button>
+    </div>
+  );
 }
 
 /** The messages above the form (problems without a field of their own). */

@@ -1,6 +1,7 @@
 import {
   getDocumentDetail,
   listRecurringEntryTemplates,
+  loadEntryCandidates,
   loadEntryFormOptions,
   todayInJapan,
   VOUCHER_KINDS,
@@ -107,14 +108,20 @@ export default async function NewEntryPage({ searchParams }: PageProps<"/entries
   // A template opens the form of its type (収入 / 支出 / 振替); the registration is a manual entry.
   const entryType = template ? template.type : isEntryType(type) ? type : "expense";
   const options = await loadEntryFormOptions(prisma);
+  const candidates = await loadEntryCandidates(prisma);
   const today = todayInJapan();
-  const transferInitial = template?.type === "transfer" ? transferInitialOf(template) : undefined;
+  const entryDate = queryText(date, 10);
+  // `?date=` (from a document or a 予定日) comes first; the forms default to `defaultEntryDate`.
+  const dateParam = entryDate && isCalendarDate(entryDate) ? entryDate : undefined;
+  const transferInitial: TransferInitial = {
+    ...(template?.type === "transfer" ? transferInitialOf(template) : {}),
+    ...(dateParam ? { entryDate: dateParam } : {}),
+  };
   // 「この証憑から取引を登録」 (13 §4): the document's items start the 収入 / 支出 form, and the
   // document is linked once the entry is registered. Malformed values are left out.
   const initial: SimpleEntryInitial =
     template && template.type !== "transfer" ? simpleInitialOf(template) : {};
-  const entryDate = queryText(date, 10);
-  if (entryDate && isCalendarDate(entryDate)) initial.entryDate = entryDate;
+  if (dateParam) initial.entryDate = dateParam;
   const yen = parseYenInput(queryText(amount, 32) ?? "");
   if (yen !== null && yen >= 1n) initial.amount = formatYenInput(yen);
   const partnerId = queryText(partner, 64);
@@ -140,13 +147,21 @@ export default async function NewEntryPage({ searchParams }: PageProps<"/entries
         }
       />
       {entryType === "voucher" ? (
-        <VoucherForm options={options} today={today} kinds={VOUCHER_KINDS} mode={{ kind: "new" }} />
+        <VoucherForm
+          key={dateParam ?? "voucher"}
+          options={options}
+          candidates={candidates}
+          today={today}
+          {...(dateParam ? { entryDate: dateParam } : {})}
+          kinds={VOUCHER_KINDS}
+          mode={{ kind: "new" }}
+        />
       ) : entryType === "transfer" ? (
         <TransferForm
-          key={template?.recurringItemId ?? "transfer"}
+          key={[template?.recurringItemId ?? "transfer", dateParam].join("|")}
           options={options}
           today={today}
-          {...(transferInitial ? { initial: transferInitial } : {})}
+          initial={transferInitial}
         />
       ) : (
         <SimpleEntryForm
@@ -160,6 +175,7 @@ export default async function NewEntryPage({ searchParams }: PageProps<"/entries
           ].join("|")}
           type={entryType}
           options={options}
+          candidates={candidates}
           today={today}
           initial={initial}
           linkDocument={linkDocument}
