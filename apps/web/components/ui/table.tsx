@@ -140,7 +140,7 @@ export function Td({
       data-sm={sm}
       className={`min-w-0 ${align === "right" ? "num text-right" : ""} ${className}`}
     >
-      {label ? <span className="mr-1 text-[11px] text-muted-2 md:hidden">{label}</span> : null}
+      {label ? <span className="mr-2 text-[11px] text-muted md:hidden">{label}</span> : null}
       {children}
     </span>
   );

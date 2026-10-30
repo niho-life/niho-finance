@@ -31,7 +31,7 @@ export function SetupProgressBar({
               <span className={`block h-1.5 rounded-full ${bar}`} aria-hidden="true" />
               <span
                 className={`mt-1.5 hidden text-[12px] md:block ${
-                  isCurrent ? "font-extrabold text-text" : done ? "text-muted" : "text-muted-2"
+                  isCurrent ? "font-extrabold text-text" : done ? "text-text" : "text-muted"
                 }`}
               >
                 {item.step === "complete" ? item.label : `${position + 1} ${item.label}`}

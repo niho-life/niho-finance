@@ -17,7 +17,6 @@ import {
   ACCOUNTING_METHOD_LABELS,
   CHART_TEMPLATE,
   CONSUMPTION_TAX_METHOD_LABELS,
-  formatYen,
   STANDARD_SEGMENTS,
   STANDARD_TAX_RATE_RULES,
   TAX_CATEGORIES,
@@ -35,7 +34,7 @@ import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { attempt } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { db, loadSetupProgress } from "@/lib/data";
-import { formatPeriod } from "@/lib/format";
+import { formatPeriod, formatYenDisplay } from "@/lib/format";
 import { toCompanyFormValues } from "@/lib/form-values";
 import { toOpeningPreviewView, type OpeningPreviewView } from "@/lib/opening-view";
 import { ChartPreview } from "./_components/chart-preview";
@@ -366,7 +365,9 @@ async function DoneStep({ prisma }: { prisma: PrismaClient }) {
         {tiles.map((tile) => (
           <div key={tile.label} className="rounded-[10px] border border-border px-3.5 py-3">
             <dt className="text-[12px] text-muted">{tile.label}</dt>
-            <dd className="num mt-0.5 text-[20px] font-extrabold">{formatYen(tile.value)}</dd>
+            <dd className="num mt-0.5 text-[20px] font-extrabold">
+              {formatYenDisplay(tile.value)}
+            </dd>
           </div>
         ))}
       </dl>
@@ -394,7 +395,7 @@ async function DoneStep({ prisma }: { prisma: PrismaClient }) {
                   {ACCOUNT_KIND_LABELS[row.kind]}
                 </Td>
                 <Td align="right" className="font-bold">
-                  {formatYen(row.balance)}
+                  {formatYenDisplay(row.balance)}
                 </Td>
               </TableRow>
             ))}

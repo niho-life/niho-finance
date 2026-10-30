@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { RecurringTable, type RecurringRow } from "./recurring-table";
 
 export const metadata: Metadata = { title: "定期取引" };
@@ -67,7 +67,7 @@ export default async function RecurringPage() {
       id: entry.id,
       no: entry.no,
       entryDate: entry.entryDate,
-      amount: formatAmount(entry.amount),
+      amount: formatAmountDisplay(entry.amount),
       voided: entry.voided,
       replacedByNo: entry.replacedByNo,
     })),
@@ -97,7 +97,7 @@ export default async function RecurringPage() {
         </p>
       ) : null}
       <p className="num mb-2 text-[12px] text-muted">
-        毎月 入金 {formatAmount(deposits)} 円 · 出金 {formatAmount(withdrawals)} 円
+        毎月 入金 {formatAmountDisplay(deposits)} 円 · 出金 {formatAmountDisplay(withdrawals)} 円
       </p>
       <RecurringTable
         items={rows}

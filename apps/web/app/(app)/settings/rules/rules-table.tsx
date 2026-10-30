@@ -62,7 +62,7 @@ export function RulesTable({ rules, options }: { rules: ClientRule[]; options: R
               <Td className="font-bold">
                 <span className="break-words">{rule.displayName}</span>
                 {rule.isActive ? null : (
-                  <span className="ml-2 text-[11px] font-normal text-muted-2">無効</span>
+                  <span className="ml-2 text-[11px] font-normal text-muted">無効</span>
                 )}
                 {rule.valid ? null : (
                   <span className="block text-[12px] font-bold text-danger">

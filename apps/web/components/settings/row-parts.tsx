@@ -18,7 +18,7 @@ export function ActiveToggleButton({
   lockedReason?: string;
 }) {
   if (lockedReason) {
-    return <span className="px-2 text-[12px] text-muted-2">{lockedReason}</span>;
+    return <span className="px-2 text-[12px] text-muted">{lockedReason}</span>;
   }
   return (
     <Button size="sm" variant="ghost" onClick={onToggle} disabled={disabled}>

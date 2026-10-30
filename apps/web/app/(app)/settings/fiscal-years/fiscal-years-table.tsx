@@ -235,7 +235,7 @@ function CloseCell({
   if (year.status === "closed") {
     return (
       <Td sm="full" className="text-muted">
-        <span className="mr-1 text-[11px] text-muted-2 md:hidden">締め</span>
+        <span className="mr-1 text-[11px] text-muted md:hidden">締め</span>
         決算済み
       </Td>
     );
@@ -244,7 +244,7 @@ function CloseCell({
     <Td sm="full">
       <span className="flex items-center gap-2">
         <span className="num min-w-0 text-muted">
-          <span className="mr-1 text-[11px] text-muted-2 md:hidden">締め</span>
+          <span className="mr-1 text-[11px] text-muted md:hidden">締め</span>
           {formatDate(year.lockedThrough)}
         </span>
         <Button size="sm" onClick={() => setOpen(true)} aria-label={`第 ${year.no} 期の締め`}>

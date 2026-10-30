@@ -1,6 +1,6 @@
 import type { CalendarDate, Money } from "@niho-finance/ledger";
 import type { CashWalletRow } from "@niho-finance/reports";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { HomeCard } from "./card";
 import { WalletCards } from "./wallet-cards";
 
@@ -29,7 +29,7 @@ export function CashCard({
   return (
     <HomeCard id="home-cash" title="現預金" href={href} className={className}>
       <p className="num text-[32px] leading-tight font-extrabold tracking-tight">
-        {formatAmount(total)}
+        {formatAmountDisplay(total)}
         <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
       </p>
       <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted">

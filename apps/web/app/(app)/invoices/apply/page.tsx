@@ -1,5 +1,5 @@
 import { loadInvoicesForDeposit, todayInJapan } from "@niho-finance/db";
-import { formatYen, invoiceNumberLabel } from "@niho-finance/ledger";
+import { invoiceNumberLabel } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { ApplyDepositButton } from "../_components/apply-deposit";
 
 export const metadata: Metadata = { title: "明細を請求に充てる" };
@@ -54,7 +54,7 @@ export default async function ApplyDepositPage({ searchParams }: PageProps<"/inv
           ) : null}
         </div>
         <p className="num text-[24px] font-extrabold">
-          {formatYen(line.amount)}
+          {formatYenDisplay(line.amount)}
           <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
         </p>
       </section>
@@ -117,10 +117,10 @@ export default async function ApplyDepositPage({ searchParams }: PageProps<"/inv
                   ) : null}
                 </Td>
                 <Td align="right" label="残高">
-                  {formatYen(invoice.balance)}
+                  {formatYenDisplay(invoice.balance)}
                 </Td>
                 <Td sm="hide" align="right" className="text-muted">
-                  {invoice.difference === 0n ? "一致" : formatYen(invoice.difference)}
+                  {invoice.difference === 0n ? "一致" : formatYenDisplay(invoice.difference)}
                 </Td>
                 <span role="cell" className="flex justify-end" data-sm="full">
                   <ApplyDepositButton

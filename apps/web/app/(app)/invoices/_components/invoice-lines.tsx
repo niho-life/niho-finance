@@ -2,7 +2,6 @@
 
 import type { InvoiceFormOptions } from "@niho-finance/db";
 import {
-  formatYen,
   invoiceRateLabel,
   lineAmount,
   type InvoiceLineAmountInput,
@@ -12,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormField, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
+import { formatYenDisplay } from "@/lib/format";
 
 /**
  * The parts the form of a document (18 §8) and the form of a 定期請求 (18 §14.5) share: the lines
@@ -111,7 +111,7 @@ export function InvoiceLinesEditor({
       </div>
       <div
         aria-hidden="true"
-        className={`hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted-2 lg:grid ${grid} lg:gap-x-2.5`}
+        className={`hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted lg:grid ${grid} lg:gap-x-2.5`}
       >
         {withDate ? <span>日付</span> : null}
         <span>品名</span>
@@ -239,7 +239,7 @@ export function InvoiceLinesEditor({
                   {row} 行目の金額（円）
                 </span>
                 <span className="num min-h-10 content-center text-right text-[14px] font-bold">
-                  {amount === null ? "—" : formatYen(amount)}
+                  {amount === null ? "—" : formatYenDisplay(amount)}
                 </span>
               </div>
               <div className="flex items-start justify-end">
@@ -313,16 +313,21 @@ export function InvoiceTotalsSummary({
                 {rate.taxable ? ` 対象${pricesIncludeTax ? "（税込）" : ""}` : ""}
               </span>
               <span className="num">
-                {formatYen(pricesIncludeTax ? rate.amountInclusive : rate.amountExclusive)} 円
+                {formatYenDisplay(pricesIncludeTax ? rate.amountInclusive : rate.amountExclusive)}{" "}
+                円
                 {rate.taxable ? (
-                  <span className="ml-3 text-muted">消費税 {formatYen(rate.taxAmount)} 円</span>
+                  <span className="ml-3 text-muted">
+                    消費税 {formatYenDisplay(rate.taxAmount)} 円
+                  </span>
                 ) : null}
               </span>
             </div>
           ))}
           <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2">
             <span className="font-bold">合計</span>
-            <span className="num text-[20px] font-extrabold">{formatYen(totals.total)} 円</span>
+            <span className="num text-[20px] font-extrabold">
+              {formatYenDisplay(totals.total)} 円
+            </span>
           </div>
         </>
       )}

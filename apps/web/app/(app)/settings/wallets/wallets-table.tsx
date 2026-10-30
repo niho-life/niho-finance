@@ -18,7 +18,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { createWalletAction, setWalletActiveAction, updateWalletAction } from "../actions";
 
 /**
@@ -116,7 +116,7 @@ function WalletSheet({
             キャンセル
           </Button>
           <Button type="submit" form={formId} variant="primary" disabled={pending}>
-            {wallet ? "保存" : "追加"}
+            {pending ? (wallet ? "保存中…" : "追加中…") : wallet ? "保存" : "追加"}
           </Button>
         </>
       }
@@ -309,7 +309,7 @@ export function WalletsTable({
             <TableRow key={wallet.id} {...COLUMNS} muted={!wallet.isActive}>
               <Td className="font-bold">
                 {wallet.name}
-                <span className="ml-2 text-[11px] font-normal text-muted-2 md:hidden">
+                <span className="ml-2 text-[11px] font-normal text-muted md:hidden">
                   {WALLET_KIND_LABELS[wallet.kind]}
                 </span>
               </Td>
@@ -319,7 +319,7 @@ export function WalletsTable({
                 {wallet.subAccountName ? ` / ${wallet.subAccountName}` : ""}
                 {wallet.openingBalance ? (
                   <span className="ml-2 md:hidden">
-                    明細の残高 {formatYenInput(BigInt(wallet.openingBalance))} 円
+                    明細の残高 {formatYenDisplay(BigInt(wallet.openingBalance))} 円
                   </span>
                 ) : null}
               </Td>
@@ -348,13 +348,13 @@ export function WalletsTable({
                     {wallet.importerLabel}
                   </Link>
                 ) : (
-                  <span className="text-muted-2">—</span>
+                  <span className="text-muted">—</span>
                 )}
               </Td>
               <Td align="right" sm="hide">
-                {wallet.openingBalance ? formatYenInput(BigInt(wallet.openingBalance)) : "—"}
+                {wallet.openingBalance ? formatYenDisplay(BigInt(wallet.openingBalance)) : "—"}
                 {wallet.openingBalanceDate ? (
-                  <span className="block text-[11px] text-muted-2">
+                  <span className="block text-[11px] text-muted">
                     {formatDate(wallet.openingBalanceDate)}
                   </span>
                 ) : null}

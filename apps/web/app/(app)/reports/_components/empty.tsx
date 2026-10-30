@@ -20,7 +20,17 @@ export function NoFiscalYear() {
   );
 }
 
-/** Nothing posted in the period (14-reports §3). The 取引 screen is S3's: no link yet. */
+/** Nothing posted in the period (14-reports §3): the way to the 取引 form. */
 export function NoEntries() {
-  return <EmptyState title="この期間に仕訳がありません" description="取引から登録します。" />;
+  return (
+    <EmptyState
+      title="この期間に仕訳がありません"
+      description="取引から登録します。"
+      action={
+        <ButtonLink href="/entries/new" size="sm">
+          取引を登録
+        </ButtonLink>
+      }
+    />
+  );
 }

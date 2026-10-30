@@ -1,6 +1,7 @@
 import { daysBetween, type Money } from "@niho-finance/ledger";
 import type { CashflowForecast } from "@niho-finance/reports";
 import type { CSSProperties } from "react";
+import { withDisplayMinus } from "@/lib/format";
 import { forecastSummary } from "../_lib/cashflow-text";
 
 const WIDTH = 900;
@@ -93,11 +94,11 @@ export function ForecastChart({
             <span
               key={label.key}
               className={`num absolute right-0 -translate-y-1/2 text-[11px] leading-none whitespace-nowrap ${
-                label.key === "zero" && negative ? "text-danger" : "text-muted-2"
+                label.key === "zero" && negative ? "text-danger" : "text-muted"
               }`}
               style={{ top: pct(y(label.value), HEIGHT) }}
             >
-              {COMPACT.format(label.value)}
+              {withDisplayMinus(COMPACT.format(label.value))}
             </span>
           ))}
         </div>
@@ -152,7 +153,7 @@ export function ForecastChart({
             : null}
         </div>
       </div>
-      <div aria-hidden="true" className="relative ml-[3.25rem] h-4 text-[11px] text-muted-2">
+      <div aria-hidden="true" className="relative ml-[3.25rem] h-4 text-[11px] text-muted">
         {X_TICKS.filter((day) => day <= last).map((day) => {
           const position = day / last;
           const shift =

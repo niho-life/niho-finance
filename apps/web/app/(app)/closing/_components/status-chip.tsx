@@ -3,7 +3,7 @@ import type { YearEndStepState } from "@niho-finance/db";
 const CHIPS: Readonly<Record<YearEndStepState, { label: string; className: string }>> = {
   done: { label: "完了", className: "bg-primary-soft text-primary-ink" },
   todo: { label: "未完了", className: "bg-track text-muted" },
-  pending: { label: "準備中", className: "border border-border text-muted-2" },
+  pending: { label: "準備中", className: "border border-border text-muted" },
   na: { label: "対象外", className: "bg-primary-soft text-primary" },
 };
 

@@ -1,6 +1,6 @@
 import type { CashflowForecast } from "@niho-finance/reports";
 import Link from "next/link";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 import { ForecastChart } from "../reports/_components/forecast-chart";
 import {
   CASHFLOW_NOTES_HREF,
@@ -37,7 +37,7 @@ export function CashflowCard({
     >
       {forecast.firstNegative ? (
         <p role="alert" className="mb-2 text-[13px] font-bold text-danger">
-          {negativeWarning(forecast.firstNegative)}
+          {negativeWarning(forecast.firstNegative, formatYenDisplay)}
         </p>
       ) : null}
       <dl className="mb-3 flex flex-wrap gap-x-7 gap-y-1">
@@ -46,7 +46,7 @@ export function CashflowCard({
             <dt className="text-[12px] text-muted">{figure.label}</dt>
             <dd>
               <span className="num text-[18px] leading-snug font-extrabold sm:text-[22px]">
-                {formatAmount(figure.point.balance)}
+                {formatAmountDisplay(figure.point.balance)}
               </span>
               <span className="ml-0.5 text-[11px] font-semibold text-muted">円</span>
               <span className="num ml-1.5 text-[12px] text-muted">

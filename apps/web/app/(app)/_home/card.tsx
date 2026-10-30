@@ -39,7 +39,7 @@ export function HomeCard({
             title
           )}
         </h2>
-        {aside ? <span className="text-[12px] text-muted-2">{aside}</span> : null}
+        {aside ? <span className="text-[12px] text-muted">{aside}</span> : null}
         {controls ? <div className="ml-auto">{controls}</div> : null}
       </div>
       {children}

@@ -1,10 +1,10 @@
 import { loadExpenseFormOptions, todayInJapan } from "@niho-finance/db";
-import { DOCUMENT_KIND_LABELS, formatYen } from "@niho-finance/ledger";
+import { DOCUMENT_KIND_LABELS } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/page-header";
 import { currentUser } from "@/lib/authz";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { ExpenseClaimForm } from "../_components/expense-claim-form";
 
 export const metadata: Metadata = { title: "立替を出す" };
@@ -39,7 +39,7 @@ export default async function NewExpenseClaimPage() {
           title: row.originalName ?? DOCUMENT_KIND_LABELS[row.kind],
           kind: DOCUMENT_KIND_LABELS[row.kind],
           date: row.txnDate ? formatDate(row.txnDate) : null,
-          amount: row.amount === null ? null : formatYen(row.amount),
+          amount: row.amount === null ? null : formatYenDisplay(row.amount),
           partner: row.partnerName,
         }))}
         today={todayInJapan()}

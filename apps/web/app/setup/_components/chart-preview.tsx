@@ -36,7 +36,7 @@ export function ChartPreview({ accounts }: { accounts: readonly ChartRow[] }) {
                 <li key={account.code} className="flex min-h-8 items-center gap-3 text-[14px]">
                   <span className="num w-10 shrink-0 text-muted">{account.code}</span>
                   <span className="min-w-0 flex-1 truncate">{account.name}</span>
-                  <span className="hidden text-[12px] text-muted-2 sm:inline">
+                  <span className="hidden text-[12px] text-muted sm:inline">
                     {ACCOUNT_GROUP_LABELS[account.group]}
                   </span>
                 </li>

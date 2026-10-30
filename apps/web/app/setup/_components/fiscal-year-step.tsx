@@ -133,7 +133,7 @@ export function FiscalYearStep({
           ))}
         </div>
         {exempt ? (
-          <p className="text-[12px] text-muted-2">免税の期は税込経理に決まっています</p>
+          <p className="text-[12px] text-muted">免税の期は税込経理に決まっています</p>
         ) : null}
       </fieldset>
 

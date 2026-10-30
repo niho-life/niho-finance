@@ -1,7 +1,7 @@
 import { WALLET_KIND_LABELS, type Money } from "@niho-finance/ledger";
 import type { CashWalletRow } from "@niho-finance/reports";
 import Link from "next/link";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate } from "@/lib/format";
 import { formatShortDateTime } from "../reports/_lib/format";
 
 function abs(value: Money): Money {
@@ -27,7 +27,7 @@ function activityLine(wallet: CashWalletRow): string[] {
 /** 明細の残高との差異 (14-reports §6): 一致, the difference in the warning colour, or 明細なし. */
 function StatementLine({ wallet }: { wallet: CashWalletRow }) {
   const statement = wallet.statement;
-  if (!statement) return <p className="text-[11px] text-muted-2">明細なし</p>;
+  if (!statement) return <p className="text-[11px] text-muted">明細なし</p>;
   if (statement.difference === 0n) {
     return (
       <p className="text-[11px] text-muted">明細の残高と一致（{formatDate(statement.date)}）</p>
@@ -37,7 +37,7 @@ function StatementLine({ wallet }: { wallet: CashWalletRow }) {
   const larger = statement.difference > 0n ? "明細" : "帳簿";
   return (
     <p className="text-[11px] font-bold text-warn">
-      {larger}の残高が <span className="num">{formatAmount(abs(statement.difference))}</span>{" "}
+      {larger}の残高が <span className="num">{formatAmountDisplay(abs(statement.difference))}</span>{" "}
       円多い（{formatDate(statement.date)} 時点）
     </p>
   );
@@ -68,14 +68,14 @@ export function WalletCards({
           >
             <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px] text-muted">
               <span className="min-w-0 truncate">{wallet.name}</span>
-              <span className="shrink-0 text-muted-2">{WALLET_KIND_LABELS[wallet.kind]}</span>
+              <span className="shrink-0 text-muted">{WALLET_KIND_LABELS[wallet.kind]}</span>
             </p>
             <p className="num text-[18px] leading-snug font-extrabold">
-              {formatAmount(wallet.balance)}
+              {formatAmountDisplay(wallet.balance)}
               <span className="ml-1 text-[11px] font-semibold text-muted">円</span>
             </p>
             {activity.length > 0 ? (
-              <p className="text-[11px] text-muted-2">{activity.join(" · ")}</p>
+              <p className="text-[11px] text-muted">{activity.join(" · ")}</p>
             ) : null}
             {wallet.bankApiStatus === "reauth_required" ? (
               <Link
@@ -102,5 +102,7 @@ export function owedSummary(otherWallets: readonly CashWalletRow[]): string | nu
     byKind.set(label, (byKind.get(label) ?? 0n) + wallet.balance);
   }
   if (byKind.size === 0) return null;
-  return [...byKind].map(([label, total]) => `${label} ${formatAmount(total)} 円`).join(" · ");
+  return [...byKind]
+    .map(([label, total]) => `${label} ${formatAmountDisplay(total)} 円`)
+    .join(" · ");
 }

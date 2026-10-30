@@ -27,7 +27,7 @@ import { FormField, Input, Select, Textarea } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { correctEntryAction, postVoucherEntryAction } from "../actions";
 import { defaultEntryDate } from "./entry-date";
 import { entryFormKeyDown } from "./entry-keys";
@@ -490,7 +490,7 @@ export function VoucherForm({
         </div>
         <div
           aria-hidden="true"
-          className="voucher-line hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted-2 lg:grid"
+          className="voucher-line hidden rounded-t-lg bg-surface-2 px-3 py-2 text-[11px] font-bold text-muted lg:grid"
         >
           <span style={{ gridArea: "side" }}>貸借</span>
           <span style={{ gridArea: "account" }}>科目</span>
@@ -522,7 +522,8 @@ export function VoucherForm({
                       options.taxRules,
                     )
                   : 0n);
-              tax = computed === null ? "規則なし" : computed === 0n ? "—" : formatYen(computed);
+              tax =
+                computed === null ? "規則なし" : computed === 0n ? "—" : formatYenDisplay(computed);
             } catch {
               tax = "規則なし";
             }
@@ -601,7 +602,7 @@ export function VoucherForm({
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="hidden min-h-10 items-center text-muted-2 lg:flex"
+                      className="hidden min-h-10 items-center text-muted lg:flex"
                     >
                       —
                     </span>
@@ -729,13 +730,16 @@ export function VoucherForm({
         className="flex flex-wrap items-baseline justify-end gap-x-5 gap-y-1 border-t border-border pt-3 text-[14px]"
       >
         <span>
-          借方合計 <span className="num font-bold">{formatYen(debitTotal)}</span>
+          借方合計 <span className="num font-bold">{formatYenDisplay(debitTotal)}</span>
         </span>
         <span>
-          貸方合計 <span className="num font-bold">{formatYen(creditTotal)}</span>
+          貸方合計 <span className="num font-bold">{formatYenDisplay(creditTotal)}</span>
         </span>
         <span className={difference === 0n ? "text-muted" : "font-extrabold"}>
-          差額 <span className="num">{formatYen(difference < 0n ? -difference : difference)}</span>
+          差額{" "}
+          <span className="num">
+            {formatYenDisplay(difference < 0n ? -difference : difference)}
+          </span>
         </span>
         {difference !== 0n && remainder !== 0n ? (
           <Button size="sm" onClick={fillDifference} className="self-center">

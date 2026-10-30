@@ -1,6 +1,6 @@
 import type { Money } from "@niho-finance/ledger";
 import type { CashSeries } from "@niho-finance/reports";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDate, withDisplayMinus } from "@/lib/format";
 
 /** Wallets in grey tones, the total in the primary colour (14-reports §6). */
 const WALLET_STROKES = ["#9b9b9b", "#c0c0c0", "#6b6b6b", "#d6d6d3"] as const;
@@ -65,11 +65,11 @@ export function CashChart({ series, total }: { series: CashSeries; total: Money 
       <div className="flex gap-2">
         <div
           aria-hidden="true"
-          className="num flex h-36 w-14 shrink-0 flex-col justify-between text-right text-[11px] leading-none text-muted-2 md:h-56"
+          className="num flex h-36 w-14 shrink-0 flex-col justify-between text-right text-[11px] leading-none text-muted md:h-56"
         >
-          <span>{COMPACT.format(hi)}</span>
-          <span>{COMPACT.format((hi + lo) / 2)}</span>
-          <span>{COMPACT.format(lo)}</span>
+          <span>{withDisplayMinus(COMPACT.format(hi))}</span>
+          <span>{withDisplayMinus(COMPACT.format((hi + lo) / 2))}</span>
+          <span>{withDisplayMinus(COMPACT.format(lo))}</span>
         </div>
         <svg
           role="img"
@@ -116,7 +116,7 @@ export function CashChart({ series, total }: { series: CashSeries; total: Money 
           ))}
         </svg>
       </div>
-      <div aria-hidden="true" className="ml-16 flex justify-between text-[11px] text-muted-2">
+      <div aria-hidden="true" className="ml-16 flex justify-between text-[11px] text-muted">
         <span>{formatDate(first)}</span>
         <span>{formatDate(last)}</span>
       </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { Button } from "./button";
+import { useModalDialog } from "./modal-dialog";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -18,7 +19,12 @@ export interface ConfirmDialogProps {
   error?: string | null;
 }
 
-/** Confirmation with a native modal `<dialog>` (never `window.confirm`). */
+/**
+ * Confirmation with a native modal `<dialog>` (never `window.confirm`). It opens on its first
+ * control: a field in `children` if there is one, else キャンセル, so that Enter never confirms by
+ * accident. Esc closes it (not while pending) and the focus goes back to the button that opened it
+ * (05-ui-ux §3.1).
+ */
 export function ConfirmDialog({
   open,
   title,
@@ -33,12 +39,7 @@ export function ConfirmDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  useModalDialog(ref, open);
 
   return (
     <dialog
@@ -74,7 +75,6 @@ export function ConfirmDialog({
               variant={variant === "danger" ? "danger" : "primary"}
               onClick={onConfirm}
               disabled={pending}
-              autoFocus
             >
               {pending ? "処理中…" : confirmLabel}
             </Button>

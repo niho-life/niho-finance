@@ -2,7 +2,7 @@ import { buildSegmentReport } from "@niho-finance/reports";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Td } from "@/components/ui/table";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { SegmentBars } from "../../_home/segment-bars";
 import { NoEntries, NoFiscalYear } from "../_components/empty";
 import { SectionHeading } from "../_components/notices";
@@ -91,7 +91,7 @@ export default async function SegmentsPage({ searchParams }: PageProps<"/reports
                     </span>
                     {row.values.map((value, i) => (
                       <Td key={i} align="right" className={i === last ? "font-bold" : ""}>
-                        {formatAmount(value)}
+                        {formatAmountDisplay(value)}
                       </Td>
                     ))}
                   </WideRow>

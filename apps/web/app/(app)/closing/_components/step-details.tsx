@@ -7,10 +7,10 @@ import type {
   YearEndConsumptionTax,
   YearEndWalletRow,
 } from "@niho-finance/db";
-import { ACCOUNTING_METHOD_LABELS, ACCRUAL_TYPE_LABELS, formatYen } from "@niho-finance/ledger";
+import { ACCOUNTING_METHOD_LABELS, ACCRUAL_TYPE_LABELS } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Table, TableGroup, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 import { EntryLink, Facts, Note } from "./parts";
 import { VoidYearEndEntryButton } from "./void-year-end-entry-button";
 
@@ -53,12 +53,12 @@ export function BalancesDetails({
           <TableRow key={wallet.walletId} {...WALLET_COLUMNS}>
             <Td className="font-semibold break-words">{wallet.name}</Td>
             <Td align="right" label="仕訳">
-              {formatYen(wallet.ledgerBalance)}
+              {formatYenDisplay(wallet.ledgerBalance)}
             </Td>
             <Td align="right" label="明細">
-              {formatAmount(wallet.statementBalance)}
+              {formatAmountDisplay(wallet.statementBalance)}
               {wallet.statementDate ? (
-                <span className="block text-[11px] text-muted-2">
+                <span className="block text-[11px] text-muted">
                   {formatDate(wallet.statementDate)}
                 </span>
               ) : null}
@@ -68,7 +68,7 @@ export function BalancesDetails({
               label="差額"
               className={wallet.difference !== null && wallet.difference !== 0n ? "font-bold" : ""}
             >
-              {formatAmount(wallet.difference)}
+              {formatAmountDisplay(wallet.difference)}
             </Td>
           </TableRow>
         ))}
@@ -129,7 +129,7 @@ export function AccrualsDetails({
             ) : null}
           </Td>
           <Td align="right" className="font-bold">
-            {formatYen(row.amount)}
+            {formatYenDisplay(row.amount)}
           </Td>
           <Td label="振り戻し" className="text-[13px]">
             {row.reversal ? <EntryLink entry={row.reversal} /> : "—"}
@@ -170,11 +170,11 @@ export function ConsumptionTaxDetails({
           { label: "経理方式", value: ACCOUNTING_METHOD_LABELS[tax.accountingMethod] },
           ...(exclusive
             ? [
-                { label: "仮受消費税（円）", value: formatYen(tax.outputTaxBalance) },
-                { label: "仮払消費税（円）", value: formatYen(tax.inputTaxBalance) },
+                { label: "仮受消費税（円）", value: formatYenDisplay(tax.outputTaxBalance) },
+                { label: "仮払消費税（円）", value: formatYenDisplay(tax.inputTaxBalance) },
                 {
                   label: "差引（100 円未満切り捨て・円）",
-                  value: formatYen(tax.suggestedPayable),
+                  value: formatYenDisplay(tax.suggestedPayable),
                   strong: true,
                 },
               ]
@@ -223,29 +223,29 @@ export function CorporateTaxDetails({
           <TableRow key={line.key} {...TAX_COLUMNS}>
             <Td className="break-words">
               {line.label}
-              <span className="num block text-[11px] text-muted-2 md:hidden">
-                課税標準 {formatYen(line.base)}
+              <span className="num block text-[11px] text-muted md:hidden">
+                課税標準 {formatYenDisplay(line.base)}
               </span>
             </Td>
             <Td align="right" sm="hide" className="text-muted">
-              {formatYen(line.base)}
+              {formatYenDisplay(line.base)}
             </Td>
-            <Td align="right">{formatYen(line.amount)}</Td>
+            <Td align="right">{formatYenDisplay(line.amount)}</Td>
           </TableRow>
         ))}
         <TableRow {...TAX_COLUMNS} className="bg-surface-2 font-bold">
           <Td>年税額の概算</Td>
           <Td sm="hide" />
-          <Td align="right">{formatYen(estimate.total)}</Td>
+          <Td align="right">{formatYenDisplay(estimate.total)}</Td>
         </TableRow>
       </Table>
       <Facts
         label="法人税等の計算のもと"
         items={[
-          { label: "所得の概算（円）", value: formatYen(summary.pretaxIncome) },
-          { label: "繰越欠損金（円）", value: formatYen(summary.lossCarryforward) },
-          { label: "課税所得（円）", value: formatYen(estimate.taxableIncome) },
-          { label: "計上済み（円）", value: formatYen(summary.booked) },
+          { label: "所得の概算（円）", value: formatYenDisplay(summary.pretaxIncome) },
+          { label: "繰越欠損金（円）", value: formatYenDisplay(summary.lossCarryforward) },
+          { label: "課税所得（円）", value: formatYenDisplay(estimate.taxableIncome) },
+          { label: "計上済み（円）", value: formatYenDisplay(summary.booked) },
           { label: "納付期限", value: formatDate(summary.dueDate), strong: true },
         ]}
       />
@@ -288,17 +288,17 @@ function BalanceRow({ row }: { row: YearEndBalanceRow }) {
         {row.name}
       </Td>
       <Td align="right" sm="hide">
-        {formatYen(row.beforeClosing)}
+        {formatYenDisplay(row.beforeClosing)}
       </Td>
-      <Td align="right" sm="hide" className={row.closing === 0n ? "text-muted-2" : ""}>
-        {row.closing === 0n ? "—" : formatYen(row.closing)}
+      <Td align="right" sm="hide" className={row.closing === 0n ? "text-muted" : ""}>
+        {row.closing === 0n ? "—" : formatYenDisplay(row.closing)}
       </Td>
       <Td align="right" className="font-bold">
-        {formatYen(row.opening)}
+        {formatYenDisplay(row.opening)}
       </Td>
       <span role="cell" className="num col-span-full text-[12px] text-muted md:hidden">
-        期末 {formatYen(row.beforeClosing)}
-        {row.closing !== 0n ? ` · 決算振替 ${formatYen(row.closing)}` : ""}
+        期末 {formatYenDisplay(row.beforeClosing)}
+        {row.closing !== 0n ? ` · 決算振替 ${formatYenDisplay(row.closing)}` : ""}
       </span>
     </TableRow>
   );
@@ -335,10 +335,10 @@ export function ClosingBalances({ balances }: { balances: YearEndBalances }) {
       <p
         className={`num text-[13px] break-words ${balances.balanced ? "text-text" : "font-bold text-warn"}`}
       >
-        検算（翌期首）: 資産 {formatYen(opening.assets)} 円 = 負債 {formatYen(opening.liabilities)}{" "}
-        円 + 純資産 {formatYen(opening.equity)} 円
+        検算（翌期首）: 資産 {formatYenDisplay(opening.assets)} 円 = 負債{" "}
+        {formatYenDisplay(opening.liabilities)} 円 + 純資産 {formatYenDisplay(opening.equity)} 円
         {balances.priorPeriodsProfit !== 0n
-          ? ` + 前期以前の損益 ${formatYen(balances.priorPeriodsProfit)} 円`
+          ? ` + 前期以前の損益 ${formatYenDisplay(balances.priorPeriodsProfit)} 円`
           : ""}
         {balances.balanced ? "（一致）" : "（一致しません。仕訳を確かめてください）"}
       </p>
@@ -400,7 +400,7 @@ export function AdjustingEntries({
                 {entry.description}
               </Td>
               <Td align="right" className="font-bold">
-                {formatYen(entry.amount)}
+                {formatYenDisplay(entry.amount)}
               </Td>
               {readOnly ? (
                 <Td sm="hide" />

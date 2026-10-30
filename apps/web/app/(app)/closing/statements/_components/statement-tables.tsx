@@ -182,7 +182,7 @@ export function IncomeStatementView({
                 {isNetIncome ? (
                   <span
                     className={`ml-2 text-[11px] font-semibold ${
-                      matchesTrialBalance ? "text-muted-2" : "text-warn"
+                      matchesTrialBalance ? "text-muted" : "text-warn"
                     }`}
                   >
                     {matchesTrialBalance

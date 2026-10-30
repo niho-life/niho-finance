@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatAmount, formatDate, formatPeriod } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatPeriod } from "@/lib/format";
 import { WarningBand } from "../../../reports/_components/notices";
 import { FiscalYearSelect, NoFiscalYear, Section } from "../_components/parts";
 import { DownloadLink } from "../_components/statement-tables";
@@ -60,12 +60,12 @@ function CategoryRow({
         {row.lineCount}
       </Td>
       <Td align="right" sm="hide">
-        {formatAmount(row.amountInclusive)}
+        {formatAmountDisplay(row.amountInclusive)}
       </Td>
       <Td align="right" sm="hide">
-        {formatAmount(row.amountExclusive)}
+        {formatAmountDisplay(row.amountExclusive)}
       </Td>
-      <Td align="right">{formatAmount(row.taxAmount)}</Td>
+      <Td align="right">{formatAmountDisplay(row.taxAmount)}</Td>
     </TableRow>
   );
 }
@@ -107,12 +107,12 @@ function EstimateTable({ estimate }: { estimate: ConsumptionTaxEstimate }) {
           >
             <Td>{row.label}</Td>
             <Td align="right" sm="hide">
-              {row.byRate ? formatAmount(row.byRate.standard) : ""}
+              {row.byRate ? formatAmountDisplay(row.byRate.standard) : ""}
             </Td>
             <Td align="right" sm="hide">
-              {row.byRate ? formatAmount(row.byRate.reduced) : ""}
+              {row.byRate ? formatAmountDisplay(row.byRate.reduced) : ""}
             </Td>
-            <Td align="right">{formatAmount(row.total)}</Td>
+            <Td align="right">{formatAmountDisplay(row.total)}</Td>
           </TableRow>
         ))}
       </TableBox>

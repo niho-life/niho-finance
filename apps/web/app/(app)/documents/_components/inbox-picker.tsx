@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
@@ -37,7 +37,23 @@ export function InboxPicker({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
+  /** After a link: the document just linked and where the focus goes once it leaves the list. */
+  const moveFocus = useRef<{ linked: string; next: string | null } | null>(null);
   const [, startTransition] = useTransition();
+
+  // The linked document's button disappears with it (05-ui-ux §3.1 フォーカス): the focus goes to
+  // the next document's 「紐づける」, or to the sheet's close button when the inbox is empty.
+  useEffect(() => {
+    const pending = moveFocus.current;
+    if (!pending || documents.some((item) => item.id === pending.linked)) return;
+    const dialog = document.querySelector("dialog[open]");
+    const target =
+      (pending.next
+        ? dialog?.querySelector<HTMLElement>(`[data-document-id="${pending.next}"]`)
+        : null) ?? dialog?.querySelector<HTMLElement>("[data-dialog-close]");
+    target?.focus();
+    moveFocus.current = null;
+  }, [documents]);
 
   function link(item: InboxDocument) {
     setLinking(item.id);
@@ -53,6 +69,9 @@ export function InboxPicker({
         return;
       }
       toast(`「${item.title}」を紐づけました`);
+      const index = documents.findIndex((row) => row.id === item.id);
+      const next = documents[index + 1] ?? documents[index - 1] ?? null;
+      moveFocus.current = { linked: item.id, next: next?.id ?? null };
       router.refresh();
     });
   }
@@ -97,6 +116,7 @@ export function InboxPicker({
                     disabled={linking !== null}
                     onClick={() => link(item)}
                     aria-label={`「${item.title}」を紐づける`}
+                    data-document-id={item.id}
                   >
                     {linking === item.id ? "処理中…" : "紐づける"}
                   </Button>

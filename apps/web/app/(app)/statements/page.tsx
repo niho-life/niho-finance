@@ -101,7 +101,15 @@ export default async function StatementsPage({ searchParams }: PageProps<"/state
               }
             />
           ) : (
-            <EmptyState title="この状態の明細はありません" />
+            <EmptyState
+              title="この状態の明細はありません"
+              description="未処理の明細を登録・振替・無視すると、ここに並びます"
+              action={
+                <ButtonLink href={statementsHref({ wallet: filters.wallet })} size="sm">
+                  未処理の明細を開く
+                </ButtonLink>
+              }
+            />
           )
         }
       />

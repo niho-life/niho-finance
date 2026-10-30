@@ -55,7 +55,7 @@ function DueRowView({ row, onPosted }: { row: DueRow; onPosted: (key: string) =>
       <Td className="num text-[13px] text-muted">{formatDate(row.date)}</Td>
       <Td>
         <span className="block break-words">{row.name}</span>
-        <span className="block text-[12px] text-muted-2 md:hidden">
+        <span className="block text-[12px] text-muted md:hidden">
           {row.walletName} → {row.counterpartName}
         </span>
       </Td>

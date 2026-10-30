@@ -123,7 +123,11 @@ export default async function EntriesPage({ searchParams }: PageProps<"/entries"
             }
           />
         ) : (
-          <EmptyState title="取引がありません。収入・支出・振替から登録します" action={newEntry} />
+          <EmptyState
+            title="取引がありません"
+            description="収入・支出・振替から登録します"
+            action={newEntry}
+          />
         )
       ) : (
         <>

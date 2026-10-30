@@ -1,6 +1,6 @@
 import type { Money } from "@niho-finance/ledger";
 import Link from "next/link";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { HomeCard } from "./card";
 import { SegmentBars, type SegmentBar } from "./segment-bars";
 
@@ -92,7 +92,7 @@ export function ProfitCard({
       controls={<ProfitPeriodSwitch current={period} />}
       className={className}
     >
-      <p className="mb-3 text-[12px] text-muted-2">{periodLabel}</p>
+      <p className="mb-3 text-[12px] text-muted">{periodLabel}</p>
       <dl className="mb-4 grid gap-1 sm:grid-cols-3 sm:gap-2.5">
         {items.map((item) => (
           <div
@@ -103,7 +103,7 @@ export function ProfitCard({
             <dd
               className={`num text-[18px] leading-snug font-extrabold sm:mt-0.5 sm:text-[22px] ${item.className}`}
             >
-              {formatAmount(item.value)}
+              {formatAmountDisplay(item.value)}
               <span className="ml-0.5 text-[11px] font-semibold text-muted">円</span>
             </dd>
           </div>

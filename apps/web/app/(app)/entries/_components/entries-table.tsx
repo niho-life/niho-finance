@@ -1,8 +1,7 @@
 import type { EntrySideSummary, JournalEntryListRow } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { entryNo, formatDate } from "@/lib/format";
+import { entryNo, formatDate, formatYenDisplay } from "@/lib/format";
 import { detailHref } from "./list-query";
 
 const COLUMNS = {
@@ -21,7 +20,7 @@ function Side({ side }: { side: EntrySideSummary | null }) {
     <>
       <span className="block truncate">{sideText(side)}</span>
       {side && side.others > 0 ? (
-        <span className="block text-[11px] text-muted-2">ほか {side.others} 行</span>
+        <span className="block text-[11px] text-muted">ほか {side.others} 行</span>
       ) : null}
     </>
   );
@@ -101,7 +100,7 @@ export function EntriesTable({
               {sideText(row.debit)} → {sideText(row.credit)}
             </span>
             <Td align="right" className="font-bold">
-              {formatYen(row.amount)}
+              {formatYenDisplay(row.amount)}
             </Td>
             <Td sm="hide" className="truncate text-[13px]">
               {row.segment ? `${row.segment.name}${row.segment.others ? " ほか" : ""}` : "—"}

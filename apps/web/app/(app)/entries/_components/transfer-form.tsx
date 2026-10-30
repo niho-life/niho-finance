@@ -3,7 +3,6 @@
 import type { EntryFormOptions } from "@niho-finance/db";
 import {
   containedTaxAmount,
-  formatYen,
   getTaxCategory,
   isCalendarDate,
   parseYenInput,
@@ -16,7 +15,7 @@ import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo, walletLabel } from "@/lib/format";
+import { entryNo, formatYenDisplay, walletLabel } from "@/lib/format";
 import { postSimpleEntryAction } from "../actions";
 import { defaultEntryDate } from "./entry-date";
 import { entryFormKeyDown } from "./entry-keys";
@@ -92,7 +91,7 @@ export function TransferForm({
     if (fee === null || fee <= 0n || !isCalendarDate(draft.entryDate)) return base;
     try {
       const tax = containedTaxAmount(fee, feeTaxCode, draft.entryDate, options.taxRules);
-      return tax === null ? base : `${base}。うち消費税 ${formatYen(tax)} 円`;
+      return tax === null ? base : `${base}。うち消費税 ${formatYenDisplay(tax)} 円`;
     } catch {
       return base;
     }

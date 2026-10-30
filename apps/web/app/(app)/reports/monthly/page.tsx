@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Td } from "@/components/ui/table";
-import { formatAmount } from "@/lib/format";
+import { formatAmountDisplay } from "@/lib/format";
 import { DisclosureRows } from "../_components/disclosure-rows";
 import { NoEntries, NoFiscalYear } from "../_components/empty";
 import { Note } from "../_components/notices";
@@ -31,11 +31,11 @@ function AmountCells({
       align="right"
       className={`${i === values.length - 1 ? "font-bold" : ""} ${className}`}
     >
-      {formatAmount(value)}
+      {formatAmountDisplay(value)}
       {prior ? (
         <span className="block text-[11px] leading-tight font-normal text-muted">
           <span className="sr-only">前年 </span>
-          {prior[i] === null || prior[i] === undefined ? "—" : formatAmount(prior[i])}
+          {prior[i] === null || prior[i] === undefined ? "—" : formatAmountDisplay(prior[i])}
         </span>
       ) : null}
     </Td>

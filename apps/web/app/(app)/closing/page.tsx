@@ -13,7 +13,6 @@ import {
   DEPRECIATION_METHOD_LABELS,
   displayDate,
   FISCAL_YEAR_STATUS_LABELS,
-  formatYen,
   formatYenInput,
 } from "@niho-finance/ledger";
 import type { Metadata } from "next";
@@ -23,7 +22,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatDateTime, formatPeriod } from "@/lib/format";
+import { formatDateTime, formatPeriod, formatYenDisplay } from "@/lib/format";
 import { AccrualSheet, type AccrualAccountOption } from "./_components/accrual-sheet";
 import { CheckToggle } from "./_components/check-toggle";
 import { CloseYearButton } from "./_components/close-year-button";
@@ -148,7 +147,11 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
         <EmptyState
           title="会計期間がありません"
           description="設定 › 会計期間 で期を作ると、決算のチェックリストが出ます"
-          action={<ButtonLink href="/settings/fiscal-years">会計期間を開く</ButtonLink>}
+          action={
+            <ButtonLink href="/settings/fiscal-years" size="sm">
+              会計期間を開く
+            </ButtonLink>
+          }
         />
       </>
     );
@@ -168,18 +171,18 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
     assetId: row.assetId,
     name: row.name,
     methodLabel: DEPRECIATION_METHOD_LABELS[row.method],
-    amount: formatYen(row.amount),
+    amount: formatYenDisplay(row.amount),
     entries: row.entries.map((entry) => ({ id: entry.id, no: entry.no })),
   }));
   const deferred: DeferredView[] = checklist.deferred.map((row) => ({
     accountId: row.accountId,
     name: row.accountName,
     amounts: {
-      five_years: { text: formatYen(row.fiveYears), zero: row.fiveYears <= 0n },
-      full: { text: formatYen(row.full), zero: row.full <= 0n },
+      five_years: { text: formatYenDisplay(row.fiveYears), zero: row.fiveYears <= 0n },
+      full: { text: formatYenDisplay(row.full), zero: row.full <= 0n },
     },
-    postedAmount: formatYen(row.amortizedThisYear),
-    balance: formatYen(row.balance),
+    postedAmount: formatYenDisplay(row.amortizedThisYear),
+    balance: formatYenDisplay(row.balance),
     posted: row.posted ? { id: row.posted.id, no: row.posted.no } : null,
     finished: !row.posted && row.cost - row.amortizedBefore <= 0n,
   }));
@@ -240,11 +243,11 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
                   fiscalYearId={year.id}
                   endDate={endDate}
                   count={unposted.length}
-                  total={formatYen(unposted.reduce((sum, row) => sum + row.amount, 0n))}
+                  total={formatYenDisplay(unposted.reduce((sum, row) => sum + row.amount, 0n))}
                 />
               ) : null}
               <ButtonLink href="/closing/assets" variant="secondary" size="sm">
-                固定資産台帳
+                固定資産台帳を開く
               </ButtonLink>
             </>
           ),
@@ -291,8 +294,8 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
                 fiscalYearId={year.id}
                 endDate={endDate}
                 exclusive={tax.accountingMethod === "tax_exclusive"}
-                outputTax={formatYen(tax.outputTaxBalance)}
-                inputTax={formatYen(tax.inputTaxBalance)}
+                outputTax={formatYenDisplay(tax.outputTaxBalance)}
+                inputTax={formatYenDisplay(tax.inputTaxBalance)}
                 suggested={tax.suggestedPayable === 0n ? "" : formatYenInput(tax.suggestedPayable)}
               />
             ) : mode === "open" ? (
@@ -307,8 +310,8 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
               <CorporateTaxForm
                 fiscalYearId={year.id}
                 endDate={endDate}
-                estimate={formatYen(corporate.estimate.total)}
-                booked={formatYen(corporate.booked)}
+                estimate={formatYenDisplay(corporate.estimate.total)}
+                booked={formatYenDisplay(corporate.booked)}
                 suggested={corporate.suggested === 0n ? "" : formatYenInput(corporate.suggested)}
               />
             ) : mode === "open" ? (
@@ -328,7 +331,7 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
                 items={[
                   {
                     label: netIncome < 0n ? "当期純損失（円）" : "当期純利益（円）",
-                    value: formatYen(netIncome < 0n ? -netIncome : netIncome),
+                    value: formatYenDisplay(netIncome < 0n ? -netIncome : netIncome),
                     strong: true,
                   },
                 ]}
@@ -343,7 +346,7 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
             <CloseYearButton
               fiscalYearId={year.id}
               no={year.no}
-              netIncome={formatYen(netIncome < 0n ? -netIncome : netIncome)}
+              netIncome={formatYenDisplay(netIncome < 0n ? -netIncome : netIncome)}
               isLoss={netIncome < 0n}
               warnings={checklist.closing.warnings}
             />
@@ -356,7 +359,7 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
           : {
               actions: (
                 <ButtonLink href="/documents" variant="secondary" size="sm">
-                  証憑の受信箱
+                  証憑の受信箱を開く
                 </ButtonLink>
               ),
             };
@@ -405,7 +408,7 @@ export default async function ClosingPage({ searchParams }: PageProps<"/closing"
           <>
             {found.years.length > 1 ? <YearSelect years={found.years} current={year.no} /> : null}
             <ButtonLink href="/closing/assets" variant="secondary" size="sm">
-              固定資産台帳
+              固定資産台帳を開く
             </ButtonLink>
           </>
         }

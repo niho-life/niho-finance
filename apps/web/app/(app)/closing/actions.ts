@@ -37,6 +37,7 @@ import { attempt, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { authorizeAction } from "@/lib/authz";
+import { formatYenDisplay } from "@/lib/format";
 
 /*
  * Server Actions of /closing (16-year-end §1.1, §3–§9) and of the fixed asset ledger (§5). The
@@ -191,7 +192,7 @@ export async function postDepreciationAction(
     async () => postDepreciation(prisma(), parseId(fiscalYearId), {}, await by()),
     (posted) => ({
       count: posted.length,
-      total: formatYen(posted.reduce((sum, item) => sum + item.amount, 0n)),
+      total: formatYenDisplay(posted.reduce((sum, item) => sum + item.amount, 0n)),
     }),
   );
 }

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox, FormField, Select } from "@/components/ui/form";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { formLevelErrors, type ActionError, type ActionResult } from "@/lib/action-types";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatDateTime } from "@/lib/format";
 import { importCsvAction, previewCsvImportAction } from "../actions";
 import { columnsOfTable, MappingFields } from "../_components/mapping-fields";
 import { FailuresTable, WarningsList } from "../_components/results";
@@ -187,7 +187,7 @@ function RawTable({ table, columnCount }: { table: readonly string[][]; columnCo
     <div className="max-h-80 overflow-auto rounded-card border border-border">
       <table className="w-max min-w-full border-collapse text-[12px]">
         <caption className="sr-only">ファイルの先頭 {table.length} 行</caption>
-        <thead className="sticky top-0 bg-surface-2 text-[11px] font-bold text-muted-2">
+        <thead className="sticky top-0 bg-surface-2 text-[11px] font-bold text-muted">
           <tr>
             <th scope="col" className="px-2 py-1.5 text-right font-bold">
               行
@@ -202,7 +202,7 @@ function RawTable({ table, columnCount }: { table: readonly string[][]; columnCo
         <tbody>
           {table.map((row, rowIndex) => (
             <tr key={rowIndex} className="border-t border-border">
-              <td className="num px-2 py-1 text-right text-muted-2">{rowIndex + 1}</td>
+              <td className="num px-2 py-1 text-right text-muted">{rowIndex + 1}</td>
               {columns.map((column) => (
                 <td
                   key={column}
@@ -259,10 +259,10 @@ function PreviewRowsTable({ rows }: { rows: readonly PreviewRowView[] }) {
             {row.counterpartyRaw ?? "—"}
           </Td>
           <Td align="right" className="font-bold">
-            {formatAmount(BigInt(row.amount))}
+            {formatAmountDisplay(BigInt(row.amount))}
           </Td>
           <Td align="right" sm="hide" className="text-muted">
-            {row.balanceAfter === null ? "—" : formatAmount(BigInt(row.balanceAfter))}
+            {row.balanceAfter === null ? "—" : formatAmountDisplay(BigInt(row.balanceAfter))}
           </Td>
         </TableRow>
       ))}
@@ -273,7 +273,7 @@ function PreviewRowsTable({ rows }: { rows: readonly PreviewRowView[] }) {
 function Count({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <dt className="text-[11px] font-bold text-muted-2">{label}</dt>
+      <dt className="text-[11px] font-bold text-muted">{label}</dt>
       <dd className="num text-[15px] font-bold">{children}</dd>
     </div>
   );
@@ -293,10 +293,14 @@ function Counts({ preview }: { preview: CsvPreviewView }) {
       </Count>
       <Count label="文字コード">{preview.encoding === "shift_jis" ? "Shift_JIS" : "UTF-8"}</Count>
       {preview.openingBalance !== null ? (
-        <Count label="取引前の残高（円）">{formatAmount(BigInt(preview.openingBalance))}</Count>
+        <Count label="取引前の残高（円）">
+          {formatAmountDisplay(BigInt(preview.openingBalance))}
+        </Count>
       ) : null}
       {preview.closingBalance !== null ? (
-        <Count label="取引後の残高（円）">{formatAmount(BigInt(preview.closingBalance))}</Count>
+        <Count label="取引後の残高（円）">
+          {formatAmountDisplay(BigInt(preview.closingBalance))}
+        </Count>
       ) : null}
     </dl>
   );
