@@ -68,6 +68,7 @@ import type { ActorOptions } from "./journal";
 import { RECURRING_DUE_DAYS } from "./recurring-post";
 import type { HomeTodoSource } from "./reports-query";
 import {
+  INVOICE_TEXT_MAX,
   recurringInvoiceDraftSchema,
   recurringInvoiceDraftsSchema,
   recurringInvoiceSchema,
@@ -1014,6 +1015,28 @@ function dueDateInMonth(
 }
 
 /**
+ * Why a draft would pass the limits of an invoice (`INVOICE_TEXT_MAX`) once `{対象月}` is written
+ * in (18 §14.3), or `null`: the edit form could not save such an invoice.
+ */
+function expandedTooLong(
+  title: string | null,
+  lines: readonly { name: string }[],
+  note: string | null,
+): string | null {
+  const over = (label: string, text: string | null, max: number) =>
+    text !== null && text.length > max
+      ? `{対象月} を入れると${label}が ${max} 文字を超えます。定期請求の${label}を短くしてください`
+      : null;
+  return (
+    over("件名", title, INVOICE_TEXT_MAX.title) ??
+    lines
+      .map((line) => over("品名", line.name, INVOICE_TEXT_MAX.lineName))
+      .find((problem) => problem !== null) ??
+    over("備考", note, INVOICE_TEXT_MAX.note)
+  );
+}
+
+/**
  * 下書きの作成 (18 §14.3) in one transaction: the recurring invoice's row is locked (`FOR UPDATE`, so
  * two requests for the same month queue), it must be active and the month a due date (§14.2) with
  * no invoice yet (the partial unique index is the last guard); then an invoice draft is saved as
@@ -1049,17 +1072,21 @@ export async function createRecurringInvoiceDraft(
       unitPrice: BigInt(line.unitPrice),
       taxCategoryCode: line.taxCategoryCode as SalesTaxCategoryCode,
     }));
+    const title = row.title === null ? null : expand(row.title);
+    const note = row.note === null ? null : expand(row.note);
+    const tooLong = expandedTooLong(title, lines, note);
+    if (tooLong) throw new SettingsError(tooLong, { field: "month" });
     try {
       const invoice = await insertInvoiceDraft(
         tx,
         {
           docType: "invoice",
           partnerId: row.partnerId,
-          title: row.title === null ? null : expand(row.title),
+          title,
           issueDate: date,
           dueDate: recurringInvoiceDueDate(date, row),
           pricesIncludeTax: row.pricesIncludeTax,
-          note: row.note === null ? null : expand(row.note),
+          note,
           revenueAccountId: row.revenueAccountId,
           segmentId: row.segmentId,
           sourceInvoiceId: null,

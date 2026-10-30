@@ -605,4 +605,25 @@ describe.skipIf(!hasTestDatabase)("recurring invoices (定期請求)", () => {
     ]);
     expect(names.get(`recurring_invoice:${recurring.id}`)).toBe("定期請求 履歴 架空顧問");
   });
+
+  it("refuses a draft whose {対象月} would pass the invoice's limits", async () => {
+    // 200 characters as saved; 「2066年7月」 makes the title 202.
+    const title = `${"顧".repeat(195)}{対象月}`;
+    const recurring = await createRecurringInvoice(
+      prisma,
+      input({ name: "長い件名 架空顧問", title }),
+      options,
+    );
+    const month = { recurringInvoiceId: recurring.id, month: "2066-07" };
+    expect(
+      settingsError(
+        await rejectionOf(createRecurringInvoiceDraft(prisma, month, { ...options, today: TODAY })),
+      ),
+    ).toEqual({
+      message: "{対象月} を入れると件名が 200 文字を超えます。定期請求の件名を短くしてください",
+      field: "month",
+    });
+    expect(await prisma.invoice.count({ where: { recurringInvoiceId: recurring.id } })).toBe(0);
+    await pauseRecurringInvoice(prisma, recurring.id, options);
+  });
 });

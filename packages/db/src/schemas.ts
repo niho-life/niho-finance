@@ -801,11 +801,14 @@ const salesTaxCategoryField = fromText("税区分", (text): Conversion<SalesTaxC
   isSalesTaxCategoryCode(text) ? ok(text) : problem("税区分は売上の税区分から選んでください"),
 );
 
+/** The longest 件名・品名・備考 of an invoice; a recurring invoice's draft is held to them too (18 §14.3). */
+export const INVOICE_TEXT_MAX = { title: 200, lineName: 200, note: 1000 } as const;
+
 /** A line of a document (18 §3.1). The amount is computed by the repository, never sent. */
 export const invoiceLineSchema = z.object({
   /** 取引年月日; empty → the issue date. */
   date: optionalDate("日付"),
-  name: requiredText("品名", 200),
+  name: requiredText("品名", INVOICE_TEXT_MAX.lineName),
   quantity: invoiceQuantityField,
   unit: optionalText("単位", 20),
   /** Negative for a discount. */
@@ -818,13 +821,13 @@ export type ParsedInvoiceLine = z.output<typeof invoiceLineSchema>;
 /** The body of a draft, shared by the new and the edit forms (18 §8). */
 const invoiceDraftFields = {
   partnerId: idField("取引先"),
-  title: optionalText("件名", 200),
+  title: optionalText("件名", INVOICE_TEXT_MAX.title),
   issueDate: requiredDate("発行日"),
   /** 支払期限 (請求書) / 有効期限 (見積書); a delivery note has none. */
   dueDate: optionalDate("期限"),
   /** Unit prices include the tax (税込) instead of excluding it (税抜). */
   pricesIncludeTax: booleanField("単価の税"),
-  note: optionalText("備考", 1000),
+  note: optionalText("備考", INVOICE_TEXT_MAX.note),
   /** 請求書 only; empty → the default (4040 売上高 受託開発). */
   revenueAccountId: optionalIdField("売上の科目"),
   /** 請求書 only; empty → the account's, then the partner's default, then 受託. */
@@ -1013,9 +1016,9 @@ export const recurringInvoiceSchema = z
     name: requiredText("名前", 60),
     partnerId: idField("取引先"),
     /** `{対象月}` is replaced when a draft is made. */
-    title: optionalText("件名", 200),
+    title: optionalText("件名", INVOICE_TEXT_MAX.title),
     pricesIncludeTax: booleanField("単価の税"),
-    note: optionalText("備考", 1000),
+    note: optionalText("備考", INVOICE_TEXT_MAX.note),
     /** Empty → the default when a draft is made (the partner's revenue account, else 4040). */
     revenueAccountId: optionalIdField("売上の科目"),
     /** Empty → the default when a draft is made (the account's, the partner's, 受託). */

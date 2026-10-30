@@ -347,6 +347,14 @@ describe.skipIf(!hasTestDatabase)("receipts (領収書)", () => {
       options,
     );
     expect(reopened.status).toBe("issued");
+    // The void receipt stays in view (its PDF too), saying why none can be issued now.
+    expect(await getInvoiceReceipts(prisma, invoice.id, { today: TODAY })).toMatchObject({
+      available: true,
+      current: null,
+      voided: [{ id: receipt.id }],
+      canIssue: false,
+      blocked: "領収書を発行できるのは入金済みの請求書だけです",
+    });
     expect(settingsError(await rejectionOf(issueOn(invoice.id))).message).toMatch(
       /入金済みの請求書だけ/,
     );

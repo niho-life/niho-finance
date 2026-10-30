@@ -178,11 +178,12 @@ export async function getInvoiceReceipts(
   const problem = issueProblem(invoice, today);
   return {
     invoiceId,
-    available: paid,
+    // A void receipt stays in view after its payment was cancelled (18 §15.4).
+    available: paid || receipts.length > 0,
     current,
     voided: receipts.filter((receipt) => receipt.voided),
     canIssue: current === null && problem === null,
-    blocked: paid && current === null ? problem : null,
+    blocked: current === null && (paid || receipts.length > 0) ? problem : null,
     defaults: {
       issueDate: today,
       proviso: defaultReceiptProviso(invoice.title),
