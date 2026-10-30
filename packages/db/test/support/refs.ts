@@ -5,6 +5,7 @@ import type {
   FiscalYearStatus,
 } from "@niho-finance/ledger";
 import type { FiscalYear, PrismaClient } from "@prisma/client";
+import type { Db } from "../../src/audit";
 import { toDbDate } from "../../src/dates";
 import { newId } from "../../src/ids";
 
@@ -40,9 +41,12 @@ export async function seededRefs(prisma: PrismaClient): Promise<SeededRefs> {
   };
 }
 
-/** Adds a fiscal year to the seeded company (tests use their own years so they do not disturb year 1). */
+/**
+ * Adds a fiscal year to the seeded company (tests use their own years so they do not disturb year
+ * 1). Also inside a transaction that a test rolls back.
+ */
 export async function createFiscalYear(
-  prisma: PrismaClient,
+  prisma: Db,
   options: {
     no: number;
     startDate: CalendarDate;

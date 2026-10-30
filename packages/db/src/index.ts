@@ -570,6 +570,7 @@ export {
   pendingStatementsTodo,
   recordExport,
   upcomingDeadlinesTodo,
+  draftInvoicesTodo,
   type ExportLogInput,
   type ExportLogRow,
   type HomeTodo,

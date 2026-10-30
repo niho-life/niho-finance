@@ -28,7 +28,7 @@ export function Pagination({
       {pageCount > 1 ? (
         <div className="flex gap-2">
           {page > 1 ? (
-            <Link href={href(page - 1)} className={link} rel="prev">
+            <Link href={href(page - 1)} className={link} rel="prev" prefetch>
               前へ
             </Link>
           ) : (
@@ -37,7 +37,7 @@ export function Pagination({
             </span>
           )}
           {page < pageCount ? (
-            <Link href={href(page + 1)} className={link} rel="next">
+            <Link href={href(page + 1)} className={link} rel="next" prefetch>
               次へ
             </Link>
           ) : (
