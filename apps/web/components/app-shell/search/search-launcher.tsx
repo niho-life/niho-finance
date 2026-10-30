@@ -83,7 +83,7 @@ export function SearchLauncher() {
         onClick={openPalette}
         aria-haspopup="dialog"
         aria-keyshortcuts="/ Control+K Meta+K"
-        className="mx-auto mb-3 flex size-10 shrink-0 items-center justify-center gap-2 rounded-[9px] border border-border-2 bg-surface text-left text-[13px] text-muted hover:border-muted-2 hover:text-text lg:mx-0 lg:h-auto lg:min-h-9 lg:w-full lg:justify-start lg:px-2.5 lg:text-muted-2 lg:hover:text-muted"
+        className="mx-auto mb-3 flex size-10 shrink-0 items-center justify-center gap-2 rounded-[9px] border border-border-2 bg-surface text-left text-[13px] text-muted hover:border-muted-2 hover:text-text lg:mx-0 lg:h-auto lg:min-h-9 lg:w-full lg:justify-start lg:px-2.5"
       >
         <svg
           aria-hidden="true"
