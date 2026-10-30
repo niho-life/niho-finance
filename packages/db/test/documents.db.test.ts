@@ -1025,8 +1025,16 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
 
     it("uses the upload day without a date: 30 days back with an amount, 7 back to the next day without", async () => {
       const today = todayInJapan();
-      const line = (days: number, amount: bigint, status?: "registered") =>
-        statementLine(card, addDays(today, days), amount, status);
+      // The upload day is the real date, near which other files put lines too (the seeded run
+      // has some): the assertions look at this test's own lines only.
+      const own = new Set<string>();
+      const line = async (days: number, amount: bigint, status?: "registered") => {
+        const created = await statementLine(card, addDays(today, days), amount, status);
+        own.add(created.id);
+        return created;
+      };
+      const ownLines = (items: readonly { id: string; daysApart: number }[]) =>
+        items.filter((item) => own.has(item.id)).map((item) => [item.id, item.daysApart]);
       await line(-31, -8_888n);
       const eightBefore = await line(-8, -8_888n);
       const sevenBefore = await line(-7, -1_234n);
@@ -1039,7 +1047,7 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
       const priced = await register({ amount: 8_888n });
       const byAmount = await findLinkCandidates(prisma, { documentId: priced.id });
       expect(byAmount.basis).toBe("amount");
-      expect(byAmount.walletTransactions.map((item) => [item.id, item.daysApart])).toEqual([
+      expect(ownLines(byAmount.walletTransactions)).toEqual([
         [fiveBefore.id, 5],
         [eightBefore.id, 8],
         [registered.id, 1],
@@ -1048,7 +1056,7 @@ describe.skipIf(!hasTestDatabase)("documents repository", () => {
       const unpriced = await register();
       const byDate = await findLinkCandidates(prisma, { documentId: unpriced.id });
       expect(byDate.basis).toBe("date");
-      expect(byDate.walletTransactions.map((item) => [item.id, item.daysApart])).toEqual([
+      expect(ownLines(byDate.walletTransactions)).toEqual([
         [sameDay.id, 0],
         [nextDay.id, 1],
         [fiveBefore.id, 5],
