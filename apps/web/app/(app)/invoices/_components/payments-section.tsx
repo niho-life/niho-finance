@@ -12,11 +12,15 @@ const COLUMNS = {
 
 /**
  * 入金 of an invoice (18 §9.4): the balance, then each payment (日付 ・ 口座 ・ 入金額 ・ 手数料 ・
- * 充当額 ・ 仕訳 No. ・ 取消). A cancelled payment stays, muted, with its reason.
+ * 充当額 ・ 仕訳 No. ・ 取消). A cancelled payment stays, muted, with its reason. While a receipt is
+ * in force no payment is cancelled (18 §15.1): the reason is said instead of 取消.
  */
 export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
   const balance = detail.balance ?? 0n;
-  const cancellable = detail.status !== "void";
+  const cancellable = detail.status !== "void" && detail.actions.canCancelPayment;
+  const inForce = detail.payments.some((payment) => !payment.cancelled);
+  const cancelBlocked =
+    detail.status !== "void" && inForce ? detail.actions.blocked.cancelPayment : null;
   return (
     <section aria-labelledby="invoice-payments" className="mt-8">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -28,6 +32,9 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
           <span className="num text-[24px] font-extrabold text-text">{formatYen(balance)}</span> 円
         </p>
       </div>
+      {cancelBlocked ? (
+        <p className="mb-2 rounded-lg bg-surface-2 px-3.5 py-2.5 text-[13px]">{cancelBlocked}</p>
+      ) : null}
       {detail.payments.length === 0 ? (
         <p className="text-[13px] text-muted">
           入金はまだありません。「入金を登録」から明細か手入力で登録します

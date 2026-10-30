@@ -7,17 +7,19 @@ import {
   isCalendarDate,
   parseYenInput,
   TRANSFER_FEE_ACCOUNT_CODE,
+  type CalendarDate,
 } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
 import { entryNo, formatYenDisplay, walletLabel } from "@/lib/format";
 import { postSimpleEntryAction } from "../actions";
-import { DateField, FormAlerts, TagsField } from "./form-kit";
+import { defaultEntryDate } from "./entry-date";
+import { entryFormKeyDown } from "./entry-keys";
+import { DateField, EntryFormActions, FormAlerts, TagsField } from "./form-kit";
 
 interface Draft {
   entryDate: string;
@@ -39,9 +41,9 @@ const FIELDS = new Set([
   "memoTagIds",
 ]);
 
-/** 振替 (11 §4.3): between two wallets; the fee goes to 支払手数料 and leaves the paying wallet. */
-/** First values from 「テンプレートから」 (21-cashflow §10.7). */
+/** First values from 「テンプレートから」 (21-cashflow §10.7) or `?date=`. */
 export interface TransferInitial {
+  entryDate?: CalendarDate;
   fromWalletId?: string;
   toWalletId?: string;
   /** 3-digit grouping. */
@@ -49,28 +51,31 @@ export interface TransferInitial {
   description?: string;
 }
 
+/** 振替 (11 §4.3): between two wallets; the fee goes to 支払手数料 and leaves the paying wallet. */
 export function TransferForm({
   options,
   today,
   initial,
 }: {
   options: EntryFormOptions;
-  today: string;
+  today: CalendarDate;
   initial?: TransferInitial;
 }) {
   const id = useId();
   const router = useRouter();
   const toast = useToast();
   const wallets = options.wallets.filter((wallet) => wallet.isActive);
-  const [draft, setDraft] = useState<Draft>({
-    entryDate: today,
+  const [draft, setDraft] = useState<Draft>(() => ({
+    entryDate: initial?.entryDate ?? defaultEntryDate(today, options.fiscalYears),
     description: initial?.description ?? "振替",
     fromWalletId: initial?.fromWalletId ?? wallets[0]?.id ?? "",
     toWalletId: initial?.toWalletId ?? wallets[1]?.id ?? "",
     amount: initial?.amount ?? "",
     fee: "",
     memoTagIds: [],
-  });
+  }));
+  /** The date's problem is told once the date is changed (11 §4: none on opening). */
+  const [dateChanged, setDateChanged] = useState(false);
   const [error, setError] = useState<ActionError | null>(null);
   const [pending, startTransition] = useTransition();
   const change = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
@@ -101,11 +106,21 @@ export function TransferForm({
         return;
       }
       setError(null);
-      toast(`${entryNo(result.data.no)} を登録しました`);
       if (keepGoing) {
-        setDraft({ ...draft, amount: "", fee: "", description: "振替" });
+        toast(`${entryNo(result.data.no)} を登録しました`, {
+          link: { href: `/entries/${result.data.id}`, label: "開く" },
+        });
+        // The date and the two wallets stay; the rest starts over (11 §4.5).
+        setDraft((current) => ({
+          ...current,
+          amount: "",
+          fee: "",
+          description: "振替",
+          memoTagIds: [],
+        }));
         document.getElementById(`${id}-amount`)?.focus();
       } else {
+        toast(`${entryNo(result.data.no)} を登録しました`);
         router.push(`/entries/${result.data.id}`);
       }
     });
@@ -113,7 +128,7 @@ export function TransferForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    send(false);
+    send(true);
   }
 
   const walletOptions = wallets.map((wallet) => (
@@ -123,7 +138,12 @@ export function TransferForm({
   ));
 
   return (
-    <form onSubmit={submit} noValidate className="flex max-w-3xl flex-col gap-4">
+    <form
+      onSubmit={submit}
+      onKeyDown={entryFormKeyDown}
+      noValidate
+      className="flex max-w-3xl flex-col gap-4"
+    >
       <FormAlerts
         messages={formLevelErrors(
           error,
@@ -134,9 +154,13 @@ export function TransferForm({
         <DateField
           id={`${id}-date`}
           value={draft.entryDate}
-          onChange={(entryDate) => change({ entryDate })}
+          onChange={(entryDate) => {
+            setDateChanged(true);
+            change({ entryDate });
+          }}
           fiscalYears={options.fiscalYears}
           error={fieldError("entryDate")}
+          periodHint={dateChanged}
         />
         <FormField
           label="摘要"
@@ -214,14 +238,7 @@ export function TransferForm({
           振替には口座が 2 つ以上要ります。設定 › 口座 で足してください
         </p>
       ) : null}
-      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-        <Button onClick={() => send(true)} disabled={pending}>
-          続けて登録
-        </Button>
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? "登録中…" : "登録"}
-        </Button>
-      </div>
+      <EntryFormActions pending={pending} onOpen={() => send(false)} />
     </form>
   );
 }

@@ -87,8 +87,11 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** One rate of the totals: 適格 with its tax, 区分記載 tax-inclusive with the tax as a note. */
-function RateRows({
+/**
+ * One rate of the totals: 適格 with its tax, 区分記載 tax-inclusive with the tax as a note. The
+ * receipt (`receipt.tsx`) draws its breakdown with it too.
+ */
+export function RateRows({
   rate,
   qualified,
   pricesIncludeTax,
@@ -396,6 +399,14 @@ function truncateUtf8(value: string, maxBytes: number): string {
   return result;
 }
 
+/** The recipient as a file name carries it: no forbidden characters, no spaces, short. */
+export function recipientForFileName(name: string): string {
+  return truncateUtf8(
+    name.replace(FILE_NAME_FORBIDDEN, "").replace(/\s+/g, ""),
+    RECIPIENT_MAX_UTF8_BYTES,
+  );
+}
+
 /**
  * File names (18 §11): ASCII `INV-2026-0001.pdf` (`invoice-draft.pdf` for a draft) and UTF-8
  * `20261215-<宛名>御中_請求書_INV-2026-0001.pdf`, the rule of the NIHO app's receipts
@@ -410,10 +421,7 @@ export function invoicePdfFileNames(
   const number = invoiceNumberLabel(invoice.number);
   const ascii = number === invoice.number ? number : `${invoice.docType}-draft`;
   const typeLabel = INVOICE_DOC_TYPE_LABELS[invoice.docType];
-  const recipient = truncateUtf8(
-    invoice.recipient.name.replace(FILE_NAME_FORBIDDEN, "").replace(/\s+/g, ""),
-    RECIPIENT_MAX_UTF8_BYTES,
-  );
+  const recipient = recipientForFileName(invoice.recipient.name);
   const date = invoice.issueDate.replaceAll("-", "");
   return {
     fileName: `${ascii}.pdf`,

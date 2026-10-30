@@ -60,6 +60,13 @@ describe("labels of entries and the audit log", () => {
     expect(auditActionLabel("calendar_item.notify")).toBe("期限の通知");
     expect(auditActionLabel("calendar_item.delete")).toBe("期限の削除");
     expect(auditActionLabel("calendar_item.update")).toBe("変更");
+    expect(auditActionLabel("recurring_invoice.create")).toBe("追加");
+    expect(auditActionLabel("recurring_invoice.update")).toBe("編集");
+    expect(auditActionLabel("recurring_invoice.pause")).toBe("停止");
+    expect(auditActionLabel("recurring_invoice.resume")).toBe("再開");
+    expect(auditActionLabel("receipt.issue")).toBe("領収書の発行");
+    expect(auditActionLabel("receipt.attach_pdf")).toBe("領収書の PDF の保存");
+    expect(auditActionLabel("receipt.void")).toBe("領収書の無効");
     expect(auditActionLabel("seed.apply")).toBeNull();
     expect(auditActionLabel("create")).toBeNull();
   });

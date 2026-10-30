@@ -6,18 +6,23 @@ import {
   discardInvoiceDraft,
   getPrismaClient,
   issueInvoice,
+  issueReceipt,
   markInvoiceSent,
   recordInvoicePayment,
   SettingsError,
   updateInvoiceDraft,
   updateInvoiceSettings,
   voidInvoice,
+  voidReceipt,
   type CancelInvoicePaymentInput,
   type InvoiceDraftInput,
   type InvoicePaymentInput,
   type InvoiceRecord,
   type InvoiceSendInput,
   type InvoiceVoidInput,
+  type ReceiptIssueInput,
+  type ReceiptVoidInput,
+  type ReceiptView,
 } from "@niho-finance/db";
 import type { InvoiceStatus } from "@niho-finance/ledger";
 import { revalidatePath } from "next/cache";
@@ -26,7 +31,7 @@ import { attempt, formInput, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { authorizeAction } from "@/lib/authz";
-import { keepInvoicePdfAsDocument } from "./_lib/evidence";
+import { keepInvoicePdfAsDocument, keepReceiptPdfAsDocument } from "./_lib/evidence";
 import { sendInvoiceMail, type SentInvoiceMail } from "./_lib/mail";
 
 /*
@@ -56,6 +61,22 @@ export interface IssuedInvoice extends SavedInvoice {
   /** The 証憑 the issued PDF was saved as; `null` when saving it failed (offered again on the detail). */
   pdfDocumentId: string | null;
 }
+
+/** A receipt after a write (18 §15.4). */
+export interface SavedReceipt {
+  id: string;
+  number: string;
+  voided: boolean;
+  /** The 証憑 its PDF was saved as; `null` when saving it failed (offered again on the detail). */
+  pdfDocumentId: string | null;
+}
+
+function savedReceipt(receipt: ReceiptView, pdfDocumentId = receipt.pdfDocumentId): SavedReceipt {
+  return { id: receipt.id, number: receipt.number, voided: receipt.voided, pdfDocumentId };
+}
+
+const PDF_NOT_SAVED =
+  "PDF を証憑に保存できませんでした。もう一度試してください。続くときは 設定 › 証憑の規程 の保存先を確かめてください";
 
 function saved(record: InvoiceRecord): SavedInvoice {
   return {
@@ -133,11 +154,7 @@ export async function saveInvoicePdfAction(id: string): Promise<ActionResult<str
   return write(
     async () => {
       const documentId = await keepInvoicePdfAsDocument(prisma(), parseId(id), await by());
-      if (!documentId) {
-        throw new SettingsError(
-          "PDF を証憑に保存できませんでした。もう一度試してください。続くときは 設定 › 証憑の規程 の保存先を確かめてください",
-        );
-      }
+      if (!documentId) throw new SettingsError(PDF_NOT_SAVED);
       return documentId;
     },
     (documentId) => documentId,
@@ -255,5 +272,74 @@ export async function saveInvoiceSettingsAction(formData: FormData): Promise<Act
   return write(
     async () => updateInvoiceSettings(prisma(), formInput(formData), await by()),
     () => null,
+  );
+}
+
+/**
+ * 領収書を発行 (18 §15.1, §15.3): a paid invoice gets its receipt; then the PDF is kept as a 証憑.
+ * The issue stands even when the PDF cannot be saved.
+ */
+export async function issueReceiptAction(
+  invoiceId: string,
+  values: unknown,
+): Promise<ActionResult<SavedReceipt>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () => {
+      const receipt = await issueReceipt(
+        prisma(),
+        parseId(invoiceId),
+        valuesSchema.parse(values) as ReceiptIssueInput,
+        await by(),
+      );
+      const pdfDocumentId = await keepReceiptPdfAsDocument(
+        prisma(),
+        { invoiceId: receipt.invoiceId, receiptId: receipt.id },
+        await by(),
+      );
+      return { receipt, pdfDocumentId };
+    },
+    ({ receipt, pdfDocumentId }) => savedReceipt(receipt, pdfDocumentId),
+  );
+}
+
+/** PDF を証憑に保存: for a receipt whose PDF was not saved on issue (18 §15.3). */
+export async function saveReceiptPdfAction(
+  invoiceId: string,
+  receiptId: string,
+): Promise<ActionResult<string>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () => {
+      const documentId = await keepReceiptPdfAsDocument(
+        prisma(),
+        { invoiceId: parseId(invoiceId), receiptId: parseId(receiptId) },
+        await by(),
+      );
+      if (!documentId) throw new SettingsError(PDF_NOT_SAVED);
+      return documentId;
+    },
+    (documentId) => documentId,
+  );
+}
+
+/** 領収書を無効にする: the number stays with the reason; a new one can be issued afterwards. */
+export async function voidReceiptAction(
+  receiptId: string,
+  values: unknown,
+): Promise<ActionResult<SavedReceipt>> {
+  const denied = await authorizeAction("accountant");
+  if (denied) return denied;
+  return write(
+    async () =>
+      voidReceipt(
+        prisma(),
+        parseId(receiptId),
+        valuesSchema.parse(values) as ReceiptVoidInput,
+        await by(),
+      ),
+    (receipt) => savedReceipt(receipt),
   );
 }

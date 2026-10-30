@@ -49,6 +49,7 @@ const ROUTE_GUARDS: Readonly<Record<string, string>> = {
   "(app)/closing/statements/export/route.ts": '"accountant"',
   "(app)/closing/assets/return/export/route.ts": '"accountant"',
   "(app)/invoices/[id]/pdf/route.ts": '"accountant"',
+  "(app)/invoices/[id]/receipt/pdf/route.ts": '"accountant"',
   "(app)/payroll/bonus/[id]/payslips/[employeeId]/pdf/route.ts": '"accountant"',
   "(app)/payroll/runs/[id]/payslips/[employeeId]/pdf/route.ts": '"accountant"',
   "(app)/payroll/statements/[year]/[employeeId]/report/pdf/route.ts": '"accountant"',

@@ -318,7 +318,7 @@ export async function findHandoverRequest(
 ): Promise<HandoverRequest | null> {
   const rows = await db.auditLog.findMany({
     where: { action: HANDOVER_PACKAGE_AUDIT_ACTION, entity: ENTITY, entityId: requestId },
-    orderBy: { at: "asc" },
+    orderBy: [{ at: "asc" }, { id: "asc" }],
   });
   const requested = rows.find((row) => text(afterOf(row).phase) === "requested");
   return requested ? resolveRequest(requested, rows, options.now ?? new Date()) : null;
@@ -338,7 +338,7 @@ export async function listHandoverRequests(
   if (ids.length === 0) return [];
   const rows = await db.auditLog.findMany({
     where: { action: HANDOVER_PACKAGE_AUDIT_ACTION, entity: ENTITY, entityId: { in: ids } },
-    orderBy: { at: "asc" },
+    orderBy: [{ at: "asc" }, { id: "asc" }],
   });
   const now = options.now ?? new Date();
   return requested.flatMap((row) => resolveRequest(row, rows, now) ?? []);
@@ -356,7 +356,7 @@ export async function listRecentExportsWithPackages(db: Db, limit = 20): Promise
       entity: ENTITY,
       after: { path: ["phase"], equals: "downloaded" },
     },
-    orderBy: { at: "desc" },
+    orderBy: [{ at: "desc" }, { id: "desc" }],
     take: limit,
   });
   const requestIds = downloads.flatMap((row) => (row.entityId ? [row.entityId] : []));

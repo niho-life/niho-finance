@@ -1,6 +1,6 @@
 "use client";
 
-import type { EntryFormOptions } from "@niho-finance/db";
+import type { EntryCandidates, EntryFormOptions } from "@niho-finance/db";
 import {
   getTaxCategory,
   isCalendarDate,
@@ -9,11 +9,11 @@ import {
   parseYenInput,
   splitTaxInclusive,
   walletAccountIdsOf,
+  type CalendarDate,
   type TaxDirection,
 } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState, useTransition, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
@@ -21,11 +21,16 @@ import { formLevelErrors, type ActionError } from "@/lib/action-types";
 import { entryNo, formatYenDisplay, walletLabel } from "@/lib/format";
 import { linkDocumentAction } from "../../documents/actions";
 import { postSimpleEntryAction } from "../actions";
+import { defaultEntryDate } from "./entry-date";
+import { entryFormKeyDown } from "./entry-keys";
 import {
   accountLabel,
+  ChoiceOptions,
   DateField,
+  EntryFormActions,
   fiscalYearOn,
   FormAlerts,
+  partnerLabel,
   TagsField,
   TaxCategoryOptions,
 } from "./form-kit";
@@ -158,13 +163,16 @@ export interface SimpleEntryInitial {
 export function SimpleEntryForm({
   type,
   options,
+  candidates,
   today,
   initial,
   linkDocument,
 }: {
   type: FlowType;
   options: EntryFormOptions;
-  today: string;
+  /** The recent accounts and partners, and each partner's last 収入 / 支出 (11 §4.7). */
+  candidates: EntryCandidates;
+  today: CalendarDate;
   /**
    * First values from 「この証憑から取引を登録」 (date, amount, partner) or 「テンプレートから」
    * (21-cashflow §10.7: the recurring item's wallet, account, tax, partner, segment, amount, name).
@@ -188,39 +196,49 @@ export function SimpleEntryForm({
       accounts: new Map(options.accounts.map((account) => [account.id, account])),
       wallets: new Map(options.wallets.map((wallet) => [wallet.id, wallet])),
       partners: new Map(options.partners.map((partner) => [partner.id, partner])),
+      taxCodes: new Set(options.taxCategories.map((category) => category.code)),
+      segmentIds: new Set(options.segments.map((segment) => segment.id)),
     };
   }, [type, options]);
 
-  /** Fills the fields the owner has not chosen: 取引先 → 科目 → 口座 (11 §4). */
+  /**
+   * Fills the fields the owner has not chosen (11 §4): the partner's last 収入 / 支出 (as a whole,
+   * while its account is offered and in place), then the partner's defaults, then the account's
+   * (and the wallet's segment). The order of 明細の推定 (15 §4, steps 3–5).
+   */
   function withDefaults(draft: Draft, edited: Edited): Draft {
     const partner = lookups.partners.get(draft.partnerId);
-    let accountId = draft.accountId;
-    if (
-      !edited.accountId &&
-      partner?.defaultAccountId &&
-      lookups.choiceIds.has(partner.defaultAccountId)
-    ) {
-      accountId = partner.defaultAccountId;
-    }
+    const preset = draft.partnerId ? candidates.partnerPresets[draft.partnerId]?.[type] : undefined;
+    const usablePreset = preset && lookups.choiceIds.has(preset.accountId) ? preset : undefined;
+    const accountId = edited.accountId
+      ? draft.accountId
+      : ([usablePreset?.accountId, partner?.defaultAccountId].find(
+          (candidate): candidate is string =>
+            Boolean(candidate && lookups.choiceIds.has(candidate)),
+        ) ?? draft.accountId);
+    const last = usablePreset?.accountId === accountId ? usablePreset : undefined;
     const account = lookups.accounts.get(accountId);
     const wallet = draft.counterpart.startsWith("wallet:")
       ? lookups.wallets.get(draft.counterpart.slice("wallet:".length))
       : undefined;
-    const tax = [partner?.defaultTaxCategoryCode, account?.defaultTaxCategoryCode].find((code) =>
-      fitsDirection(code, text.direction),
-    );
+    const tax = [
+      last?.taxCategoryCode,
+      partner?.defaultTaxCategoryCode,
+      account?.defaultTaxCategoryCode,
+    ].find((code) => fitsDirection(code, text.direction) && lookups.taxCodes.has(code));
+    const segment = [
+      last?.segmentId,
+      partner?.defaultSegmentId,
+      account?.defaultSegmentId,
+      wallet?.defaultSegmentId,
+    ].find((segmentId) => Boolean(segmentId && lookups.segmentIds.has(segmentId)));
     return {
       ...draft,
       accountId,
       taxCategoryCode: edited.taxCategoryCode
         ? draft.taxCategoryCode
         : (tax ?? draft.taxCategoryCode),
-      segmentId: edited.segmentId
-        ? draft.segmentId
-        : (partner?.defaultSegmentId ??
-          account?.defaultSegmentId ??
-          wallet?.defaultSegmentId ??
-          ""),
+      segmentId: edited.segmentId ? draft.segmentId : (segment ?? ""),
     };
   }
 
@@ -234,7 +252,7 @@ export function SimpleEntryForm({
   const [draft, setDraft] = useState<Draft>(() =>
     withDefaults(
       {
-        entryDate: initial?.entryDate ?? today,
+        entryDate: initial?.entryDate ?? defaultEntryDate(today, options.fiscalYears),
         description: initial?.description ?? "",
         counterpart:
           initial?.counterpart ??
@@ -253,6 +271,8 @@ export function SimpleEntryForm({
       initialEdited,
     ),
   );
+  /** The date's problem is told once the date is changed (11 §4: none on opening). */
+  const [dateChanged, setDateChanged] = useState(false);
   const [error, setError] = useState<ActionError | null>(null);
   const [pending, startTransition] = useTransition();
   /** Linked to the first entry registered here only (続けて登録 does not link it again). */
@@ -292,7 +312,7 @@ export function SimpleEntryForm({
     return { warn: false, text: `うち消費税 ${formatYenDisplay(split.taxAmount)} 円${separate}` };
   })();
 
-  /** 登録 (Enter) opens the new entry; 続けて登録 stays on the form. */
+  /** 続けて登録 (Enter on the button, Cmd+Enter) stays on the form; 登録して開く opens the entry. */
   function send(keepGoing: boolean) {
     const values = { type, ...draft };
     startTransition(async () => {
@@ -302,6 +322,8 @@ export function SimpleEntryForm({
         return;
       }
       setError(null);
+      const no = entryNo(result.data.no);
+      const link = keepGoing ? { link: { href: `/entries/${result.data.id}`, label: "開く" } } : {};
       if (pendingLink) {
         setPendingLink(null);
         const linked = await linkDocumentAction({
@@ -310,20 +332,36 @@ export function SimpleEntryForm({
           documentId: pendingLink.id,
         });
         // A failed link is told, and the entry still opens: it is registered.
-        if (linked.ok) toast(`${entryNo(result.data.no)} を登録し、証憑を紐づけました`);
+        if (linked.ok) toast(`${no} を登録し、証憑を紐づけました`, link);
         else {
-          toast(
-            `${entryNo(result.data.no)} を登録しました。証憑は紐づけられませんでした（${linked.error}）`,
-            { tone: "error" },
-          );
+          toast(`${no} を登録しました。証憑は紐づけられませんでした（${linked.error}）`, {
+            tone: "error",
+            ...link,
+          });
         }
       } else {
-        toast(`${entryNo(result.data.no)} を登録しました`);
+        toast(`${no} を登録しました`, link);
       }
       if (keepGoing) {
-        // Same type and date; the amount, the description and the partner start over (11 §4).
-        setDraft(withDefaults({ ...draft, amount: "", description: "", partnerId: "" }, edited));
-        document.getElementById(`${id}-amount`)?.focus();
+        // The type, the date and the 支払元 / 入金先 stay; the rest starts over (11 §4.5).
+        const none: Edited = { accountId: false, taxCategoryCode: false, segmentId: false };
+        setEdited(none);
+        setDraft((current) =>
+          withDefaults(
+            {
+              ...current,
+              amount: "",
+              description: "",
+              partnerId: "",
+              accountId: "",
+              taxCategoryCode: text.defaultTax,
+              segmentId: "",
+              memoTagIds: [],
+            },
+            none,
+          ),
+        );
+        document.getElementById(`${id}-partner`)?.focus();
       } else {
         router.push(`/entries/${result.data.id}`);
       }
@@ -332,7 +370,7 @@ export function SimpleEntryForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    send(false);
+    send(true);
   }
 
   // Errors of fields that are not drawn (the tags when there are none) go above the form.
@@ -341,9 +379,22 @@ export function SimpleEntryForm({
     (field) => FIELDS.has(field) && (field !== "memoTagIds" || options.memoTags.length > 0),
   );
   const wallets = options.wallets.filter((wallet) => wallet.isActive);
+  const accountChoiceList = lookups.choices.map((account) => ({
+    value: account.id,
+    label: accountLabel(account),
+  }));
+  const partnerChoiceList = options.partners.map((partner) => ({
+    value: partner.id,
+    label: partnerLabel(partner),
+  }));
 
   return (
-    <form onSubmit={submit} noValidate className="flex max-w-3xl flex-col gap-4">
+    <form
+      onSubmit={submit}
+      onKeyDown={entryFormKeyDown}
+      noValidate
+      className="flex max-w-3xl flex-col gap-4"
+    >
       {pendingLink ? (
         <p className="rounded-lg bg-surface-2 px-3.5 py-2.5 text-[14px] break-words">
           証憑「{pendingLink.name}」を紐づけて登録します
@@ -354,24 +405,14 @@ export function SimpleEntryForm({
         <DateField
           id={`${id}-date`}
           value={draft.entryDate}
-          onChange={(entryDate) => change({ entryDate })}
+          onChange={(entryDate) => {
+            setDateChanged(true);
+            change({ entryDate });
+          }}
           fiscalYears={options.fiscalYears}
           error={fieldError("entryDate")}
+          periodHint={dateChanged}
         />
-        <FormField label="取引先" htmlFor={`${id}-partner`} error={fieldError("partnerId")}>
-          <Select
-            id={`${id}-partner`}
-            value={draft.partnerId}
-            onChange={(event) => change({ partnerId: event.currentTarget.value })}
-          >
-            <option value="">なし</option>
-            {options.partners.map((partner) => (
-              <option key={partner.id} value={partner.id}>
-                {partner.isActive ? partner.name : `${partner.name}（無効）`}
-              </option>
-            ))}
-          </Select>
-        </FormField>
         <FormField
           label={text.counterpart}
           htmlFor={`${id}-counterpart`}
@@ -402,6 +443,16 @@ export function SimpleEntryForm({
             </optgroup>
           </Select>
         </FormField>
+        <FormField label="取引先" htmlFor={`${id}-partner`} error={fieldError("partnerId")}>
+          <Select
+            id={`${id}-partner`}
+            value={draft.partnerId}
+            onChange={(event) => change({ partnerId: event.currentTarget.value })}
+          >
+            <option value="">なし</option>
+            <ChoiceOptions choices={partnerChoiceList} recent={candidates.recentPartnerIds} />
+          </Select>
+        </FormField>
         <FormField
           label={text.account}
           htmlFor={`${id}-account`}
@@ -414,11 +465,7 @@ export function SimpleEntryForm({
             onChange={(event) => change({ accountId: event.currentTarget.value }, "accountId")}
           >
             <option value="">選んでください</option>
-            {lookups.choices.map((account) => (
-              <option key={account.id} value={account.id}>
-                {accountLabel(account)}
-              </option>
-            ))}
+            <ChoiceOptions choices={accountChoiceList} recent={candidates.recentAccounts[type]} />
           </Select>
         </FormField>
         <FormField
@@ -494,15 +541,7 @@ export function SimpleEntryForm({
           error={fieldError("memoTagIds")}
         />
       </div>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-        {/* The only submit button: Enter in any field registers (11 §4). */}
-        <Button onClick={() => send(true)} disabled={pending}>
-          続けて登録
-        </Button>
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? "登録中…" : "登録"}
-        </Button>
-      </div>
+      <EntryFormActions pending={pending} onOpen={() => send(false)} />
     </form>
   );
 }

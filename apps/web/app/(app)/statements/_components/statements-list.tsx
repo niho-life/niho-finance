@@ -145,6 +145,13 @@ export function StatementsList({
     }
   }
 
+  /** Whether the user moved the focus off `rowId`, where a background task left it. */
+  function focusMovedFrom(rowId: string | null): boolean {
+    const active = document.activeElement;
+    if (!active || active === document.body) return false;
+    return active !== (rowId ? rowRefs.current.get(rowId) : undefined);
+  }
+
   function enqueue(task: () => Promise<void>) {
     queue.current = queue.current.then(task, task);
   }
@@ -453,45 +460,84 @@ export function StatementsList({
     }, 0n);
 
   function runBulk(kind: "register" | "ignore") {
+    if (bulkPending) return;
     const items = kind === "register" ? runnable : bulk;
     const skippedCount = kind === "register" ? skipped : 0;
+    const optimisticIds = new Set(
+      items.flatMap(({ row, plan }) => {
+        const counterpart =
+          kind === "register" && plan.kind === "transfer" && plan.counterpart.startsWith("txn:")
+            ? plan.counterpart.slice("txn:".length)
+            : null;
+        return counterpart && rowById.has(counterpart) ? [row.id, counterpart] : [row.id];
+      }),
+    );
+    const selectedAtStart = new Set(selected);
+    const anchor = items[0]?.row.id;
+    const next = anchor ? nextAfter(anchor, optimisticIds) : null;
+    setErrors((current) => without(current, optimisticIds));
+    setSelected((current) => new Set([...current].filter((id) => !optimisticIds.has(id))));
+    hide([...optimisticIds]);
+    setDialog(null);
+    focusRow(next);
     setBulkPending(true);
     enqueue(async () => {
       const done = new Set<string>();
+      const failures = new Map<string, ActionError>();
       const groups: UndoState["groups"] = [];
-      for (const { row, plan } of items) {
-        if (done.has(row.id)) continue;
-        const draft = draftOf(row);
-        let result: ActionResult<SettledStatement>;
-        if (kind === "ignore" || plan.kind === "ignore") {
-          result = await ignoreStatementAction(row.id, {
-            reason: kind === "ignore" ? "" : draft.ignoredReason,
-          });
-        } else if (plan.kind === "transfer") {
-          result = await transferStatementAction(row.id, { counterpart: plan.counterpart });
-        } else {
-          result = await registerStatementAction(row.id, registerInput(row, draft));
+      try {
+        for (const { row, plan } of items) {
+          if (done.has(row.id)) continue;
+          const draft = draftOf(row);
+          let result: ActionResult<SettledStatement>;
+          let uncertain = false;
+          try {
+            if (kind === "ignore" || plan.kind === "ignore") {
+              result = await ignoreStatementAction(row.id, {
+                reason: kind === "ignore" ? "" : draft.ignoredReason,
+              });
+            } else if (plan.kind === "transfer") {
+              result = await transferStatementAction(row.id, { counterpart: plan.counterpart });
+            } else {
+              result = await registerStatementAction(row.id, registerInput(row, draft));
+            }
+          } catch {
+            uncertain = true;
+            result = {
+              ok: false,
+              error: "処理結果を確認できません。画面を再読み込みして明細の状態を確認してください。",
+              fieldErrors: {},
+            };
+          }
+          if (result.ok) {
+            for (const id of result.data.transactionIds) done.add(id);
+            const [first] = result.data.transactionIds;
+            if (first) groups.push({ id: first, ids: result.data.transactionIds });
+            hide(result.data.transactionIds);
+          } else {
+            failures.set(row.id, result);
+          }
+          if (uncertain) break;
         }
-        if (result.ok) {
-          for (const id of result.data.transactionIds) done.add(id);
-          const [first] = result.data.transactionIds;
-          if (first) groups.push({ id: first, ids: result.data.transactionIds });
-          hide(result.data.transactionIds);
-          setErrors((current) => without(current, [row.id]));
-        } else {
-          setErrors((current) => ({ ...current, [row.id]: result }));
-        }
+      } finally {
+        const restored = [...optimisticIds].filter((id) => !done.has(id));
+        unhide(restored);
+        const failed = [...failures].filter(([id]) => !done.has(id));
+        setErrors((current) => ({ ...without(current, done), ...Object.fromEntries(failed) }));
+        setSelected(
+          (current) => new Set([...current, ...restored.filter((id) => selectedAtStart.has(id))]),
+        );
+        setBulkPending(false);
+        const verb = kind === "register" ? "登録" : "無視";
+        const note = skippedCount > 0 ? `。科目のない ${skippedCount} 件は登録しませんでした` : "";
+        if (groups.length > 0) showUndo(`${done.size} 件を${verb}しました${note}`, groups);
+        else if (note) toast(`科目のない ${skippedCount} 件は登録しませんでした`);
+        const firstFailed = failed[0]?.[0];
+        const remaining = rows.find((row) => !hiddenRef.current.has(row.id));
+        // The rows stay usable while they are processed: keep the focus the user moved meanwhile.
+        if (!focusMovedFrom(next)) focusRow(firstFailed ?? remaining?.id ?? null);
+        router.refresh();
       }
-      setSelected((current) => new Set([...current].filter((id) => !done.has(id))));
-      setBulkPending(false);
-      setDialog(null);
-      const verb = kind === "register" ? "登録" : "無視";
-      const note = skippedCount > 0 ? `。科目のない ${skippedCount} 件は登録しませんでした` : "";
-      if (groups.length > 0) showUndo(`${done.size} 件を${verb}しました${note}`, groups);
-      else if (note) toast(`科目のない ${skippedCount} 件は登録しませんでした`);
-      const remaining = rows.find((row) => !hiddenRef.current.has(row.id));
-      focusRow(remaining?.id ?? null);
-      router.refresh();
     });
   }
 
@@ -630,7 +676,13 @@ export function StatementsList({
       ) : null}
 
       {visible.length === 0 ? (
-        empty
+        bulkPending ? (
+          <p role="status" className="py-4 text-[13px] text-muted">
+            処理中…
+          </p>
+        ) : (
+          empty
+        )
       ) : (
         <>
           {pendingTab ? (

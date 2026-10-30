@@ -207,6 +207,19 @@ export async function describeAuditTargets(
     });
     for (const invoice of invoices) label("invoice", invoice.id, invoiceAuditName(invoice));
   }
+  // 「定期請求 顧問料 架空デザイン」「領収書 RC-2026-0001」 (18 §14.6, §15.5).
+  if (ids.has("recurring_invoice")) {
+    const where = { id: of("recurring_invoice") };
+    for (const row of await db.recurringInvoice.findMany({ where, select }))
+      label("recurring_invoice", row.id, row.name);
+  }
+  if (ids.has("receipt")) {
+    const receipts = await db.receipt.findMany({
+      where: { id: of("receipt") },
+      select: { id: true, number: true },
+    });
+    for (const receipt of receipts) label("receipt", receipt.id, receipt.number);
+  }
   if (ids.has("calendar_item")) {
     const items = await db.calendarItem.findMany({
       where: { id: of("calendar_item") },
