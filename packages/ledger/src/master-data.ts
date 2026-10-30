@@ -195,6 +195,11 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "fixed_asset.void": "固定資産の登録の取消",
   "fixed_asset.dispose": "固定資産の除却・売却",
   "setup.skip": "初期設定を後回し",
+  // 初月のガイド (10 §3.1)
+  "setup.guide_check": "はじめの手順を済みにする",
+  "setup.guide_uncheck": "はじめの手順を未了に戻す",
+  "setup.guide_show": "はじめの手順を表示",
+  "setup.guide_close": "はじめの手順を閉じる",
   "standard_data.bootstrap": "標準データの投入",
   "document.create": "証憑の保存",
   "document.update": "証憑の変更",

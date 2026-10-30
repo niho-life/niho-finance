@@ -20,6 +20,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/page-header";
 import { db, loadSetupProgress, loadShell, requireSetupReady } from "@/lib/data";
 import { formatMonth, formatPeriod } from "@/lib/format";
+import { FirstMonthGuide } from "./_components/first-month-guide";
 import { CashCard } from "./_home/cash-card";
 import { CashflowCard } from "./_home/cashflow-card";
 import { profitFigures, segmentBars } from "./_home/figures";
@@ -105,6 +106,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         title="ホーム"
         meta={`${formatMonth(asOf)}${shell.fiscalYearNo ? ` · 第${shell.fiscalYearNo}期` : ""}`}
       />
+      <FirstMonthGuide />
       <div className={GRID}>
         <CashCard
           href={

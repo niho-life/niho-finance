@@ -4,6 +4,7 @@ import { CompanyForm } from "@/components/settings/company-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
 import { toCompanyFormValues } from "@/lib/form-values";
+import { FirstMonthGuideSetting } from "@/app/(app)/_components/first-month-guide-setting";
 import { saveCompanyAction } from "../actions";
 
 export const metadata: Metadata = { title: "事業所" };
@@ -29,6 +30,7 @@ export default async function CompanySettingsPage() {
           savedMessage="事業所を保存しました"
         />
       </section>
+      <FirstMonthGuideSetting />
     </>
   );
 }

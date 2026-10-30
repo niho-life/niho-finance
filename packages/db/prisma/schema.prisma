@@ -308,6 +308,8 @@ model Company {
   recordsPolicyVersion      String?   @map("records_policy_version")
   /// 償却資産申告の申告先 (本店所在地の市町村)
   propertyTaxMunicipality   String?   @map("property_tax_municipality")
+  /// First-month guide (10 §3.1): manually checked steps and when it was shown again
+  setupGuide                Json?     @map("setup_guide")
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
