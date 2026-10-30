@@ -4,6 +4,7 @@ import {
   createAccount,
   loadEntryCandidates,
   postSimpleEntry,
+  postVoucherEntry,
   setAccountActive,
   setPartnerActive,
   voidJournalEntryWithOpenDate,
@@ -173,5 +174,116 @@ describe.skipIf(!hasTestDatabase)("loadEntryCandidates (最近の候補)", () =>
     expect(candidates.partnerPresets[partner("six")]?.expense?.accountId).toBe(retiredAccountId);
     expect(candidates.partnerPresets[partner("dormant")]).toBeUndefined();
     expect(candidates.partnerPresets[partner("voided")]).toBeUndefined();
+  });
+
+  // Newer than every entry above (June 2190), so the cases read their own lines first.
+  describe("a sale net of its fee, and a window that ends inside an entry", () => {
+    let newestLines: number;
+    let saleLines: number;
+
+    beforeAll(async () => {
+      for (const key of ["net", "cut"]) {
+        const row = await prisma.partner.create({
+          data: { id: newId(), name: `架空候補 ${key}`, kind: "customer" },
+        });
+        partners.set(key, row.id);
+      }
+      const line = (side: "debit" | "credit", code: string, amount: string, tax: string) => ({
+        side,
+        accountId: refs.account(code),
+        subAccountId: "",
+        amount,
+        taxCategoryCode: tax,
+        segmentId: code === "1200" ? "" : refs.segment("platform"),
+        partnerId: partner("net"),
+        description: "",
+      });
+      await postVoucherEntry(
+        prisma,
+        {
+          kind: "normal",
+          entryDate: "2190-06-01",
+          description: "決済手数料を差し引いた売上",
+          partnerId: "",
+          memoTagIds: [],
+          lines: [
+            line("debit", "1200", "9,640", "na"),
+            line("debit", "5400", "360", "purchase_10"),
+            line("credit", "4040", "10,000", "sales_10"),
+          ],
+        },
+        { actor },
+      );
+      const simple = (values: Record<string, unknown>) =>
+        postSimpleEntry(
+          prisma,
+          {
+            description: "候補の試験",
+            amount: "1,100",
+            memoTagIds: [],
+            ...values,
+          } as Parameters<typeof postSimpleEntry>[1],
+          { actor },
+        );
+      const sale = await simple({
+        type: "income",
+        entryDate: "2190-06-02",
+        counterpart: `account:${refs.account("1200")}`,
+        accountId: refs.account("4040"),
+        taxCategoryCode: "sales_10",
+        segmentId: refs.segment("contract"),
+        partnerId: partner("cut"),
+      });
+      const card = await prisma.wallet.findFirstOrThrow({ where: { name: "架空カード" } });
+      const newest = await simple({
+        type: "expense",
+        entryDate: "2190-06-03",
+        counterpart: `wallet:${card.id}`,
+        accountId: refs.account("5320"),
+        taxCategoryCode: "purchase_10",
+        segmentId: refs.segment("corporate"),
+        partnerId: partner("one"),
+      });
+      const count = (journalEntryId: string) =>
+        prisma.journalLine.count({ where: { journalEntryId } });
+      newestLines = await count(newest.id);
+      saleLines = await count(sale.id);
+    });
+
+    it("counts the fee of the sale as a 支出, but not its receivable", async () => {
+      const candidates = await loadEntryCandidates(prisma);
+      expect(candidates.recentAccounts.expense).toContain(refs.account("5400"));
+      expect(candidates.recentAccounts.expense).not.toContain(refs.account("1200"));
+      expect(candidates.partnerPresets[partner("net")]).toEqual({
+        income: {
+          accountId: refs.account("4040"),
+          taxCategoryCode: "sales_10",
+          segmentId: refs.segment("platform"),
+        },
+        expense: {
+          accountId: refs.account("5400"),
+          taxCategoryCode: "purchase_10",
+          segmentId: refs.segment("platform"),
+        },
+      });
+    });
+
+    it("leaves out the oldest entry when the window ends inside it", async () => {
+      // The window ends after the first line of the sale (its receivable).
+      const cut = await loadEntryCandidates(prisma, { lineLimit: newestLines + 1 });
+      expect(cut.recentPartnerIds).toEqual([partner("one")]);
+      expect(cut.partnerPresets[partner("cut")]).toBeUndefined();
+      expect(cut.recentAccounts.expense).toEqual([refs.account("5320")]);
+      // One line more than the sale: the sale is whole, the fee entry is the one cut.
+      const whole = await loadEntryCandidates(prisma, { lineLimit: newestLines + saleLines + 1 });
+      expect(whole.recentPartnerIds).toEqual([partner("one"), partner("cut")]);
+      expect(whole.partnerPresets[partner("cut")]).toEqual({
+        income: {
+          accountId: refs.account("4040"),
+          taxCategoryCode: "sales_10",
+          segmentId: refs.segment("contract"),
+        },
+      });
+    });
   });
 });

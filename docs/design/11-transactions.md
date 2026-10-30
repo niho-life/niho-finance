@@ -107,8 +107,8 @@ S1 の `postJournalEntry` / `voidJournalEntry`（`packages/db/src/journal.ts`）
 
 - 最近の科目: 収入は収益の科目、支出は §4.2 の科目、伝票は口座に紐づかない科目すべて。それぞれ使われた順に重複を除いて 5 件（無効な科目は除く）。
 - 最近の取引先: 仕訳の行の取引先を使われた順に 5 件（無効な取引先は除く）。
-- 取引先の前回の値: 取引先ごとに、収入と支出それぞれで、その取引先を持つ最新の行のうち口座に紐づかない科目の行の 科目・税区分・セグメント。収入は収益の科目の行、支出は §4.2 の科目の行だけを見る（向きの違う前回で埋めない）。
-- 返す形: `{ recentAccounts: { income; expense; voucher }, recentPartnerIds, partnerPresets: Record<partnerId, { income?: Preset; expense?: Preset }> }`。`Preset = { accountId; taxCategoryCode; segmentId }`。読み込む行は直近の 2,000 行まで（1 人の会社で数年分）。
+- 取引先の前回の値: 取引先ごとに、収入と支出それぞれで、その取引先を持つ最新の行のうち口座に紐づかない科目の行の 科目・税区分・セグメント。収入は貸方の収益の科目の行、支出は借方の §4.2 の科目の行だけを見る（向きの違う前回で埋めない）。収益の行を含む仕訳では、借方は費用の科目の行だけを支出に数える（売上の売掛金などの資産・負債の行は支出ではない。決済手数料を差し引いた売上の支払手数料は数える）。最近の科目の支出も同じ規則。
+- 返す形: `{ recentAccounts: { income; expense; voucher }, recentPartnerIds, partnerPresets: Record<partnerId, { income?: Preset; expense?: Preset }> }`。`Preset = { accountId; taxCategoryCode; segmentId }`。読み込む行は直近の 2,000 行まで（1 人の会社で数年分）。上限で途中まで読んだ最も古い仕訳は使わない（売掛金の行だけを支出と読み違えないため）。
 
 ## 5. 詳細 `/entries/[id]`
 

@@ -1216,8 +1216,10 @@ type FlowType = "income" | "expense";
 
 /**
  * Whether a line is the 科目 of a 収入 or a 支出 (11 §4.1, §4.2), active or not: a revenue line on the
- * credit side, or a line on the debit side of an account the 支出 form takes, in an entry without
- * revenue (not the receivable of a sale). The other lines are the money side or the other direction.
+ * credit side, or a line on the debit side of an account the 支出 form takes. In an entry with
+ * revenue only the expense lines count on the debit side: its assets and liabilities are the other
+ * side of the sale (the receivable), not something a 支出 chose. The other lines are the money side
+ * or the other direction.
  */
 function flowOf(
   line: {
@@ -1232,7 +1234,8 @@ function flowOf(
   if (line.side === "credit") {
     return allowedSimpleEntryAccount(account, "income", walletAccountIds) ? "income" : null;
   }
-  return !withRevenue && allowedSimpleEntryAccount(account, "expense", walletAccountIds)
+  return (!withRevenue || kind === "expense") &&
+    allowedSimpleEntryAccount(account, "expense", walletAccountIds)
     ? "expense"
     : null;
 }
@@ -1243,13 +1246,17 @@ function flowOf(
  * first by date and then by number. 収入 and 支出 look only at the lines a 収入 / 支出 would make its
  * 科目 (`flowOf`), so a partner's preset never comes from the other direction; 伝票 at every account
  * not tied to a wallet. Inactive accounts and partners are not offered; a preset keeps the last
- * values as they were (the form skips the ones it no longer offers).
+ * values as they were (the form skips the ones it no longer offers). `lineLimit` is for the tests.
  */
-export async function loadEntryCandidates(db: Db): Promise<EntryCandidates> {
+export async function loadEntryCandidates(
+  db: Db,
+  options: { lineLimit?: number } = {},
+): Promise<EntryCandidates> {
+  const lineLimit = options.lineLimit ?? CANDIDATE_LINES;
   const walletAccountIds = walletAccountIdsOf(
     await db.wallet.findMany({ select: { accountId: true, isActive: true } }),
   );
-  const lines = await db.journalLine.findMany({
+  const fetched = await db.journalLine.findMany({
     where: {
       journalEntry: { status: "posted", kind: { notIn: ["reversal", "opening", "closing"] } },
     },
@@ -1258,7 +1265,7 @@ export async function loadEntryCandidates(db: Db): Promise<EntryCandidates> {
       { journalEntry: { no: "desc" } },
       { lineNo: "asc" },
     ],
-    take: CANDIDATE_LINES,
+    take: lineLimit,
     select: {
       journalEntryId: true,
       side: true,
@@ -1269,6 +1276,10 @@ export async function loadEntryCandidates(db: Db): Promise<EntryCandidates> {
       partner: { select: { isActive: true } },
     },
   });
+  // A full window may end inside its oldest entry: leave that entry out rather than read a part of
+  // it (its receivable without the revenue would pass for a 支出).
+  const cut = fetched.length === lineLimit ? fetched.at(-1)?.journalEntryId : undefined;
+  const lines = cut ? fetched.filter((line) => line.journalEntryId !== cut) : fetched;
   const revenueEntries = new Set(
     lines.filter((line) => line.account.kind === "revenue").map((line) => line.journalEntryId),
   );
