@@ -32,7 +32,7 @@ export function Pager({
       </p>
       <div className="flex gap-2">
         {page > 1 ? (
-          <Link href={href(page - 1)} className={link} rel="prev">
+          <Link href={href(page - 1)} className={link} rel="prev" prefetch>
             前へ
           </Link>
         ) : (
@@ -41,7 +41,7 @@ export function Pager({
           </span>
         )}
         {page < pageCount ? (
-          <Link href={href(page + 1)} className={link} rel="next">
+          <Link href={href(page + 1)} className={link} rel="next" prefetch>
             次へ
           </Link>
         ) : (

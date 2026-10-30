@@ -18,7 +18,11 @@ export function Pagination({
 }) {
   const link = (target: number, label: string, enabled: boolean) =>
     enabled ? (
-      <Link href={hrefFor(target)} className={buttonClass({ variant: "secondary", size: "sm" })}>
+      <Link
+        href={hrefFor(target)}
+        className={buttonClass({ variant: "secondary", size: "sm" })}
+        prefetch
+      >
         {label}
       </Link>
     ) : (
