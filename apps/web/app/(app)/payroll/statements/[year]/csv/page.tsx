@@ -1,5 +1,4 @@
 import { loadStatements, type StatementsOverview } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import { PayrollTableMissingError } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -7,6 +6,7 @@ import { buttonClass } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
+import { formatYenDisplay } from "@/lib/format";
 import { TABLE_MISSING_HINT } from "../../../_lib/labels";
 import { pathYear } from "../../_lib/params";
 
@@ -100,7 +100,7 @@ export default async function SalaryReportCsvPage({
                       defaultChecked
                       className="size-4 accent-[var(--primary)]"
                     />
-                    CSV に入れる（支払金額 {formatYen(slip.paid)} 円・提出先{" "}
+                    CSV に入れる（支払金額 {formatYenDisplay(slip.paid)} 円・提出先{" "}
                     {slip.recipient.municipalityCode || "未入力"}）
                   </label>
                   {recipient.missing.length > 0 ? (

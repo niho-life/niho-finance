@@ -64,13 +64,13 @@ export default async function EntriesPage({ searchParams }: PageProps<"/entries"
   const newEntry = (
     <>
       <ButtonLink href="/entries/new?type=income" size="sm">
-        収入
+        収入を登録
       </ButtonLink>
       <ButtonLink href="/entries/new?type=expense" size="sm">
-        支出
+        支出を登録
       </ButtonLink>
       <ButtonLink href="/entries/new?type=transfer" size="sm">
-        振替
+        振替を登録
       </ButtonLink>
     </>
   );
@@ -84,7 +84,7 @@ export default async function EntriesPage({ searchParams }: PageProps<"/entries"
           <>
             {newEntry}
             <ButtonLink href="/entries/new?type=voucher" size="sm" variant="ghost">
-              伝票
+              伝票を登録
             </ButtonLink>
           </>
         }

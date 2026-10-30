@@ -117,7 +117,7 @@ function Result({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <dt className="text-[11px] font-bold text-muted-2">{label}</dt>
+      <dt className="text-[11px] font-bold text-muted">{label}</dt>
       <dd className={`num text-[14px] ${strong ? "text-[16px] font-extrabold" : "font-bold"}`}>
         {value ?? "—"}
         {detail ? <span className="block text-[11px] font-normal text-muted">{detail}</span> : null}
@@ -377,7 +377,7 @@ export function BonusForm({
                 {fieldError("withholdingSpecialDue")}
               </p>
             ) : null}
-            <p className="text-[12px] text-muted-2">
+            <p className="text-[12px] text-muted">
               賞与の源泉所得税を給与と同じ半年ごとの納付にまとめます。住民税は賞与から控除しません
             </p>
           </fieldset>
@@ -505,7 +505,7 @@ export function BonusForm({
                       })}
                     />
                   </FormField>
-                  <p className="text-[12px] text-muted-2 sm:self-end">
+                  <p className="text-[12px] text-muted sm:self-end">
                     役員の賞与は届け出た支給日と金額どおりでないと損金に算入されません
                   </p>
                 </fieldset>

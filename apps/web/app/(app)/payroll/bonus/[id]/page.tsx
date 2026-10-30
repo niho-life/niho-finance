@@ -1,5 +1,5 @@
 import { getBonusRun, todayInJapan, type BonusRunDetail } from "@niho-finance/db";
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import { yearMonthLabel } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo, formatDateTime } from "@/lib/format";
+import { entryNo, formatDateTime, formatYenDisplay } from "@/lib/format";
 import { bonusTableTitles, storedBonusNotes, toBonusItemView } from "../../_lib/bonus-views";
 import { WORKER_KIND_LABELS } from "../../_lib/labels";
 import { scheduleTarget } from "../../_lib/views";
@@ -181,7 +181,7 @@ export default async function BonusRunPage({ params }: { params: Promise<{ id: s
                     href={`/payroll/bonus/${run.id}/payslips/${item.employeeId}`}
                     className="text-[13px] font-bold underline underline-offset-4"
                   >
-                    賞与明細
+                    賞与明細を開く
                   </Link>
                   <span className="ml-2 text-[12px] text-muted md:hidden">
                     賞与 {item.bonus} · 控除計 {item.totalDeductions}
@@ -192,21 +192,21 @@ export default async function BonusRunPage({ params }: { params: Promise<{ id: s
             <TableRow {...COLUMNS} className="bg-surface-2 font-bold">
               <Td>合計（{run.totals.headcount} 人）</Td>
               <Td align="right" sm="hide">
-                {formatYen(run.totals.grossPay)}
+                {formatYenDisplay(run.totals.grossPay)}
               </Td>
               <Td sm="hide" />
               <Td align="right" sm="hide">
-                {formatYen(run.totals.socialInsuranceEmployee)}
+                {formatYenDisplay(run.totals.socialInsuranceEmployee)}
               </Td>
               <Td align="right" sm="hide">
-                {formatYen(run.totals.employmentInsuranceEmployee)}
+                {formatYenDisplay(run.totals.employmentInsuranceEmployee)}
               </Td>
               <Td sm="hide" />
               <Td align="right" sm="hide">
-                {formatYen(run.totals.incomeTax)}
+                {formatYenDisplay(run.totals.incomeTax)}
               </Td>
               <Td sm="hide" />
-              <Td align="right">{formatYen(run.totals.netPay)}</Td>
+              <Td align="right">{formatYenDisplay(run.totals.netPay)}</Td>
               <Td sm="hide" />
             </TableRow>
           </Table>
@@ -216,7 +216,7 @@ export default async function BonusRunPage({ params }: { params: Promise<{ id: s
           <ul className="rounded-card border border-border bg-surface">
             <EntryRefLink label="本人分（賞与）" entry={run.payEntry} />
             <EntryRefLink
-              label={`会社負担（法定福利費 ${formatYen(run.totals.employerTotal)} 円）`}
+              label={`会社負担（法定福利費 ${formatYenDisplay(run.totals.employerTotal)} 円）`}
               entry={run.employerEntry}
             />
           </ul>
@@ -251,7 +251,7 @@ export default async function BonusRunPage({ params }: { params: Promise<{ id: s
                       {scheduleTarget(row.title)}
                     </Td>
                     <Td align="right" className="font-bold">
-                      {formatYen(row.amount)}
+                      {formatYenDisplay(row.amount)}
                     </Td>
                     <Td sm="full" className="text-[13px] text-muted">
                       {row.completedAt ? (

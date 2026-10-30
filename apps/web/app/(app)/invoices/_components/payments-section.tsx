@@ -1,8 +1,7 @@
 import type { InvoiceDetail } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { entryNo, formatDate } from "@/lib/format";
+import { entryNo, formatDate, formatYenDisplay } from "@/lib/format";
 import { CancelPaymentButton } from "./payment-controls";
 
 const COLUMNS = {
@@ -29,7 +28,10 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
         </h2>
         <p className="text-[13px] text-muted">
           残高{" "}
-          <span className="num text-[24px] font-extrabold text-text">{formatYen(balance)}</span> 円
+          <span className="num text-[24px] font-extrabold text-text">
+            {formatYenDisplay(balance)}
+          </span>{" "}
+          円
         </p>
       </div>
       {cancelBlocked ? (
@@ -60,10 +62,10 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
                 {payment.walletName}
               </Td>
               <Td sm="hide" align="right">
-                {formatYen(payment.amount)}
+                {formatYenDisplay(payment.amount)}
               </Td>
               <Td sm="hide" align="right">
-                {payment.fee === 0n ? "—" : formatYen(payment.fee)}
+                {payment.fee === 0n ? "—" : formatYenDisplay(payment.fee)}
               </Td>
               <span role="cell" className="min-w-0 text-[12px] md:hidden">
                 {payment.journalEntry ? (
@@ -75,7 +77,7 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
                   </Link>
                 ) : null}
                 {payment.fee > 0n ? (
-                  <span className="ml-2 text-muted">手数料 {formatYen(payment.fee)}</span>
+                  <span className="ml-2 text-muted">手数料 {formatYenDisplay(payment.fee)}</span>
                 ) : null}
                 {payment.cancelled ? (
                   <span className="block text-muted">
@@ -84,7 +86,7 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
                 ) : null}
               </span>
               <Td align="right" className="font-bold">
-                {formatYen(payment.applied)}
+                {formatYenDisplay(payment.applied)}
               </Td>
               <Td sm="hide" className="text-[13px]">
                 {payment.journalEntry ? (
@@ -109,7 +111,7 @@ export function PaymentsSection({ detail }: { detail: InvoiceDetail }) {
                     invoiceId={detail.id}
                     paymentId={payment.id}
                     entryNoValue={payment.journalEntry?.no ?? null}
-                    balanceAfter={formatYen(balance + payment.applied)}
+                    balanceAfter={formatYenDisplay(balance + payment.applied)}
                   />
                 ) : null}
               </Td>

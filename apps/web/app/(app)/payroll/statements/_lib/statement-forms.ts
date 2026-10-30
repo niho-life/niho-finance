@@ -21,7 +21,8 @@ import type { FormCell, FormSection, StatementForm } from "@/lib/pdf/statement-f
  * 法定調書 as text forms (22-payroll §12.2): one builder per form, shared by the printable pages and
  * the PDFs. Every item of the official form keeps its label; the values are what the records give
  * (an empty box when the form leaves it empty or the record has nothing). Never a マイナンバー: the
- * 個人番号 boxes of 給与支払報告書 stay empty (written by hand or completed in eLTAX).
+ * 個人番号 boxes of 給与支払報告書 stay empty (written by hand or completed in eLTAX). Amounts keep
+ * `formatYen` (the ASCII `-`): the page and the PDF are the same document (05-ui-ux §3.1).
  */
 
 const yen = (amount: Money | null | undefined) =>

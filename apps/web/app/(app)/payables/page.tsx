@@ -5,7 +5,6 @@ import {
   todayInJapan,
   type PayableTotals,
 } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import { BillingSwitch } from "@/components/app-shell/billing-switch";
 import { ButtonLink } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { db } from "@/lib/data";
+import { formatYenDisplay } from "@/lib/format";
 import { PayablesFilter } from "./_components/payables-filter";
 import { PayablesTable } from "./_components/payables-table";
 import { payablesQuery } from "./_lib/view";
@@ -34,7 +34,7 @@ function Figure({
     <div className="flex min-w-0 flex-col gap-0.5 rounded-card border border-border bg-surface px-4 py-3">
       <span className="text-[12px] font-bold text-muted">{label}</span>
       <span className={`num text-[20px] font-extrabold ${alert ? "text-warn" : ""}`}>
-        {formatYen(totals.amount)}
+        {formatYenDisplay(totals.amount)}
         <span className="ml-1 text-[13px] font-semibold text-muted">円</span>
       </span>
       <span className={`text-[12px] ${alert ? "font-bold text-warn" : "text-muted"}`}>
@@ -71,7 +71,7 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
     <>
       <PageHeader
         title="支払"
-        meta={`未払 ${summary.open.count} 件 · ${formatYen(summary.open.amount)} 円`}
+        meta={`未払 ${summary.open.count} 件 · ${formatYenDisplay(summary.open.amount)} 円`}
         actions={create}
       />
       <BillingSwitch current="payables" />

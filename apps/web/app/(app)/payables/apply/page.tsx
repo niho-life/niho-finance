@@ -1,5 +1,4 @@
 import { loadPayableCandidates, todayInJapan } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { ApplyPaymentButton } from "../_components/apply-payment";
 import { differenceText } from "../_lib/view";
 
@@ -57,7 +56,7 @@ export default async function ApplyPaymentPage({ searchParams }: PageProps<"/pay
           ) : null}
         </div>
         <p className="num text-[24px] font-extrabold">
-          {formatYen(line.amount)}
+          {formatYenDisplay(line.amount)}
           <span className="ml-1 text-[14px] font-semibold text-muted">円</span>
         </p>
       </section>
@@ -120,7 +119,7 @@ export default async function ApplyPaymentPage({ searchParams }: PageProps<"/pay
                   {payable.title}
                 </Td>
                 <Td align="right" label="残り">
-                  {formatYen(payable.remaining)}
+                  {formatYenDisplay(payable.remaining)}
                 </Td>
                 <Td sm="hide" align="right" className="text-[13px] text-muted">
                   {differenceText(amount, payable.remaining)}

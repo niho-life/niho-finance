@@ -1,5 +1,5 @@
 import { loadYearEnd, todayInJapan, type YearEndOverview } from "@niho-finance/db";
-import { dateParts, displayDate, formatYen } from "@niho-finance/ledger";
+import { dateParts, displayDate } from "@niho-finance/ledger";
 import { PayrollTableMissingError } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo, formatDateTime } from "@/lib/format";
+import { entryNo, formatDateTime, formatYenDisplay } from "@/lib/format";
 import { TABLE_MISSING_HINT, TAX_COLUMN_LABELS, WORKER_KIND_LABELS } from "../_lib/labels";
 import { settlementText } from "../_lib/year-end-views";
 
@@ -180,10 +180,10 @@ export default async function YearEndListPage({
                           : "未入力"}
                       </Td>
                       <Td align="right" sm="hide">
-                        {formatYen(row.result.annualTax)}
+                        {formatYenDisplay(row.result.annualTax)}
                       </Td>
                       <Td align="right" sm="hide">
-                        {formatYen(row.result.withheld)}
+                        {formatYenDisplay(row.result.withheld)}
                       </Td>
                       <Td className="text-[13px] font-bold">
                         {settlementText(row.result)}

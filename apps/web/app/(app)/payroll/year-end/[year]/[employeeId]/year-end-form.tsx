@@ -659,7 +659,7 @@ export function YearEndForm({
                 : "申告は保存済みです"}
           </p>
           <Button variant="primary" onClick={save} disabled={saving || !dirty}>
-            申告を保存
+            {saving ? "保存中…" : "申告を保存"}
           </Button>
         </div>
       )}
@@ -668,7 +668,7 @@ export function YearEndForm({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-[15px] font-extrabold">年税額の計算</h2>
           <Link href={ledgerHref} className="text-[13px] font-bold underline underline-offset-4">
-            源泉徴収簿
+            源泉徴収簿を開く
           </Link>
         </div>
         {view ? (
@@ -685,7 +685,7 @@ export function YearEndForm({
                 ] as const
               ).map(([label, amount]) => (
                 <div key={label} className="flex min-w-0 flex-col">
-                  <span className="text-[11px] font-bold text-muted-2">{label}（円）</span>
+                  <span className="text-[11px] font-bold text-muted">{label}（円）</span>
                   <span className="num text-[14px] font-bold">{amount}</span>
                 </div>
               ))}

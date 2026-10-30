@@ -110,7 +110,7 @@ export function RowMenu({ label, items }: { label: string; items: readonly MenuI
                   className={`${itemClass} cursor-not-allowed text-muted-2`}
                 >
                   {item.label}
-                  <span className="ml-auto text-[11px]">{item.note}</span>
+                  <span className="ml-auto text-[11px] text-muted">{item.note}</span>
                 </span>
               );
             }

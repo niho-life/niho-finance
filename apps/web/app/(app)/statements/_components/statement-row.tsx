@@ -39,7 +39,7 @@ function chipClass(tone: ChipTone, invalid: boolean): string {
   return [
     "inline-flex min-h-7 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] whitespace-nowrap",
     tone === "rule" || tone === "edited" ? "border-solid" : "border-dashed",
-    tone === "empty" ? "text-muted-2" : "text-text",
+    tone === "empty" ? "text-muted" : "text-text",
     invalid ? "border-danger" : tone === "empty" ? "border-border-2" : "border-muted-2",
   ].join(" ");
 }
@@ -305,7 +305,7 @@ export function StatementRowView({
         </span>
       ) : null}
       <span role="cell" data-area="date" className="num text-[13px] leading-tight text-muted">
-        {year ? <span className="block text-[11px] text-muted-2">{year}</span> : null}
+        {year ? <span className="block text-[11px] text-muted">{year}</span> : null}
         {monthDay}
       </span>
       <span role="cell" data-area="desc" className="min-w-0">
@@ -313,7 +313,7 @@ export function StatementRowView({
           <span className="num mr-2 text-[12px] text-muted lg:hidden">{date}</span>
           {row.descriptionRaw}
         </span>
-        <span className="block text-[12px] text-muted-2">
+        <span className="block text-[12px] text-muted">
           {row.walletActive ? row.walletName : `${row.walletName}（無効）`}
           {row.counterpartyRaw ? ` · 振込人: ${row.counterpartyRaw}` : ""}
         </span>

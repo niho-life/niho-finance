@@ -7,7 +7,7 @@ import {
   type FixedAssetHistoryRow,
   type FixedAssetScheduleRow,
 } from "@niho-finance/db";
-import { ENTRY_KIND_LABELS, formatYen, formatYenInput } from "@niho-finance/ledger";
+import { ENTRY_KIND_LABELS, formatYenInput } from "@niho-finance/ledger";
 import {
   defaultPropertyTaxAssetType,
   PROPERTY_TAX_ASSET_TYPES,
@@ -20,7 +20,14 @@ import { JsonPair } from "@/components/ui/json-pair";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate, formatDateTime, formatPeriod, walletLabel } from "@/lib/format";
+import {
+  formatAmountDisplay,
+  formatDate,
+  formatDateTime,
+  formatPeriod,
+  formatYenDisplay,
+  walletLabel,
+} from "@/lib/format";
 import { Band, EntryLink, Facts } from "../../_components/parts";
 import { DisposeAssetSheet, EditAssetSheet, VoidAssetButton } from "../_components/asset-actions";
 import { depreciableAccounts, methodLabel } from "../_components/asset-kit";
@@ -135,23 +142,23 @@ function Schedule({ rows }: { rows: readonly FixedAssetScheduleRow[] }) {
                 <span className="font-semibold">
                   {row.fiscalYearNo !== null ? `第 ${row.fiscalYearNo} 期` : "（仮の期）"}
                 </span>
-                <span className="num block text-[11px] text-muted-2">
+                <span className="num block text-[11px] text-muted">
                   {formatPeriod(row.startDate, row.endDate)}
                 </span>
               </Td>
               <Td align="right" sm="hide">
-                {formatYen(row.opening)}
+                {formatYenDisplay(row.opening)}
               </Td>
               <Td align="right" className="font-bold">
-                {formatYen(row.posted ?? row.amount)}
+                {formatYenDisplay(row.posted ?? row.amount)}
               </Td>
               <Td align="right" sm="hide">
-                {formatYen(row.closing)}
+                {formatYenDisplay(row.closing)}
               </Td>
               <Td sm="full">
                 <ScheduleState row={row} />
                 <span className="num ml-2 text-[12px] text-muted md:hidden">
-                  {formatYen(row.opening)} → {formatYen(row.closing)}
+                  {formatYenDisplay(row.opening)} → {formatYenDisplay(row.closing)}
                 </span>
               </Td>
             </TableRow>
@@ -219,7 +226,7 @@ function History({ rows }: { rows: readonly FixedAssetHistoryRow[] }) {
         <ul className="overflow-hidden rounded-card border border-border">
           <li
             aria-hidden="true"
-            className={`${HISTORY_GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted-2 md:grid`}
+            className={`${HISTORY_GRID} hidden bg-surface-2 px-3.5 py-2 text-[11px] font-bold text-muted md:grid`}
           >
             <span>日時</span>
             <span>操作</span>
@@ -272,7 +279,7 @@ export default async function FixedAssetDetailPage({ params }: PageProps<"/closi
   const meta = [
     detail.accountName,
     `取得日 ${formatDate(detail.acquisitionDate)}`,
-    `取得価額 ${formatYen(detail.cost)} 円`,
+    `取得価額 ${formatYenDisplay(detail.cost)} 円`,
     methodText(detail),
   ].join(" · ");
 
@@ -342,7 +349,7 @@ export default async function FixedAssetDetailPage({ params }: PageProps<"/closi
           { label: "状態", value: FIXED_ASSET_STATUS_LABELS[detail.status] },
           {
             label: "帳簿価額（今期末・円）",
-            value: detail.bookValue === null ? "—" : formatYen(detail.bookValue),
+            value: formatAmountDisplay(detail.bookValue),
             strong: true,
           },
           { label: "セグメント", value: detail.segmentName ?? "—" },

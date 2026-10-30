@@ -4,7 +4,6 @@ import type { PayableFormAccount, PayableFormOptions, PayableFormPartner } from 
 import {
   describePaymentTerms,
   displayDate,
-  formatYen,
   INPUT_TAX_ACCOUNT_CODE,
   isCalendarDate,
   LedgerValidationError,
@@ -26,7 +25,7 @@ import { FormField, Input, Select } from "@/components/ui/form";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useToast } from "@/components/ui/toast";
 import { formLevelErrors, type ActionError } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { paymentTermsHelp } from "../_lib/view";
 import { registerPayableAction, savePaymentTermsAction } from "../actions";
 
@@ -245,9 +244,9 @@ export function PayableForm({ model }: { model: PayableFormModel }) {
       });
       const separate =
         split.taxLineAmount > 0n
-          ? `（税抜経理: 仮払消費税 ${INPUT_TAX_ACCOUNT_CODE} ${formatYen(split.taxLineAmount)} 円の行を足します）`
+          ? `（税抜経理: 仮払消費税 ${INPUT_TAX_ACCOUNT_CODE} ${formatYenDisplay(split.taxLineAmount)} 円の行を足します）`
           : "";
-      return { warn: false, text: `うち消費税 ${formatYen(split.taxAmount)} 円${separate}` };
+      return { warn: false, text: `うち消費税 ${formatYenDisplay(split.taxAmount)} 円${separate}` };
     } catch (problem) {
       const message =
         problem instanceof LedgerValidationError ? problem.errors[0]?.message : undefined;

@@ -249,7 +249,7 @@ export function FirstMonthGuideCard({ guide }: { guide: GuideView }) {
           <h2 id={headingId} className="text-[13px] font-bold text-muted">
             はじめの手順
           </h2>
-          <span className="num text-[12px] text-muted-2">
+          <span className="num text-[12px] text-muted">
             {guide.total} 項目中 {guide.doneCount} 項目済み
           </span>
         </div>

@@ -20,7 +20,7 @@ import {
   type PayrollRunInput,
   type YearEndDeclarationFormInput,
 } from "@niho-finance/db";
-import { displayDate, formatYen, formatYenInput, parseYenInput } from "@niho-finance/ledger";
+import { displayDate, formatYenInput, parseYenInput } from "@niho-finance/ledger";
 import {
   determineStandardRemuneration,
   findKenpoTable,
@@ -34,6 +34,7 @@ import { parseBoolean, parseId } from "@/lib/action-result";
 import type { ActionResult } from "@/lib/action-types";
 import { actor } from "@/lib/actor";
 import { authorizeAction } from "@/lib/authz";
+import { formatYenDisplay } from "@/lib/format";
 import { loadBonusPreview, type BonusPreviewView } from "./_lib/bonus-views";
 import { attemptPayroll } from "./_lib/errors";
 import {
@@ -334,7 +335,7 @@ export async function confirmYearEndAction(
       settlement:
         record.result.settlement.kind === "none"
           ? "過不足なし"
-          : `${record.result.settlement.label} ${formatYen(record.result.settlement.amount)} 円`,
+          : `${record.result.settlement.label} ${formatYenDisplay(record.result.settlement.amount)} 円`,
       entryNo: record.settlementEntry?.no ?? null,
     }),
   );

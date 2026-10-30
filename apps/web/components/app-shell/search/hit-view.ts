@@ -10,7 +10,7 @@ import {
   type CalendarDate,
   type Money,
 } from "@niho-finance/ledger";
-import { entryNo, formatDate } from "@/lib/format";
+import { entryNo, formatDate, formatYenDisplay } from "@/lib/format";
 
 /*
  * How a hit of 全体検索 reads and where it opens (10 §7.2), for the palette and `/search`. Plain data
@@ -92,7 +92,7 @@ export function hitView(hit: SearchHit): HitView {
         compact([
           entryNo(hit.no),
           formatDate(hit.entryDate),
-          formatYen(hit.amount),
+          formatYenDisplay(hit.amount),
           voided ? "取消済み" : null,
         ]),
         voided,
@@ -128,7 +128,7 @@ export function hitView(hit: SearchHit): HitView {
         compact([
           kindLabel,
           hit.txnDate ? formatDate(hit.txnDate) : null,
-          hit.amount === null ? null : formatYen(hit.amount),
+          hit.amount === null ? null : formatYenDisplay(hit.amount),
           hit.originalName ? hit.partnerName : null,
           voided ? "無効" : null,
         ]),
@@ -156,7 +156,7 @@ export function hitView(hit: SearchHit): HitView {
           hit.partnerName,
           hit.title,
           formatDate(hit.issueDate),
-          formatYen(hit.total),
+          formatYenDisplay(hit.total),
           INVOICE_STATUS_LABELS[hit.status],
         ]),
         hit.status === "void",

@@ -18,7 +18,7 @@ import type { ClientStatementRow } from "./model";
 import { lineSummary } from "./row-dialogs";
 
 function Meta({ item }: { item: StatementDocumentItem }) {
-  const unsorted = <span className="text-muted-2">未整理</span>;
+  const unsorted = <span className="text-muted">未整理</span>;
   return (
     <span className="block truncate text-[12px] text-muted">
       {item.kind} · <span className="num">{item.date ?? unsorted}</span> ·{" "}
@@ -188,7 +188,7 @@ export function StatementDocumentsSheet({
         <h3 id="statement-documents-inbox" className="mb-1 text-[13px] font-bold text-muted">
           受信箱から選ぶ
         </h3>
-        <p className="mb-1 text-[12px] text-muted-2">同じ金額・近い日付の証憑を先に並べます</p>
+        <p className="mb-1 text-[12px] text-muted">同じ金額・近い日付の証憑を先に並べます</p>
         {view && view.inbox.length === 0 ? (
           <p className="py-2 text-[13px] text-muted">受信箱に証憑はありません</p>
         ) : (
@@ -220,7 +220,7 @@ export function StatementDocumentsSheet({
                   disabled={busyId === item.id}
                   onClick={() => link(item)}
                 >
-                  紐づける
+                  {busyId === item.id ? "処理中…" : "紐づける"}
                 </Button>
               </li>
             ))}

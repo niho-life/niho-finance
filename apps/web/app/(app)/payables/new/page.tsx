@@ -4,7 +4,7 @@ import {
   type PayableFormDocument,
   type PayableFormOptions,
 } from "@niho-finance/db";
-import { DOCUMENT_KIND_LABELS, formatYen, formatYenInput } from "@niho-finance/ledger";
+import { DOCUMENT_KIND_LABELS, formatYenInput } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,7 +12,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatDate, walletLabel } from "@/lib/format";
+import { formatDate, formatYenDisplay, walletLabel } from "@/lib/format";
 import { PayableForm, type PayableFormModel } from "../_components/payable-form";
 
 export const metadata: Metadata = { title: "受領した請求書を登録" };
@@ -35,7 +35,7 @@ function ChosenDocument({ document }: { document: PayableFormDocument }) {
           {[
             DOCUMENT_KIND_LABELS[document.kind],
             document.txnDate ? formatDate(document.txnDate) : "取引年月日なし",
-            document.amount === null ? "金額なし" : `${formatYen(document.amount)} 円`,
+            document.amount === null ? "金額なし" : `${formatYenDisplay(document.amount)} 円`,
             document.partnerName ?? "取引先なし",
           ].join(" · ")}
         </p>
@@ -95,7 +95,7 @@ function Candidates({ options }: { options: PayableFormOptions }) {
                 {[
                   candidate.txnDate ? formatDate(candidate.txnDate) : null,
                   candidate.partnerName,
-                  candidate.amount === null ? null : `${formatYen(candidate.amount)} 円`,
+                  candidate.amount === null ? null : `${formatYenDisplay(candidate.amount)} 円`,
                 ]
                   .filter(Boolean)
                   .join(" · ") || DOCUMENT_KIND_LABELS[candidate.kind]}

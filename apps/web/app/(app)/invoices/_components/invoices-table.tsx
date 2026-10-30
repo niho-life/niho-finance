@@ -1,13 +1,12 @@
 import type { InvoiceListRow } from "@niho-finance/db";
 import {
-  formatYen,
   INVOICE_DOC_TYPE_LABELS,
   INVOICE_STATUS_LABELS,
   invoiceNumberLabel,
 } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 import { detailHref, documentName } from "./list-query";
 
 const COLUMNS = {
@@ -108,10 +107,10 @@ export function InvoicesTable({
             {row.docType === "delivery" ? "—" : formatDate(row.dueDate)}
           </Td>
           <Td align="right" className="font-bold">
-            {formatYen(row.total)}
+            {formatYenDisplay(row.total)}
           </Td>
           <Td sm="hide" align="right">
-            {row.balance === null ? "—" : formatYen(row.balance)}
+            {formatAmountDisplay(row.balance)}
           </Td>
           <Td sm="hide" className="text-[13px]">
             <StatusText row={row} />

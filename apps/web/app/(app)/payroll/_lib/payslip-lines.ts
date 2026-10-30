@@ -8,6 +8,11 @@ import {
 import type { PayslipData } from "@/lib/pdf/payslip";
 import { taxColumnText, WORKER_KIND_LABELS } from "./labels";
 
+/*
+ * The lines of the printable page and the PDF are the same text, so amounts keep `formatYen` (the
+ * ASCII `-`), like the invoice document (05-ui-ux §3.1).
+ */
+
 function signed(amount: Money): string {
   return amount > 0n ? `+${formatYen(amount)}` : formatYen(amount);
 }

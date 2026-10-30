@@ -39,10 +39,10 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
   const create = (
     <>
       <ButtonLink href="/invoices/new?type=invoice" size="sm">
-        請求書
+        請求書を作る
       </ButtonLink>
       <ButtonLink href="/invoices/new?type=quote" size="sm">
-        見積書
+        見積書を作る
       </ButtonLink>
     </>
   );
@@ -56,10 +56,10 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
           <>
             {create}
             <ButtonLink href="/invoices/new?type=delivery" size="sm">
-              納品書
+              納品書を作る
             </ButtonLink>
             <ButtonLink href="/invoices/settings" size="sm" variant="ghost">
-              設定
+              設定を開く
             </ButtonLink>
           </>
         }
@@ -109,7 +109,11 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
             }
           />
         ) : (
-          <EmptyState title="請求書がありません。見積書か請求書から作ります" action={create} />
+          <EmptyState
+            title="請求書がありません"
+            description="見積書か請求書から作ります"
+            action={create}
+          />
         )
       ) : (
         <>

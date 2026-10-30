@@ -1,7 +1,7 @@
 "use client";
 
 import type { StatementStatusFilter } from "@niho-finance/db";
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -18,7 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import type { ActionError, ActionResult } from "@/lib/action-types";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 import { RuleSheet } from "../../settings/rules/rule-sheet";
 import { emptyRuleValues, type RuleFormValues } from "../../settings/rules/rule-values";
 import {
@@ -690,7 +690,7 @@ export function StatementsList({
       ) : (
         <>
           {pendingTab ? (
-            <p className="mb-2 hidden text-[12px] text-muted-2 lg:block">
+            <p className="mb-2 hidden text-[12px] text-muted lg:block">
               ↑↓ 移動 · Enter 登録 · I 無視 · T 振替 · E 編集 · R ルールにする · Space 選択 · / 検索
               · Z 取消
             </p>
@@ -933,7 +933,8 @@ export function StatementsList({
         onConfirm={() => runBulk("register")}
       >
         <p className="num">
-          入金 {formatYen(totalOf(runnable, 1))} 円 / 出金 {formatYen(totalOf(runnable, -1))} 円
+          入金 {formatYenDisplay(totalOf(runnable, 1))} 円 / 出金{" "}
+          {formatYenDisplay(totalOf(runnable, -1))} 円
         </p>
         <p className="mt-2 text-[13px] text-muted">
           それぞれの行のチップの内容で、1 件ずつ順に登録します（振替・無視の推定の行はその操作）。
@@ -956,7 +957,8 @@ export function StatementsList({
         onConfirm={() => runBulk("ignore")}
       >
         <p className="num">
-          入金 {formatYen(totalOf(bulk, 1))} 円 / 出金 {formatYen(totalOf(bulk, -1))} 円
+          入金 {formatYenDisplay(totalOf(bulk, 1))} 円 / 出金 {formatYenDisplay(totalOf(bulk, -1))}{" "}
+          円
         </p>
         <p className="mt-2 text-[13px] text-muted">
           帳簿には載せません。あとから未処理に戻せます。

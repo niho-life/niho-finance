@@ -1,5 +1,4 @@
 import { listRecurringInvoices, todayInJapan } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BillingSwitch } from "@/components/app-shell/billing-switch";
@@ -8,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate } from "@/lib/format";
+import { formatAmountDisplay, formatDate, formatYenDisplay } from "@/lib/format";
 
 export const metadata: Metadata = { title: "定期請求" };
 
@@ -47,8 +46,8 @@ export default async function RecurringInvoicesPage() {
       ) : null}
       {list.rows.length === 0 ? (
         <EmptyState
-          title="定期請求はありません。毎月同じ請求書を出すときに登録します"
-          description="予定日に請求書の下書きを作ります。発行は下書きを確かめてから手で行います"
+          title="定期請求はありません"
+          description="毎月同じ請求書を出すときに登録します。予定日に請求書の下書きを作ります。発行は下書きを確かめてから手で行います"
           action={add}
         />
       ) : (
@@ -86,7 +85,7 @@ export default async function RecurringInvoicesPage() {
                 {row.scheduleLabel}
               </Td>
               <Td sm="hide" align="right" className="font-bold">
-                {row.total === null ? "—" : formatYen(row.total)}
+                {formatAmountDisplay(row.total)}
               </Td>
               <Td className="num text-right text-[13px] md:text-left">
                 {row.isActive ? (
@@ -98,7 +97,7 @@ export default async function RecurringInvoicesPage() {
                   </>
                 )}
                 <span className="block font-bold md:hidden">
-                  {row.total === null ? "—" : `${formatYen(row.total)} 円`}
+                  {row.total === null ? "—" : `${formatYenDisplay(row.total)} 円`}
                 </span>
               </Td>
               <Td sm="hide" className="text-[13px]">

@@ -1,9 +1,8 @@
 import type { PayableListRow, PayablePartnerGroup } from "@niho-finance/db";
-import { formatYen } from "@niho-finance/ledger";
 import Link from "next/link";
 import { Fragment } from "react";
 import { Table, TableGroup, TableHead, TableRow, Td, Th } from "@/components/ui/table";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatYenDisplay } from "@/lib/format";
 import { payableDetailHref, payableStatusParts } from "../_lib/view";
 
 const COLUMNS = {
@@ -70,7 +69,7 @@ export function PayablesTable({
               <TableGroup>
                 {group.partnerName || "取引先なし"}
                 <span className="num ml-2 font-normal text-muted">
-                  残り {formatYen(group.remaining)} 円（{group.count} 件）
+                  残り {formatYenDisplay(group.remaining)} 円（{group.count} 件）
                 </span>
               </TableGroup>
             ) : null}
@@ -102,10 +101,10 @@ export function PayablesTable({
                 {formatDate(row.invoiceDate)}
               </Td>
               <Td sm="hide" align="right">
-                {formatYen(row.amount)}
+                {formatYenDisplay(row.amount)}
               </Td>
               <Td align="right" className="font-bold">
-                {formatYen(row.remaining > 0n ? row.remaining : 0n)}
+                {formatYenDisplay(row.remaining > 0n ? row.remaining : 0n)}
               </Td>
               <Td sm="hide" className="truncate text-[13px]">
                 {row.plannedWallet?.name ?? "—"}

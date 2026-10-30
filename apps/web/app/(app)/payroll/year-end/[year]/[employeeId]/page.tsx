@@ -62,7 +62,7 @@ export default async function YearEndEmployeePage({
         back={back}
         actions={
           <ButtonLink href={ledgerHref} size="sm">
-            源泉徴収簿
+            源泉徴収簿を開く
           </ButtonLink>
         }
       />

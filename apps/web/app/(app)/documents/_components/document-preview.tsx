@@ -72,7 +72,7 @@ export function DocumentPreview({
             <code className="num break-all">{sha256}</code>
           </dd>
         </div>
-        <div className="text-[11px] text-muted-2">
+        <div className="text-[11px] text-muted">
           <dt className="inline">証憑 ID</dt>{" "}
           <dd className="inline">
             <code className="num break-all">{id}</code>

@@ -332,7 +332,7 @@ export function ReceiptSection({ model }: { model: ReceiptSectionModel }) {
                 rel="noopener"
                 className={buttonClass({ size: "sm" })}
               >
-                PDF
+                PDF を開く
               </a>
               <VoidReceiptButton receipt={current} />
             </div>

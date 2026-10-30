@@ -257,7 +257,7 @@ function EmployeeSheet({
         <>
           {employee ? (
             <Button variant="ghost" className="mr-auto" onClick={toggleActive} disabled={toggling}>
-              {employee.isActive ? "無効にする" : "有効にする"}
+              {toggling ? "処理中…" : employee.isActive ? "無効にする" : "有効にする"}
             </Button>
           ) : null}
           <Button variant="ghost" onClick={onClose}>
@@ -357,7 +357,7 @@ function EmployeeSheet({
             />
           </FormField>
         </div>
-        <p className="-mt-2 text-[12px] text-muted-2">
+        <p className="-mt-2 text-[12px] text-muted">
           どちらも支給の計算の初期値です。通勤手当は所得税の対象外で、社会保険の報酬と雇用保険の賃金には含みます。
         </p>
         <FormField
@@ -420,10 +420,10 @@ function EmployeeSheet({
                   disabled={!gradeTool.available || grading}
                   aria-describedby={field("grade-help")}
                 >
-                  報酬月額から求める
+                  {grading ? "計算中…" : "報酬月額から求める"}
                 </Button>
               </div>
-              <p id={field("grade-help")} className="text-[12px] text-muted-2">
+              <p id={field("grade-help")} className="text-[12px] text-muted">
                 {gradeTool.available
                   ? grade && "text" in grade
                     ? grade.text

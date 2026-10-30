@@ -4,7 +4,7 @@ import {
   todayInJapan,
   type DepreciableAssetsReturnData,
 } from "@niho-finance/db";
-import { formatYen, type CalendarDate } from "@niho-finance/ledger";
+import type { CalendarDate } from "@niho-finance/ledger";
 import {
   propertyTaxAssetTypeText,
   warekiDate,
@@ -22,7 +22,7 @@ import { Button, buttonClass } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { formatDate, formatPeriod } from "@/lib/format";
+import { formatDate, formatPeriod, formatYenDisplay } from "@/lib/format";
 import { Facts, Note } from "../../_components/parts";
 import { methodLabel } from "../_components/asset-kit";
 import { MunicipalityForm } from "./_components/municipality-form";
@@ -56,7 +56,7 @@ function YearSelect({ years, current }: { years: readonly number[]; current: num
 }
 
 function totalText(total: DepreciableAssetsReturnTotal): string {
-  return `${total.count} 件 · ${formatYen(total.cost)} 円`;
+  return `${total.count} 件 · ${formatYenDisplay(total.cost)} 円`;
 }
 
 function typeText(row: DepreciableAssetsReturnRow): string {
@@ -122,10 +122,10 @@ function ReturnRows({
             </Td>
             <Td sm="hide" className="text-[13px]">
               {row.acquisitionWareki}
-              <span className="num block text-[11px] text-muted-2">{row.acquisitionYearMonth}</span>
+              <span className="num block text-[11px] text-muted">{row.acquisitionYearMonth}</span>
             </Td>
             <Td align="right" className="font-bold">
-              {formatYen(row.cost)}
+              {formatYenDisplay(row.cost)}
             </Td>
             <Td sm="hide" align="right" className={row.usefulLifeYears === null ? "text-warn" : ""}>
               {row.usefulLifeYears === null ? "未入力" : `${row.usefulLifeYears} 年`}
@@ -176,7 +176,7 @@ function ExcludedRows({ rows }: { rows: readonly DepreciableAssetsReturnExcluded
           <Td sm="hide" className="num text-[13px]">
             {formatDate(row.acquisitionDate)}
           </Td>
-          <Td align="right">{formatYen(row.cost)}</Td>
+          <Td align="right">{formatYenDisplay(row.cost)}</Td>
           <Td sm="hide" className="text-[13px]">
             {methodLabel(row.method, row.cost)}
           </Td>

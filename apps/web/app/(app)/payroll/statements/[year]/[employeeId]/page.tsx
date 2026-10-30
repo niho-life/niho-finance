@@ -123,11 +123,11 @@ export default async function WithholdingSlipPage({
                   href={`${base}/slip/pdf`}
                   className={buttonClass({ variant: "primary", size: "sm" })}
                 >
-                  源泉徴収票の PDF
+                  源泉徴収票の PDF を書き出す
                 </a>
                 {recipient.inSalaryReport ? (
                   <a href={`${base}/report/pdf`} className={buttonClass({ size: "sm" })}>
-                    給与支払報告書の PDF
+                    給与支払報告書の PDF を書き出す
                   </a>
                 ) : null}
               </>

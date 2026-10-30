@@ -5,7 +5,7 @@ import {
   listWallets,
   todayInJapan,
 } from "@niho-finance/db";
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import { yearMonthLabel, yearMonthOf, yearMonthParts } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo, formatDateTime, walletLabel } from "@/lib/format";
+import { entryNo, formatDateTime, formatYenDisplay, walletLabel } from "@/lib/format";
 import { ScheduleTable } from "./_components/schedule-table";
 import { toScheduleRowView } from "./_lib/views";
 
@@ -57,10 +57,10 @@ export default async function PayrollPage() {
         actions={
           <>
             <ButtonLink href="/payroll/bonus" size="sm">
-              賞与
+              賞与を開く
             </ButtonLink>
             <ButtonLink href={`/payroll/year-end?year=${yearMonthParts(month).year}`} size="sm">
-              年末調整
+              年末調整を開く
             </ButtonLink>
             {/* 1〜3 月は前年分の法定調書の時期 (22-payroll §12.1). */}
             <ButtonLink
@@ -71,10 +71,10 @@ export default async function PayrollPage() {
               }`}
               size="sm"
             >
-              法定調書
+              法定調書を開く
             </ButtonLink>
             <ButtonLink href="/payroll/employees" size="sm">
-              従業員
+              従業員を開く
             </ButtonLink>
           </>
         }
@@ -100,7 +100,7 @@ export default async function PayrollPage() {
                 <span className="text-[13px] text-muted">
                   差引支給の合計{" "}
                   <span className="num text-[20px] font-extrabold text-text">
-                    {formatYen(thisMonth.totals.netPay)}
+                    {formatYenDisplay(thisMonth.totals.netPay)}
                   </span>{" "}
                   円（{thisMonth.totals.headcount} 人）
                 </span>
@@ -167,13 +167,13 @@ export default async function PayrollPage() {
                     {run.totals.headcount} 人
                   </Td>
                   <Td align="right" sm="hide">
-                    {formatYen(run.totals.grossPay)}
+                    {formatYenDisplay(run.totals.grossPay)}
                   </Td>
                   <Td align="right" sm="hide">
-                    {formatYen(run.totals.totalDeductions)}
+                    {formatYenDisplay(run.totals.totalDeductions)}
                   </Td>
                   <Td align="right" className="font-bold">
-                    {formatYen(run.totals.netPay)}
+                    {formatYenDisplay(run.totals.netPay)}
                   </Td>
                   <Td sm="hide" className="text-[13px]">
                     {[run.payEntry, run.employerEntry]

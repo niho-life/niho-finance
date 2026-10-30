@@ -12,7 +12,6 @@ import {
   DOCUMENT_LINK_KIND_LABELS,
   DOCUMENT_SOURCE_LABELS,
   ENTRY_STATUS_LABELS,
-  formatYen,
   formatYenInput,
 } from "@niho-finance/ledger";
 import type { Metadata } from "next";
@@ -22,7 +21,7 @@ import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { db } from "@/lib/data";
-import { formatDate, formatDateTime, formatPeriod } from "@/lib/format";
+import { formatDate, formatDateTime, formatPeriod, formatYenDisplay } from "@/lib/format";
 import { ntaStatus, readerStatus } from "@/lib/reader/config";
 import { Band } from "../_components/band";
 import { DocumentHistory } from "../_components/document-history";
@@ -64,7 +63,7 @@ function linkView(link: DocumentLinkEntry): LinkView {
         kind: link.kind,
         id: link.id,
         label,
-        summary: `第${link.fiscalYearNo}期 No. ${link.no} · ${formatDate(link.entryDate)} · ${link.description} · ${formatYen(link.amount)}`,
+        summary: `第${link.fiscalYearNo}期 No. ${link.no} · ${formatDate(link.entryDate)} · ${link.description} · ${formatYenDisplay(link.amount)}`,
         href: `/entries/${link.id}`,
         note: link.status === "posted" ? null : ENTRY_STATUS_LABELS[link.status],
       };
@@ -73,7 +72,7 @@ function linkView(link: DocumentLinkEntry): LinkView {
         kind: link.kind,
         id: link.id,
         label,
-        summary: `${link.walletName} · ${formatDate(link.txnDate)} · ${link.description} · ${formatYen(link.amount)}`,
+        summary: `${link.walletName} · ${formatDate(link.txnDate)} · ${link.description} · ${formatYenDisplay(link.amount)}`,
         href: null,
         note: link.status === "pending" ? null : (LINE_STATUS_LABELS[link.status] ?? null),
       };
@@ -202,7 +201,7 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
     apart: apart(line.daysApart),
     where: line.walletName,
     description: line.description,
-    amount: formatYen(line.amount),
+    amount: formatYenDisplay(line.amount),
     note: candidateNote(
       line.status === "pending" ? null : (LINE_STATUS_LABELS[line.status] ?? null),
       line.documentCount,
@@ -215,7 +214,7 @@ export default async function DocumentDetailPage({ params }: PageProps<"/documen
     apart: apart(entry.daysApart),
     where: `第${entry.fiscalYearNo}期 No. ${entry.no}`,
     description: entry.description,
-    amount: formatYen(entry.amount),
+    amount: formatYenDisplay(entry.amount),
     note: candidateNote(null, entry.documentCount),
   }));
   // 読み取り (20-reader §10.1): the stored proposal, and whether a provider can read again.

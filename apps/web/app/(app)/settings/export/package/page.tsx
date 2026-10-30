@@ -17,6 +17,7 @@ import { db } from "@/lib/data";
 import { formatPeriod } from "@/lib/format";
 import { formatDateTime } from "../../../reports/_lib/format";
 import { AutoSubmitCheckbox } from "./_components/auto-submit-checkbox";
+import { RequestButton } from "./_components/request-button";
 import { requestHandoverPackage } from "./actions";
 import { loadPackageBasis, packageBooks, packageEstimate } from "./_lib/collect";
 import {
@@ -139,7 +140,11 @@ export default async function HandoverPackagePage({
         <EmptyState
           title="会計期間がありません"
           description="設定 › 会計期間 で期を作ってから書き出します。"
-          action={<ButtonLink href="/settings/fiscal-years">会計期間を開く</ButtonLink>}
+          action={
+            <ButtonLink href="/settings/fiscal-years" size="sm">
+              会計期間を開く
+            </ButtonLink>
+          }
         />
       </>
     );
@@ -287,9 +292,7 @@ export default async function HandoverPackagePage({
               を超えるため、作成を依頼します。作成済みになったら下の一覧からダウンロードします。
             </p>
             <div>
-              <Button type="submit" variant="primary">
-                作成を依頼
-              </Button>
+              <RequestButton />
             </div>
           </form>
         )}
@@ -307,6 +310,11 @@ export default async function HandoverPackagePage({
           <EmptyState
             title="作成を依頼したパッケージはまだありません"
             description="20 MB を超えるパッケージは「作成を依頼」で作り、ここからダウンロードします。"
+            action={
+              <ButtonLink href="#make" size="sm">
+                パッケージを書き出す
+              </ButtonLink>
+            }
           />
         ) : (
           <Table label="作成した受け渡しパッケージ">

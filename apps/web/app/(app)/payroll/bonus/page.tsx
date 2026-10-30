@@ -1,5 +1,5 @@
 import { listBonusRuns, listEmployees, todayInJapan } from "@niho-finance/db";
-import { displayDate, formatYen } from "@niho-finance/ledger";
+import { displayDate } from "@niho-finance/ledger";
 import { yearMonthLabel, yearMonthOf } from "@niho-finance/payroll";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { db } from "@/lib/data";
-import { entryNo } from "@/lib/format";
+import { entryNo, formatYenDisplay } from "@/lib/format";
 
 export const metadata: Metadata = { title: "賞与" };
 
@@ -117,13 +117,13 @@ export default async function BonusRunsPage() {
                     {run.totals.headcount} 人
                   </Td>
                   <Td align="right" sm="hide">
-                    {formatYen(run.totals.grossPay)}
+                    {formatYenDisplay(run.totals.grossPay)}
                   </Td>
                   <Td align="right" sm="hide">
-                    {formatYen(run.totals.totalDeductions)}
+                    {formatYenDisplay(run.totals.totalDeductions)}
                   </Td>
                   <Td align="right" className="font-bold">
-                    {formatYen(run.totals.netPay)}
+                    {formatYenDisplay(run.totals.netPay)}
                   </Td>
                   <Td sm="hide" className="text-[13px]">
                     {[run.payEntry, run.employerEntry]
