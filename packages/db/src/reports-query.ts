@@ -452,7 +452,7 @@ function text(value: unknown): string | null {
 export async function listRecentExports(db: Db, limit = 20): Promise<ExportLogRow[]> {
   const rows = await db.auditLog.findMany({
     where: { action: EXPORT_AUDIT_ACTION },
-    orderBy: { at: "desc" },
+    orderBy: [{ at: "desc" }, { id: "desc" }],
     take: limit,
   });
   return rows.map((row) => {
