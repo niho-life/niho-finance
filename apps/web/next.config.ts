@@ -29,6 +29,10 @@ const nextConfig: NextConfig = {
   experimental: {
     // A CSV file of up to 10 MB and the form around it reach the Server Actions (12-imports §1.2).
     serverActions: { bodySizeLimit: "11mb" },
+    // Cloud Run starts an instance for the request that waits (min-instances 0): loading every page
+    // in the background at the start held up that request's network and database (#82). Each page
+    // loads when it is first opened instead.
+    preloadEntriesOnStart: false,
   },
 };
 
