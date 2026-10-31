@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { actorFromHeaders, ActorError } from "@/lib/actor";
 import { proxyDecision, toCurrentUser, type CurrentUser } from "@/lib/authz";
 import { logEvent } from "@/lib/log";
+import { firstRequestTiming, type RequestTiming } from "@/lib/startup";
 
 /*
  * The early refusal of the screens (23-users-and-expenses §3.3), before every page, RSC request,
@@ -21,11 +22,21 @@ function textResponse(message: string, status: number): NextResponse {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // The first requests after a start log how long the IAP check and the user lookup took (#82).
+  const timing = firstRequestTiming(request.nextUrl.pathname);
+  const response = await decide(request, timing);
+  timing?.log();
+  return response;
+}
+
+async function decide(request: NextRequest, timing: RequestTiming | null): Promise<NextResponse> {
   let user: CurrentUser | null;
   try {
     const email = await actorFromHeaders(request.headers);
+    timing?.mark("iap");
     try {
       user = toCurrentUser(email, await resolveUserAccess(getPrismaClient(), email));
+      timing?.mark("access");
     } catch (error) {
       // Without the users nothing can be decided: refuse rather than let it through.
       logEvent("ERROR", "proxy.user_lookup_failed", {

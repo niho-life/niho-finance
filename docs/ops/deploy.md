@@ -60,6 +60,7 @@ Cloud SQL は private IP のみなので、サービスとジョブは Direct VP
 | `NIHO_FINANCE_JOB_URL` | ジョブ用サービスの URL | — | タスクの宛先（`/api/jobs/handover-package`）と OIDC の audience |
 | `NIHO_FINANCE_JOB_SERVICE_ACCOUNT`（画面） | Scheduler のサービスアカウント | — | タスクに付ける OIDC トークンのサービスアカウント（ジョブ側の `NIHO_FINANCE_JOB_SERVICE_ACCOUNT` と同じ値）。3 つとも `scripts/deploy.sh` が入れる |
 | `NIHO_FINANCE_STRIPE_KEY_<NAME>` | Secret | Secret | Stripe の制限付きキー。Secret `niho-finance-stripe-key-<name>` に版があれば `scripts/deploy.sh` が結ぶ（[secrets.md](secrets.md)） |
+| `NIHO_FINANCE_STARTUP_WARMUP` | 任意 | 任意 | `off` で起動時の先回り（DB の接続と IAP の公開鍵の取得、`apps/web/lib/startup.ts`）を止める。比較のためだけに使い、ふだんは入れない（既定は先回りする） |
 
 ## 3. 初回だけ（資源の作成）
 
@@ -124,6 +125,8 @@ scripts/deploy.sh --no-build # いま動いているイメージのまま配備�
 | --- | --- | --- |
 | ジョブの失敗 | `niho-finance-jobs` のログに `jsonPayload.event="job.finished" AND jsonPayload.ok=false` | メール |
 | 5xx | `niho-finance` の `request_count`（`response_code_class=5xx`）が 5 分で 1 件以上 | メール |
+
+起動直後の遅さ（#82）は、ログの `jsonPayload.event` で見る。`startup.register`（起動から register までの時間）、`startup.warmup`（DB の接続と IAP の鍵の取得にかかった時間）、`startup.request`（起動直後の 3 件の要求の、IAP の検証 `iapMs`・利用者の照会 `accessMs`・proxy 全体 `proxyMs`）。Cloud Run の要求のログの `latency` と時刻を並べると、描画にかかった分が分かる。
 
 ## 9. コスト（月額の見込み）
 
