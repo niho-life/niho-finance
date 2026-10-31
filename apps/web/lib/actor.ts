@@ -16,11 +16,6 @@ const IAP_ISSUER = "https://cloud.google.com/iap";
 /** IAP's public keys, fetched on first use and cached by jose (one set per process). */
 const iapKeys = createRemoteJWKSet(new URL("https://www.gstatic.com/iap/verify/public_key-jwk"));
 
-/** Fetches IAP's keys before the first request needs them (`lib/startup.ts`, #82). */
-export async function prefetchIapKeys(): Promise<void> {
-  await iapKeys.reload();
-}
-
 const ACTOR_UNVERIFIED = "ログイン情報を確認できませんでした。画面を読み込み直してください";
 
 /** The signed-in user could not be established; nothing is written. `message` is owner-facing. */
